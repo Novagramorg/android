@@ -1,0 +1,23 @@
+# Copy this file to gradle.properties and fill in your values.
+# gradle.properties is gitignored and must NOT be committed.
+
+APP_VERSION_CODE=1
+APP_VERSION_NAME=1.0.0
+APP_PACKAGE=uz.codingtech.messenger
+IS_PRIVATE=false
+
+# Release signing - fill these with your own keystore credentials
+RELEASE_KEY_PASSWORD=
+RELEASE_KEY_ALIAS=
+RELEASE_STORE_PASSWORD=
+
+org.gradle.jvmargs=-Xmx4096M
+org.gradle.daemon=true
+org.gradle.parallel=true
+org.gradle.configureondemand=false
+android.useAndroidX=true
+android.enableJetifier=true
+android.defaults.buildfeatures.buildconfig=true
+android.nonTransitiveRClass=false
+android.nonFinalResIds=false
+android.enableR8.fullMode=true

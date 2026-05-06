@@ -1,0 +1,9 @@
+# Copy this file to local.properties and fill in your values.
+# local.properties is gitignored and must NOT be committed.
+
+sdk.dir=/path/to/your/Android/Sdk
+
+# Telegram API credentials
+# Get your own at https://my.telegram.org
+TELEGRAM_APP_ID=
+TELEGRAM_APP_HASH=
