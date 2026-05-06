@@ -16,7 +16,7 @@ FenixUz is an unofficial third-party client and is **not affiliated with, endors
 
 ## Privacy Policy
 
-See [Privacy Policy](PRIVACY-URL) for details on how the app handles user data.
+See [Privacy Policy](https://fenixuz.uz/privacy.html) for details on how the app handles user data.
 
 ## Building from Source
 
