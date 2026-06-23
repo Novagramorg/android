@@ -136,24 +136,28 @@ ConnectionsManager::~ConnectionsManager() {
 }
 
 ConnectionsManager& ConnectionsManager::getInstance(int32_t instanceNum) {
-    switch (instanceNum) {
-        case 0:
-            static ConnectionsManager instance0(0);
-            return instance0;
-        case 1:
-            static ConnectionsManager instance1(1);
-            return instance1;
-        case 2:
-            static ConnectionsManager instance2(2);
-            return instance2;
-        case 3:
-            static ConnectionsManager instance3(3);
-            return instance3;
-        case 4:
-        default:
-            static ConnectionsManager instance4(4);
-            return instance4;
+    // FenixUz: lazy pool of up to MAX_ACCOUNT_COUNT managers (was a hard-coded switch for 5).
+    // Only instances that are actually used get created, so empty account slots cost nothing —
+    // a high MAX_ACCOUNT_COUNT stays as light as a few accounts. Double-checked locking keeps the
+    // post-creation fast path lock-free; the constructor is a leaf (epoll/socket setup, no getInstance),
+    // so constructing under the mutex can't deadlock. Pointers are never reset, so the lock-free read
+    // is safe in practice (address-dependency ordering).
+    if (instanceNum < 0 || instanceNum >= MAX_ACCOUNT_COUNT) {
+        instanceNum = 0;
     }
+    static ConnectionsManager *instances[MAX_ACCOUNT_COUNT] = {};
+    static pthread_mutex_t instancesMutex = PTHREAD_MUTEX_INITIALIZER;
+    ConnectionsManager *instance = __atomic_load_n(&instances[instanceNum], __ATOMIC_ACQUIRE);
+    if (instance == nullptr) {
+        pthread_mutex_lock(&instancesMutex);
+        instance = instances[instanceNum];
+        if (instance == nullptr) {
+            instance = new ConnectionsManager(instanceNum);
+            __atomic_store_n(&instances[instanceNum], instance, __ATOMIC_RELEASE);
+        }
+        pthread_mutex_unlock(&instancesMutex);
+    }
+    return *instance;
 }
 
 int ConnectionsManager::callEvents(int64_t now) {

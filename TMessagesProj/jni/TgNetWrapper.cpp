@@ -477,6 +477,16 @@ void init(JNIEnv *env, jclass c, jint instanceNum, jint version, jint layer, jin
     const char *installerIdStr = env->GetStringUTFChars(installerId, 0);
     const char *packageIdStr = env->GetStringUTFChars(packageId, 0);
 
+    // FenixUz: attach this account's JNI delegate lazily, exactly once, the first time it is actually
+    // initialized (was done eagerly for ALL MAX_ACCOUNT_COUNT slots in setJava — the startup-freeze cause).
+    // Set it BEFORE init() so it's in place before the manager starts any network callbacks. The guard
+    // prevents leaking a Delegate if native_init runs more than once for the same account.
+    static bool delegateSet[MAX_ACCOUNT_COUNT] = {};
+    if (instanceNum >= 0 && instanceNum < MAX_ACCOUNT_COUNT && !delegateSet[instanceNum]) {
+        ConnectionsManager::getInstance(instanceNum).setDelegate(new Delegate());
+        delegateSet[instanceNum] = true;
+    }
+
     ConnectionsManager::getInstance(instanceNum).init((uint32_t) version, layer, apiId, std::string(deviceModelStr), std::string(systemVersionStr), std::string(appVersionStr), std::string(langCodeStr), std::string(systemLangCodeStr), std::string(configPathStr), std::string(logPathStr), std::string(regIdStr), std::string(cFingerprintStr), std::string(installerIdStr), std::string(packageIdStr), timezoneOffset, userId, userPremium, true, enablePushConnection, hasNetwork, networkType, performanceClass);
 
     if (deviceModelStr != 0) {
@@ -515,10 +525,12 @@ void init(JNIEnv *env, jclass c, jint instanceNum, jint version, jint layer, jin
 }
 
 void setJava(JNIEnv *env, jclass c, jboolean useJavaByteBuffers) {
+    // FenixUz: do NOT eagerly create a ConnectionsManager for every one of MAX_ACCOUNT_COUNT slots here.
+    // Each getInstance() constructs a full manager (epoll + native thread + datacenter/config disk reads);
+    // doing that for 100 slots on the startup thread froze the UI for 10-20s on a fresh install. The
+    // delegate is now attached lazily in init() (native_init), so only accounts that are actually brought
+    // up pay for it — restoring the whole point of the lazy getInstance() pool.
     ConnectionsManager::useJavaVM(java, useJavaByteBuffers);
-    for (int a = 0; a < MAX_ACCOUNT_COUNT; a++) {
-        ConnectionsManager::getInstance(a).setDelegate(new Delegate());
-    }
 }
 
 static const char *ConnectionsManagerClassPathName = "org/telegram/tgnet/ConnectionsManager";

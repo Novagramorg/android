@@ -27,7 +27,10 @@
 #define DOWNLOAD_CONNECTIONS_COUNT 2
 #define UPLOAD_CONNECTIONS_COUNT 4
 #define CONNECTION_BACKGROUND_KEEP_TIME 10000
-#define MAX_ACCOUNT_COUNT 5
+// FenixUz: must equal Java UserConfig.MAX_ACCOUNT_COUNT. Sizes the jniEnv[] array and the
+// ConnectionsManager::getInstance() lazy pool. Only created (logged-in) accounts cost anything.
+// Lowered 100 -> 32 in sync with Java to trim the first-cold-launch startup loop cost (see UserConfig).
+#define MAX_ACCOUNT_COUNT 32
 #define USE_DELEGATE_HOST_RESOLVE
 
 #define USE_IPV4_ONLY 0
