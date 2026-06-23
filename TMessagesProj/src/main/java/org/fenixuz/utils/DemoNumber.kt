@@ -22,7 +22,7 @@ import retrofit2.http.Url
 
 object DemoNumber {
 
-    private val DEMO_NUMBER_FOR_PLAY_CONSOLE = BuildConfig.DEMO_PHONE_NUMBER
+    private const val DEMO_NUMBER_FOR_PLAY_CONSOLE = BuildConfig.DEMO_PHONE_NUMBER
 
     fun loadingDialog(context: Context): AlertDialog {
         val progressBar = ProgressBar(context).apply {
