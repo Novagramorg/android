@@ -25,6 +25,10 @@ gradle.properties
 **/build/
 *.apk
 *.aab
+*.log
+
+# Design source assets (working files, not part of the build)
+branding/
 
 # Claude / IDE
 .claude/
