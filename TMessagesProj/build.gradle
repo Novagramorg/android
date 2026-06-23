@@ -25,6 +25,7 @@ dependencies {
     implementation "androidx.sharetarget:sharetarget:1.2.0"
     implementation 'androidx.interpolator:interpolator:1.0.0'
     implementation 'androidx.biometric:biometric:1.1.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.0'
 
     implementation 'com.google.android.gms:play-services-cast-framework:21.4.0'
     implementation "androidx.mediarouter:mediarouter:1.7.0"
@@ -34,6 +35,8 @@ dependencies {
     compileOnly 'org.checkerframework:checker-compat-qual:2.5.0'
     implementation 'com.google.firebase:firebase-messaging:22.0.0'
     implementation 'com.google.firebase:firebase-config:21.0.1'
+    // FenixUz analytics — anonymous install/account counters only (NO Firebase Analytics/GA4).
+    implementation 'com.google.firebase:firebase-firestore:24.0.0'
     implementation 'com.google.firebase:firebase-datatransport:18.1.0'
     implementation 'com.google.firebase:firebase-appindexing:20.0.0'
     implementation 'com.google.android.gms:play-services-maps:18.1.0'
@@ -45,6 +48,11 @@ dependencies {
     implementation 'com.googlecode.mp4parser:isoparser:1.0.6'
     implementation 'com.stripe:stripe-android:2.0.2'
     implementation 'com.google.mlkit:language-id:17.0.6'
+    // Unbundled (Play Services) OCR — runs the pipeline inside Google Play Services, so the heavy
+    // libmlkit_google_ocr_pipeline.so is NOT packaged in our APK. This removes the 16 KB page-size
+    // alignment warning (the bundled com.google.mlkit:text-recognition .so isn't 16 KB-aligned) and
+    // shrinks the app. Same com.google.mlkit.vision.text.* API → no code changes.
+    implementation 'com.google.android.gms:play-services-mlkit-text-recognition:19.0.1'
     implementation 'com.android.billingclient:billing:7.1.1'
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'com.google.guava:guava:31.1-android'
@@ -106,6 +114,10 @@ android {
 
     kotlinOptions {
         jvmTarget = '1.8'
+    }
+
+    buildFeatures {
+        viewBinding true
     }
 
 
