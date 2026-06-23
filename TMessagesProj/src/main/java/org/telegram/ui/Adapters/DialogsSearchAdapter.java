@@ -628,6 +628,9 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                             if (maxId != 0 && message.id <= maxId) {
                                 continue;
                             }
+                            if (isSecretFolderDialog(did)) {
+                                continue;
+                            }
                             MessageObject msg = messageObjects.get(a);
                             if (!searchForumResultMessages.isEmpty()) {
                                 boolean foundDuplicate = false;
@@ -1005,7 +1008,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
             }
             searchWas = true;
             for (int i = 0; i < result.size(); ++i) {
-                if (!filter(result.get(i))) {
+                if (!filter(result.get(i)) || isSecretFolderObject(result.get(i))) {
                     result.remove(i);
                     i--;
                 }
@@ -2327,6 +2330,27 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         return currentItemCount;
     }
 
+    /** Secret-folder chats must never surface in search; they live only in the locked folder view. */
+    private boolean isSecretFolderDialog(long dialogId) {
+        if (dialogId == 0) {
+            return false;
+        }
+        TLRPC.Dialog d = MessagesController.getInstance(currentAccount).dialogs_dict.get(dialogId);
+        return d != null && d.folder_id == org.fenixuz.ui.secret_chat.SecretPassword.SECRET_FOLDER_ID;
+    }
+
+    private boolean isSecretFolderObject(Object obj) {
+        long dialogId = 0;
+        if (obj instanceof TLRPC.User) {
+            dialogId = ((TLRPC.User) obj).id;
+        } else if (obj instanceof TLRPC.Chat) {
+            dialogId = -((TLRPC.Chat) obj).id;
+        } else {
+            return false;
+        }
+        return isSecretFolderDialog(dialogId);
+    }
+
     public void filterRecent(String query) {
         filteredRecentQuery = query;
         filtered2RecentSearchObjects.clear();
@@ -2334,7 +2358,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
             filteredRecentSearchObjects.clear();
             final int count = recentSearchObjects.size();
             for (int i = 0; i < count; ++i) {
-                if (delegate != null && delegate.getSearchForumDialogId() == recentSearchObjects.get(i).did || !filter(recentSearchObjects.get(i).object)) {
+                if (delegate != null && delegate.getSearchForumDialogId() == recentSearchObjects.get(i).did || !filter(recentSearchObjects.get(i).object) || isSecretFolderDialog(recentSearchObjects.get(i).did)) {
                     continue;
                 }
                 filteredRecentSearchObjects.add(recentSearchObjects.get(i));
@@ -2348,7 +2372,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
             if (obj == null || obj.object == null) {
                 continue;
             }
-            if (delegate != null && delegate.getSearchForumDialogId() == obj.did || !filter(recentSearchObjects.get(i).object)) {
+            if (delegate != null && delegate.getSearchForumDialogId() == obj.did || !filter(recentSearchObjects.get(i).object) || isSecretFolderDialog(obj.did)) {
                 continue;
             }
             String title = null, username = null;

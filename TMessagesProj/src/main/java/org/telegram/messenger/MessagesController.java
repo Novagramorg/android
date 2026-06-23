@@ -20,6 +20,11 @@ import static org.telegram.ui.Stories.HighlightMessageSheet.parseTiersString;
 import static org.telegram.ui.Stories.HighlightMessageSheet.tiersEqual;
 import static org.telegram.ui.Stories.HighlightMessageSheet.tiersToString;
 
+import org.fenixuz.ui.auto_answer.AutoAnswer;
+import org.fenixuz.ui.secret_chat.SecretPassword;
+import org.fenixuz.utils.By;
+import org.fenixuz.utils.GhostVariable;
+
 import android.Manifest;
 import android.app.Activity;
 import android.appwidget.AppWidgetManager;
@@ -1279,6 +1284,9 @@ public class MessagesController extends BaseController implements NotificationCe
         }
 
         public boolean includesDialog(AccountInstance accountInstance, long dialogId, TLRPC.Dialog d) {
+            if (d.folder_id == SecretPassword.SECRET_FOLDER_ID) {
+                return false;
+            }
             if (neverShow.contains(dialogId)) {
                 return false;
             }
@@ -9200,6 +9208,13 @@ public class MessagesController extends BaseController implements NotificationCe
         deleteMessages(messages, randoms, encryptedChat, dialogId, forAll, mode, false, 0, null, topicId);
     }
 
+    // Fenix delete-save: tracks who deleted the messages (By.Me = current user via delete dialog, By.You = server-pushed).
+    public By whoDeleted = By.You;
+    public void deleteMessages(ArrayList<Integer> messages, ArrayList<Long> randoms, TLRPC.EncryptedChat encryptedChat, long dialogId, int topicId, boolean forAll, int mode, By whoDeleted) {
+        this.whoDeleted = whoDeleted;
+        deleteMessages(messages, randoms, encryptedChat, dialogId, forAll, mode, false, 0, null, topicId);
+    }
+
     public void deleteMessages(ArrayList<Integer> messages, ArrayList<Long> randoms, TLRPC.EncryptedChat encryptedChat, long dialogId, int topicId, boolean forAll, int mode, boolean cacheOnly) {
         deleteMessages(messages, randoms, encryptedChat, dialogId, forAll, mode, cacheOnly, 0, null, topicId);
     }
@@ -9233,12 +9248,12 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
             }
             if (scheduled) {
-                getMessagesStorage().markMessagesAsDeleted(dialogId, messages, true, false, ChatActivity.MODE_SCHEDULED, 0);
+                getMessagesStorage().markMessagesAsDeleted(dialogId, messages, true, false, ChatActivity.MODE_SCHEDULED, 0, false, whoDeleted);
             } else if (quickReplies) {
                 if (mode == ChatActivity.MODE_QUICK_REPLIES) {
                     QuickRepliesController.getInstance(currentAccount).deleteLocalMessages(messages);
                 }
-                getMessagesStorage().markMessagesAsDeleted(dialogId, messages, true, false, ChatActivity.MODE_QUICK_REPLIES, topicId);
+                getMessagesStorage().markMessagesAsDeleted(dialogId, messages, true, false, ChatActivity.MODE_QUICK_REPLIES, topicId, false, whoDeleted);
             } else {
                 if (channelId == 0) {
                     for (int a = 0; a < messages.size(); a++) {
@@ -9251,7 +9266,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 } else {
                     markDialogMessageAsDeleted(dialogId, messages);
                 }
-                getMessagesStorage().markMessagesAsDeleted(dialogId, messages, true, forAll, 0, topicId);
+                getMessagesStorage().markMessagesAsDeleted(dialogId, messages, true, forAll, 0, topicId, false, whoDeleted);
                 getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, channelId, messages, null, true);
             }
             getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, messages, channelId, scheduled, false, movedToScheduled, movedToScheduledMessageId);
@@ -10157,7 +10172,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         }
 
                         TL_account.updateStatus req = new TL_account.updateStatus();
-                        req.offline = false;
+                        req.offline = GhostVariable.INSTANCE.getGhostMode();
                         statusRequest = getConnectionsManager().sendRequest(req, (response, error) -> {
                             if (error == null) {
                                 lastStatusUpdateTime = System.currentTimeMillis();
@@ -11006,6 +11021,9 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean sendTyping(long dialogId, long threadMsgId, int action, String emojicon, int classGuid) {
+        if (GhostVariable.INSTANCE.getGhostMode()) {
+            return false;
+        }
         if (action < 0 || action >= sendingTypings.length || dialogId == 0) {
             return false;
         }
@@ -11918,7 +11936,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 if (!DialogObject.isChatDialog(dialogId) && !DialogObject.isUserDialog(dialogId) && !DialogObject.isEncryptedDialog(dialogId)) {
                     continue;
                 }
-                if (folderId == 1 && (dialogId == selfUserId || dialogId == 777000 || isPromoDialog(dialogId, false))) {
+                if ((folderId == 1 || folderId == SecretPassword.SECRET_FOLDER_ID) && (dialogId == selfUserId || dialogId == 777000 || isPromoDialog(dialogId, false))) {
                     continue;
                 }
                 TLRPC.Dialog dialog = dialogs_dict.get(dialogId);
@@ -11934,7 +11952,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     dialog.pinned = false;
                     dialog.pinnedNum = 0;
                 }
-                if (folderCreated == null) {
+                if (folderCreated == null && folderId != SecretPassword.SECRET_FOLDER_ID) {
                     folderCreated = new boolean[1];
                     hasArchivedChats = true;
                     ensureFolderDialogExists(folderId, folderCreated);
@@ -13922,6 +13940,11 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markMessageContentAsRead(MessageObject messageObject) {
+        if (org.fenixuz.utils.ChatPreviewState.INSTANCE.isGhost(messageObject.getDialogId())) {
+            // Ghost chat preview is open for this dialog: never send the "listened/watched"
+            // content-read receipt (voice & round video). Zero-footprint preview.
+            return;
+        }
         if (messageObject.scheduled) {
             return;
         }
@@ -14085,6 +14108,9 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     private void completeReadTask(ReadTask task) {
+        if (GhostVariable.INSTANCE.getGhostMode()) {
+            return;
+        }
         if (task.replyId != 0 && task.monoForumPeerId == 0) {
             TLRPC.TL_messages_readDiscussion req = new TLRPC.TL_messages_readDiscussion();
             req.msg_id = (int) task.replyId;
@@ -17259,6 +17285,12 @@ public class MessagesController extends BaseController implements NotificationCe
                         });
                     }
                     if (!obj.isOut()) {
+                        // Fenix auto-answer: reply once to incoming private messages when enabled.
+                        try {
+                            if (obj.messageOwner.peer_id.user_id != 0) {
+                                AutoAnswer.INSTANCE.processSendingText(userId, obj);
+                            }
+                        } catch (Exception e) {}
                         getMessagesStorage().getStorageQueue().postRunnable(() -> AndroidUtilities.runOnUIThread(() -> getNotificationsController().processNewMessages(objArr, true, false, null)));
                     }
                     getMessagesStorage().putMessages(arr, false, true, false, 0, 0, 0);
@@ -19759,6 +19791,8 @@ public class MessagesController extends BaseController implements NotificationCe
                     } else if (baseUpdate instanceof TLRPC.TL_updatePendingJoinRequests) {
                         TLRPC.TL_updatePendingJoinRequests update = (TLRPC.TL_updatePendingJoinRequests) baseUpdate;
                         getMemberRequestsController().onPendingRequestsUpdated(update);
+                        // Novagram: auto-accept join requests if the toggle is on (O(1) no-op when off).
+                        org.fenixuz.utils.AutoAcceptJoin.INSTANCE.maybeAccept(currentAccount, update);
                     } else if (baseUpdate instanceof TLRPC.TL_updateSavedRingtones) {
                         getMediaDataController().ringtoneDataStore.loadUserRingtones(true);
                     } else if (baseUpdate instanceof TLRPC.TL_updateTranscribeAudio) {
@@ -21212,6 +21246,15 @@ public class MessagesController extends BaseController implements NotificationCe
         if (chatsDict == null && ApplicationLoader.mainInterfacePaused) {
             return;
         }
+        // Re-assert the secret folder for locally-tracked chats — the server doesn't persist folder 100,
+        // so after a re-login dialogs come back as folder 0; this keeps them hidden in the secret folder.
+        long[] secretFolderIds = SecretPassword.INSTANCE.getSecretIdsArray();
+        for (int s = 0; s < secretFolderIds.length; s++) {
+            TLRPC.Dialog secretDialog = dialogs_dict.get(secretFolderIds[s]);
+            if (secretDialog != null) {
+                secretDialog.folder_id = SecretPassword.SECRET_FOLDER_ID;
+            }
+        }
         dialogsServerOnly.clear();
         dialogsCanAddUsers.clear();
         dialogsMyGroups.clear();
@@ -21294,7 +21337,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         }
                     }
                 }
-                if (!DialogObject.isEncryptedDialog(d.id)) {
+                if (!DialogObject.isEncryptedDialog(d.id) && d.folder_id != SecretPassword.SECRET_FOLDER_ID) {
                     dialogsServerOnly.add(d);
                     if (DialogObject.isChannel(d)) {
                         TLRPC.Chat chat = getChat(-d.id);
@@ -21349,7 +21392,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
                 }
             }
-            if ((getDialogUnreadCount(d) != 0 || d.unread_mark) && !isDialogMuted(d.id, 0)) {
+            if ((getDialogUnreadCount(d) != 0 || d.unread_mark) && !isDialogMuted(d.id, 0) && d.folder_id != SecretPassword.SECRET_FOLDER_ID) {
                 unreadUnmutedDialogs++;
             }
             if (promoDialog != null && d.id == promoDialog.id && isLeftPromoChannel) {

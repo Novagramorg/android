@@ -37,11 +37,14 @@ public class LauncherIconController {
     }
 
     public enum LauncherIcon {
-        DEFAULT("DefaultIcon", R.drawable.bg_white, R.drawable.bird_red_padded, R.string.AppIconDefault),
-        VINTAGE("VintageIcon", R.drawable.bg_white, R.drawable.bird_yellow_padded, R.string.AppIconVintage),
-        AQUA("AquaIcon", R.drawable.bg_white, R.drawable.bird_cyan_padded, R.string.AppIconAqua),
-        PREMIUM("PremiumIcon", R.drawable.bg_white, R.drawable.bird_green_padded, R.string.AppIconPremium, true),
-        TURBO("TurboIcon", R.drawable.bg_white, R.drawable.bird_blue_padded, R.string.AppIconTurbo, true);
+        // Novagram brand icon + color variants. Each maps to an <activity-alias> in AndroidManifest;
+        // background is always white (the adaptive bg), foreground is that variant's padded squircle.
+        DEFAULT("DefaultIcon", R.drawable.bg_white, R.mipmap.ic_launcher_foreground, R.string.AppIconDefault),
+        AMETHYST("AmethystIcon", R.drawable.bg_white, R.mipmap.ic_launcher_amethyst_foreground, R.string.AppIconAmethyst),
+        EMERALD("EmeraldIcon", R.drawable.bg_white, R.mipmap.ic_launcher_emerald_foreground, R.string.AppIconEmerald),
+        CRIMSON("CrimsonIcon", R.drawable.bg_white, R.mipmap.ic_launcher_crimson_foreground, R.string.AppIconCrimson),
+        MINT("MintIcon", R.drawable.bg_white, R.mipmap.ic_launcher_mint_foreground, R.string.AppIconMint),
+        VIOLET("VioletIcon", R.drawable.bg_white, R.mipmap.ic_launcher_violet_foreground, R.string.AppIconViolet);
 
         public final String key;
         public final int background;

@@ -6695,7 +6695,7 @@ public class AndroidUtilities {
                     }
                     break;
             }
-            return String.format(Locale.US, "FenixUz for Android v%s (%d) %s", pInfo.versionName, code, abi);
+            return String.format(Locale.US, "Novagram for Android v%s (%d) %s", pInfo.versionName, code, abi);
         } catch (Exception e) {
             FileLog.e(e);
         }

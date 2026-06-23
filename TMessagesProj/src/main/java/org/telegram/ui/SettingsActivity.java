@@ -60,6 +60,9 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
+import org.fenixuz.ui.FenixSettings;
+import org.fenixuz.ui.chat_finder.ChatFinder;
+import org.fenixuz.utils.LanguageCode;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -604,6 +607,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
     }
 
+    // Novagram: id for the "Add Account" row in the Accounts section (must not collide with the ids used below).
+    private static final int ID_ADD_ACCOUNT = 1001;
     private ArrayList<Integer> accountNumbers = new ArrayList<>();
     private void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         if (searchItem.isSearchFieldVisible2()) {
@@ -671,10 +676,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             items.add(UItem.asShadow(null));
         }
 
-        if (accountNumbers.size() > 0) {
+        // Novagram: an account can be added while at least one slot is still free (MAX_ACCOUNT_COUNT is 100).
+        final boolean canAddAccount = UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT;
+        if (accountNumbers.size() > 0 || canAddAccount) {
             items.add(UItem.asHeader(getString(R.string.SettingsAccounts)));
             for (int i = 0; i < accountNumbers.size(); ++i) {
                 items.add(AccountCell.Factory.of(i, accountNumbers.get(i)));
+            }
+            // Novagram: "Add Account" row — reuses Telegram's own login flow (LoginActivity on the first free slot).
+            // Shown only while a slot remains free, so it simply disappears once all accounts are used.
+            if (canAddAccount) {
+                items.add(SettingCell.Factory.of(ID_ADD_ACCOUNT, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.outline_add_account, getString(R.string.AddAccount)));
             }
             items.add(UItem.asShadow(null));
         }
@@ -689,6 +701,14 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));
         items.add(SettingCell.Factory.of(10, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_language, getString(R.string.SettingsLanguage), LocaleController.getCurrentLanguageName()));
 
+        items.add(UItem.asShadow(null));
+
+        items.add(UItem.asHeader("Novagram"));
+        items.add(SettingCell.Factory.of(100, 0xFF7E57C2, 0xFF5E35B1, R.drawable.settings_folders, LanguageCode.INSTANCE.getMyTitles(236)));
+        items.add(SettingCell.Factory.of(101, 0xFF1BA4ED, 0xFF1488E1, R.drawable.menu_profile_colors, LanguageCode.INSTANCE.getMyTitles(120)));
+        items.add(SettingCell.Factory.of(102, 0xFFC46EF4, 0xFF9F55DF, R.drawable.msg_filled_storageusage, LanguageCode.INSTANCE.getMyTitles(121)));
+        items.add(SettingCell.Factory.of(103, 0xFFF28B31, 0xFFE26314, R.drawable.msg_usersearch, LanguageCode.INSTANCE.getMyTitles(123)));
+        items.add(SettingCell.Factory.of(104, 0xFFF45255, 0xFFDF3955, R.drawable.msg_stats, LanguageCode.INSTANCE.getMyTitles(333)));
         items.add(UItem.asShadow(null));
 
         if (!getMessagesController().premiumFeaturesBlocked()) {
@@ -785,6 +805,20 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             return;
         }
         switch (item.id) {
+            case ID_ADD_ACCOUNT: {
+                // Novagram: Telegram's own add-account flow — open login on the first free account slot.
+                int freeAccount = -1;
+                for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                    if (!UserConfig.getInstance(a).isClientActivated()) {
+                        freeAccount = a;
+                        break;
+                    }
+                }
+                if (freeAccount >= 0) {
+                    presentFragment(new LoginActivity(freeAccount));
+                }
+                break;
+            }
             case 1:
                 presentFragment(new UserInfoActivity());
                 break;
@@ -856,6 +890,21 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 }
                 break;
             }
+            case 100:
+                presentFragment(new FenixSettings());
+                break;
+            case 101:
+                presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC));
+                break;
+            case 102:
+                presentFragment(new CacheControlActivity());
+                break;
+            case 103:
+                presentFragment(new ChatFinder());
+                break;
+            case 104:
+                presentFragment(new org.fenixuz.ui.analytics_screen.AnalyticsScreen());
+                break;
         }
     }
 
@@ -909,7 +958,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     }
                     break;
             }
-            return String.format(Locale.US, "FenixUz for Android v%s (%d)\n%s", pInfo.versionName, code, abi);
+            return String.format(Locale.US, "Novagram for Android v%s (%d)\n%s", pInfo.versionName, code, abi);
         } catch (Exception e) {
             FileLog.e(e);
         }

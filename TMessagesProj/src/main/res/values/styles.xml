@@ -11,6 +11,10 @@
         <item name="android:windowBackground">@android:color/white</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:textViewStyle">@style/MyTextViewStyle</item>
+        <!-- Android 12+ system splash background. The icon itself comes from the launcher
+             adaptive icon, whose foreground is now padded (squircle ~66%) so the splash icon
+             is no longer too big/cropped. Ignored on API < 31. -->
+        <item name="android:windowSplashScreenBackground">@android:color/white</item>
     </style>
 
     <style name="Theme.TMessages" parent="Theme.AppCompat.Light">

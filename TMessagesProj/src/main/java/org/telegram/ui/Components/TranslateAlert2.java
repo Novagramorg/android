@@ -516,6 +516,10 @@ public class TranslateAlert2 extends BottomSheet implements NotificationCenter.N
                     uri += "e?client=gtx&sl=" + Uri.encode(fromLng) + "&tl=" + Uri.encode(toLng) + "&dt=t" + "&ie=UTF-8&oe=UTF-8&otf=1&ssel=0&tsel=0&kc=7&dt=at&dt=bd&dt=ex&dt=ld&dt=md&dt=qca&dt=rw&dt=rm&dt=ss&q=";
                     uri += text;
                     connection = (HttpURLConnection) new URI(uri).toURL().openConnection();
+                    // Bound the request so a dropped/slow network can't hang this thread indefinitely
+                    // (the default for HttpURLConnection is 0 = no timeout). Fails fast → callback fires.
+                    connection.setConnectTimeout(10000);
+                    connection.setReadTimeout(15000);
                     connection.setRequestMethod("GET");
                     connection.setRequestProperty("User-Agent", userAgents[(int) Math.round(Math.random() * (userAgents.length - 1))]);
                     connection.setRequestProperty("Content-Type", "application/json");

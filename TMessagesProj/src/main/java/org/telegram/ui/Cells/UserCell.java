@@ -62,6 +62,8 @@ import org.telegram.ui.Stories.StoriesUtilities;
 public class UserCell extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
     public BackupImageView avatarImageView;
+    public ImageView newImageView;
+    private TLRPC.User contactUser;
     protected SimpleTextView nameTextView;
     protected SimpleTextView statusTextView;
     private ImageView imageView;
@@ -177,6 +179,9 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         };
         avatarImageView.setRoundRadius(dp(24));
         addView(avatarImageView, LayoutHelper.createFrame(46, 46, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 7 + padding, 6, LocaleController.isRTL ? 7 + padding : 0, 0));
+        // Fenix: badge for mutual contacts (you are in their contacts too).
+        newImageView = new ImageView(context);
+        addView(newImageView, LayoutHelper.createFrame(24, 24, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, 0, 15, 20, 0));
         setClipChildren(false);
 
         nameTextView = new SimpleTextView(context);
@@ -323,6 +328,17 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
 
     public void setData(Object object, CharSequence name, CharSequence status, int resId, boolean divider) {
         setData(object, null, name, status, resId, divider);
+    }
+
+    // Fenix: same as setData, but shows the mutual-contact badge for contacts (you are in their contacts too).
+    public void setDatas(Object object, CharSequence name, CharSequence status, int resId, boolean isContact) {
+        if (isContact && object instanceof TLRPC.User) {
+            contactUser = (TLRPC.User) object;
+            newImageView.setImageResource(contactUser.mutual_contact ? R.drawable.connected_contact_ic : 0);
+        } else {
+            newImageView.setImageResource(0);
+        }
+        setData(object, null, name, status, resId, false);
     }
 
     public void setData(Object object, TLRPC.EncryptedChat ec, CharSequence name, CharSequence status, int resId, boolean divider) {

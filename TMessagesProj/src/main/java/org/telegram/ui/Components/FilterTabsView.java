@@ -54,6 +54,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
+import org.fenixuz.ui.create_folder_dialog.FolderIcons;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
@@ -120,6 +121,7 @@ public class FilterTabsView extends FrameLayout {
         public int id;
         public CharSequence title;
         public int titleWidth;
+        public Drawable folderIcon; // Fenix: custom/default folder icon (built once, drawn in icon mode)
         public int counter;
         public boolean isDefault;
         public boolean isLocked;
@@ -132,7 +134,7 @@ public class FilterTabsView extends FrameLayout {
         }
 
         public int getWidth(boolean store) {
-            int width = titleWidth = (int) Math.ceil(HintView2.measureCorrectly(title, textPaint));
+            int width = titleWidth = FolderIcons.INSTANCE.isIconMode() ? dp(22) : (int) Math.ceil(HintView2.measureCorrectly(title, textPaint));
             int c;
             if (store) {
                 c = delegate.getTabCounter(id);
@@ -432,7 +434,25 @@ public class FilterTabsView extends FrameLayout {
                     textPaint.setAlpha(alpha);
                 }
             } else {
-                if (textLayout != null) {
+                if (FolderIcons.INSTANCE.isIconMode() && currentTab != null && currentTab.folderIcon != null) {
+                    // Fenix: draw the folder icon (fixed 24dp, centered) instead of the title text.
+                    Drawable ic = currentTab.folderIcon;
+                    int box = dp(22);
+                    int iw = ic.getIntrinsicWidth();
+                    int ih = ic.getIntrinsicHeight();
+                    int dw = box, dh = box;
+                    if (iw > 0 && ih > 0) {
+                        // Preserve the icon's aspect ratio (no stretching) and fit it in a 22dp box.
+                        float scale = Math.min((float) box / iw, (float) box / ih);
+                        dw = Math.round(iw * scale);
+                        dh = Math.round(ih * scale);
+                    }
+                    int left = (int) (textX + (currentTab.titleWidth - dw) / 2f);
+                    int top = (getMeasuredHeight() - dh) / 2;
+                    ic.setBounds(left, top, left + dw, top + dh);
+                    ic.setColorFilter(emojiColorFilter);
+                    ic.draw(canvas);
+                } else if (textLayout != null) {
                     canvas.save();
                     canvas.translate(textX + textOffsetX, (getMeasuredHeight() - textHeight) / 2f + 1);
                     textLayout.draw(canvas);
@@ -1274,6 +1294,7 @@ public class FilterTabsView extends FrameLayout {
         Tab tab = new Tab(id, text(text, entities), noanimate);
         tab.isDefault = isDefault;
         tab.isLocked = isLocked;
+        tab.folderIcon = FolderIcons.INSTANCE.getTabIcon(id);
         allTabsWidth += tab.getWidth(true) + dp(TAB_PADDING_WIDTH);
         tabs.add(tab);
     }
@@ -1293,6 +1314,7 @@ public class FilterTabsView extends FrameLayout {
         Tab tab = new Tab(id, text, noanimate);
         tab.isDefault = isDefault;
         tab.isLocked = isLocked;
+        tab.folderIcon = FolderIcons.INSTANCE.getTabIcon(id);
         allTabsWidth += tab.getWidth(true) + dp(TAB_PADDING_WIDTH);
         tabs.add(tab);
     }

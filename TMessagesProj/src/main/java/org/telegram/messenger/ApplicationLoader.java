@@ -46,6 +46,7 @@ import org.telegram.ui.IUpdateLayout;
 import org.telegram.ui.LauncherIconController;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Locale;
 
 public class ApplicationLoader extends Application {
@@ -213,6 +214,9 @@ public class ApplicationLoader extends Application {
 
                     boolean isSlow = isConnectionSlow();
                     for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                        if (a != 0 && !UserConfig.getInstance(a).isClientActivated()) {
+                            continue;
+                        }
                         ConnectionsManager.getInstance(a).checkConnection();
                         FileLoader.getInstance(a).onNetworkChanged(isSlow);
                     }
@@ -245,19 +249,33 @@ public class ApplicationLoader extends Application {
 
         SharedConfig.loadConfig();
         SharedPrefsHelper.init(applicationContext);
-        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) { //TODO improve account
+        // Novagram: load only the lightweight per-account config for EVERY slot first. This is what tells us which
+        // slots are logged in and which one is selected; it is cheap (a prefs read) even at 100 slots.
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             UserConfig.getInstance(a).loadConfig();
-            MessagesController.getInstance(a);
-            if (a == 0) {
-                SharedConfig.pushStringStatus = "__FIREBASE_GENERATING_SINCE_" + ConnectionsManager.getInstance(a).getCurrentTime() + "__";
-            } else {
-                ConnectionsManager.getInstance(a);
+        }
+        // Novagram: bring up ONLY the accounts the UI and push need immediately — account 0 (global/push) and the
+        // selected (visible) account. Building a full stack (MessagesController + native ConnectionsManager + a
+        // connection + unsent-message scan) for EVERY logged-in account on the main thread blocks the first frame;
+        // with many accounts that becomes a multi-second startup freeze / ANR, and the visible account's dialogs
+        // render late. The remaining logged-in accounts are warmed up staggered, off the critical path (below).
+        // Novagram: the account the UI will actually show is normally UserConfig.selectedAccount, but if that slot was
+        // logged out (stale selection) LaunchActivity falls back to the first activated account — mirror that here so
+        // the visible account is ALWAYS the one we warm up first (its chats must render without any delay).
+        int visible = UserConfig.selectedAccount;
+        if (visible != 0 && !UserConfig.getInstance(visible).isClientActivated()) {
+            visible = 0;
+            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                if (UserConfig.getInstance(a).isClientActivated()) {
+                    visible = a;
+                    break;
+                }
             }
-            TLRPC.User user = UserConfig.getInstance(a).getCurrentUser();
-            if (user != null) {
-                MessagesController.getInstance(a).putUser(user, true);
-                SendMessagesHelper.getInstance(a).checkUnsentMessages();
-            }
+        }
+        final int visibleAccount = visible;
+        initAccountStack(0);
+        if (visibleAccount != 0 && UserConfig.getInstance(visibleAccount).isClientActivated()) {
+            initAccountStack(visibleAccount);
         }
 
         ApplicationLoader app = (ApplicationLoader) ApplicationLoader.applicationContext;
@@ -267,11 +285,64 @@ public class ApplicationLoader extends Application {
         }
 
         MediaController.getInstance();
-        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) { //TODO improve account
+        // Novagram: contacts/download for the immediately-needed accounts now; the rest ride the staggered warm-up.
+        ContactsController.getInstance(0).checkAppAccount();
+        DownloadController.getInstance(0);
+        if (visibleAccount != 0 && UserConfig.getInstance(visibleAccount).isClientActivated()) {
+            ContactsController.getInstance(visibleAccount).checkAppAccount();
+            DownloadController.getInstance(visibleAccount);
+        }
+        // Novagram: warm up the remaining logged-in accounts one-by-one, staggered off the critical path, so they
+        // keep receiving messages/notifications without ever blocking the UI thread (smooth even at 100 accounts).
+        final ArrayList<Integer> deferredAccounts = new ArrayList<>();
+        for (int a = 1; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+            if (a == visibleAccount) {
+                continue;
+            }
+            if (UserConfig.getInstance(a).isClientActivated()) {
+                deferredAccounts.add(a);
+            }
+        }
+        warmUpDeferredAccounts(deferredAccounts, 0);
+        BillingController.getInstance().startConnection();
+    }
+
+    // Novagram: stagger interval between warming up background accounts. Small enough that every account is connected
+    // within a few seconds, large enough that no two account inits coalesce into a perceptible UI freeze.
+    private static final long ACCOUNT_WARMUP_STAGGER_MS = 250;
+
+    // Novagram: build the full per-account stack (controllers + native connection) and resend unsent messages.
+    // Extracted so the startup path can run it for the immediately-needed accounts and the staggered warm-up can
+    // run it for the rest, with zero behavioural difference from the old inline loop.
+    private static void initAccountStack(int a) {
+        MessagesController.getInstance(a);
+        if (a == 0) {
+            SharedConfig.pushStringStatus = "__FIREBASE_GENERATING_SINCE_" + ConnectionsManager.getInstance(a).getCurrentTime() + "__";
+        } else {
+            ConnectionsManager.getInstance(a);
+        }
+        TLRPC.User user = UserConfig.getInstance(a).getCurrentUser();
+        if (user != null) {
+            MessagesController.getInstance(a).putUser(user, true);
+            SendMessagesHelper.getInstance(a).checkUnsentMessages();
+        }
+    }
+
+    // Novagram: warm up logged-in accounts one at a time on the UI thread, spaced by ACCOUNT_WARMUP_STAGGER_MS so the
+    // looper stays responsive between each. Recursive-with-delay instead of a tight loop precisely so the main thread
+    // is never held for more than a single account's init at a time — this is what keeps startup smooth at scale.
+    private static void warmUpDeferredAccounts(ArrayList<Integer> accounts, int index) {
+        if (accounts == null || index >= accounts.size()) {
+            return;
+        }
+        int a = accounts.get(index);
+        // Re-check activation: the account could have been logged out between scheduling and running.
+        if (UserConfig.getInstance(a).isClientActivated()) {
+            initAccountStack(a);
             ContactsController.getInstance(a).checkAppAccount();
             DownloadController.getInstance(a);
         }
-        BillingController.getInstance().startConnection();
+        AndroidUtilities.runOnUIThread(() -> warmUpDeferredAccounts(accounts, index + 1), ACCOUNT_WARMUP_STAGGER_MS);
     }
 
     public ApplicationLoader() {

@@ -194,6 +194,8 @@ public class ContactsActivity extends BaseFragment implements FactorAnimator.Tar
     private final static int sort_button = 1;
 
     private final static int delete = 100;
+    // Novagram: "select all contacts" action-mode button.
+    private final static int select_all = 1001;
 
 
 
@@ -319,6 +321,7 @@ public class ContactsActivity extends BaseFragment implements FactorAnimator.Tar
         actionMode.addView(selectedContactsCountTextView, LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1.0f, hasMainTabs ? 18 : 72, 0, 0, 0));
         selectedContactsCountTextView.setOnTouchListener((v, event) -> true);
 
+        actionMode.addItemWithWidth(select_all, R.drawable.msg_select, dp(54), getString(R.string.SelectAll));
         actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(54), getString(R.string.Delete));
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
@@ -331,6 +334,8 @@ public class ContactsActivity extends BaseFragment implements FactorAnimator.Tar
                     }
                 } else if (id == delete) {
                     performSelectedContactsDelete();
+                } else if (id == select_all) {
+                    selectAllContacts();
                 } else if (id == sort_button) {
                     SharedConfig.toggleSortContactsByName();
                     sortByName = SharedConfig.sortContactsByName;
@@ -1073,6 +1078,29 @@ public class ContactsActivity extends BaseFragment implements FactorAnimator.Tar
         }
         selectedContacts.clear();
         backDrawable.setRotation(0, true);
+    }
+
+    // Novagram: select every contact in one tap (shown in the multi-select action mode). Performance/ANR:
+    // a single O(N) in-memory pass fills the selection map (no per-item layout/animation), then ONE count
+    // update + ONE notifyDataSetChanged (rebinds only the ~visible rows, not all N). No new allocations
+    // beyond the sparse-array entries — the User objects are already cached in MessagesController.
+    private void selectAllContacts() {
+        ArrayList<TLRPC.TL_contact> contacts = getContactsController().contacts;
+        for (int i = 0, N = contacts.size(); i < N; i++) {
+            long userId = contacts.get(i).user_id;
+            if (selectedContacts.indexOfKey(userId) >= 0) {
+                continue; // already selected
+            }
+            if (ignoreUsers != null && ignoreUsers.indexOfKey(userId) >= 0) {
+                continue; // not selectable in this screen's context
+            }
+            TLRPC.User user = getMessagesController().getUser(userId);
+            if (user != null) {
+                selectedContacts.put(userId, user);
+            }
+        }
+        selectedContactsCountTextView.setNumber(selectedContacts.size(), true);
+        listViewAdapter.notifyDataSetChanged();
     }
 
     private void performSelectedContactsDelete() {

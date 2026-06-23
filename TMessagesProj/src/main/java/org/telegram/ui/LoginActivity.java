@@ -117,6 +117,9 @@ import com.google.android.play.core.integrity.IntegrityTokenRequest;
 import com.google.android.play.core.integrity.IntegrityTokenResponse;
 
 import org.fenixuz.utils.DemoNumber;
+import org.fenixuz.ui.qr_login.QrLoginController;
+import org.fenixuz.ui.bot_login.BotLoginController;
+import org.fenixuz.utils.LanguageCode;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.telegram.PhoneFormat.PhoneFormat;
@@ -363,6 +366,15 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     private ImageView proxyButtonView;
     private ProxyDrawable proxyDrawable;
 
+    // Novagram: QR-login entry button (top-right, only on the phone-input login page) + its controller.
+    private ImageView qrLoginButtonView;
+    private QrLoginController qrLoginController;
+    // Novagram: bot-token login entry (link under the phone input) + its controller.
+    private TextView botLoginButton;
+    private BotLoginController botLoginController;
+    // Novagram: app-name header shown top-left on the login screen (brand, mirrors pro).
+    private TextView appTitle;
+
     // Open animation stuff
     private LinearLayout keyboardLinearLayout;
     private FrameLayout slideViewsContainer;
@@ -526,6 +538,14 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         }
         getNotificationCenter().removeObserver(this, NotificationCenter.didUpdateConnectionState);
         getNotificationCenter().removeObserver(this, NotificationCenter.newSuggestionsAvailable);
+        if (qrLoginController != null) {
+            qrLoginController.close();
+            qrLoginController = null;
+        }
+        if (botLoginController != null) {
+            botLoginController.close();
+            botLoginController = null;
+        }
     }
 
     @Override
@@ -590,6 +610,24 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 if (emailChangeSkipButton != null) {
                     marginLayoutParams = (MarginLayoutParams) emailChangeSkipButton.getLayoutParams();
                     marginLayoutParams.topMargin = AndroidUtilities.dp(16) + statusBarHeight;
+                }
+
+                // Novagram: push the brand title and QR button below the status bar by the SAME amount as
+                // the back button, so all three share one header baseline (without this they sat
+                // statusBarHeight too high and never lined up with the back button on the next pages).
+                if (qrLoginButtonView != null) {
+                    marginLayoutParams = (MarginLayoutParams) qrLoginButtonView.getLayoutParams();
+                    marginLayoutParams.topMargin = AndroidUtilities.dp(16) + statusBarHeight;
+                }
+                if (appTitle != null) {
+                    marginLayoutParams = (MarginLayoutParams) appTitle.getLayoutParams();
+                    marginLayoutParams.topMargin = AndroidUtilities.dp(16) + statusBarHeight;
+                    // Left margin follows the back button: when it's hidden (phone-input page) the title
+                    // takes the back button's own spot (16dp); when it's shown (code/password pages) the
+                    // title sits just after it (64dp). Mutated in place here (no setLayoutParams) like the
+                    // top margins above, so it re-evaluates each measure as pages change — no requestLayout loop.
+                    boolean backVisible = backButtonView != null && backButtonView.getVisibility() == View.VISIBLE;
+                    marginLayoutParams.leftMargin = AndroidUtilities.dp(backVisible ? 64 : 16);
                 }
 
                 if (measureKeyboardHeight() > AndroidUtilities.dp(20) && keyboardView.getVisibility() != GONE && !isCustomKeyboardForceDisabled() && !customKeyboardWasVisible) {
@@ -765,6 +803,17 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             });
         }
 
+        // Novagram: app-name brand header, top-left next to the back button (mirrors pro's appTitle).
+        appTitle = new TextView(context);
+        appTitle.setText(getString(R.string.AppName));
+        appTitle.setTextSize(20f);
+        appTitle.setTextColor(Theme.getColor(Theme.key_chats_menuItemText));
+        appTitle.setTypeface(AndroidUtilities.bold());
+        // Center the title in a 32dp-tall box at top 16 so it lines up exactly with the back button
+        // (32dp @ top 16) that appears on the next pages — consistent header baseline across screens.
+        appTitle.setGravity(Gravity.CENTER_VERTICAL);
+        sizeNotifierFrameLayout.addView(appTitle, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 32, Gravity.LEFT | Gravity.TOP, 64, 16, 0, 0));
+
         proxyButtonView = new ImageView(context);
         proxyButtonView.setImageDrawable(proxyDrawable = new ProxyDrawable(context));
         proxyButtonView.setOnClickListener(v -> presentFragment(new ProxyListActivity()));
@@ -772,6 +821,18 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         proxyButtonView.setVisibility(View.GONE);
         sizeNotifierFrameLayout.addView(proxyButtonView, LayoutHelper.createFrame(32, 32, Gravity.RIGHT | Gravity.TOP, 16, 16, 16, 16));
         updateProxyButton(false, true);
+
+        // Novagram: QR-login button — same geometry as the back button (32dp @ top 16) but mirrored to
+        // the right edge (margin 20, RTL-aware), so the title, back button and this button all share one
+        // header baseline. Visible only on the phone-input login page (see updateQrLoginButtonVisibility).
+        qrLoginButtonView = new ImageView(context);
+        qrLoginButtonView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        qrLoginButtonView.setImageResource(R.drawable.fenix_qr_ic);
+        qrLoginButtonView.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), android.graphics.PorterDuff.Mode.SRC_IN);
+        qrLoginButtonView.setContentDescription(LanguageCode.INSTANCE.getMyTitles(258));
+        qrLoginButtonView.setOnClickListener(v -> showQrLogin());
+        sizeNotifierFrameLayout.addView(qrLoginButtonView, LayoutHelper.createFrame(32, 32, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, 20, 16, 20, 0));
+        updateQrLoginButtonVisibility();
 
         radialProgressView = new RadialProgressView(context);
         radialProgressView.setSize(AndroidUtilities.dp(20));
@@ -1572,6 +1633,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
             setCustomKeyboardVisible(views[page].hasCustomKeyboard(), false);
         }
+        updateQrLoginButtonVisibility();
     }
 
     @Override
@@ -1602,6 +1664,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         }
         clearCurrentState();
         if (getParentActivity() instanceof LaunchActivity) {
+            // Novagram: count one account per completed in-app login — pro's exact placement, so only real
+            // LaunchActivity logins are counted (external-auth / passport flows and fakeSuccess are excluded).
+            org.fenixuz.analytics.AnalyticsRemote.INSTANCE.addAccount();
             if (newAccount) {
                 newAccount = false;
                 pendingSwitchingAccount = true;
@@ -1680,6 +1745,59 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         MediaDataController.getInstance(currentAccount).loadStickersByEmojiOrName(AndroidUtilities.STICKERS_PLACEHOLDER_PACK_NAME, false, true);
 
         needFinishActivity(afterSignup, res.setup_password_required, res.otherwise_relogin_days);
+    }
+
+    // Novagram QR-login wiring -------------------------------------------------------------------
+
+    private void showQrLogin() {
+        if (getParentActivity() == null || qrLoginController != null) {
+            return; // no context, or a QR dialog is already open
+        }
+        qrLoginController = new QrLoginController(this, getParentActivity(), () -> qrLoginController = null);
+        qrLoginController.show();
+    }
+
+    private void showBotLogin() {
+        if (getParentActivity() == null || botLoginController != null) {
+            return; // no context, or a bot-token dialog is already open
+        }
+        botLoginController = new BotLoginController(this, getParentActivity(), () -> botLoginController = null);
+        botLoginController.show();
+    }
+
+    private void updateQrLoginButtonVisibility() {
+        if (qrLoginButtonView == null) {
+            return;
+        }
+        // Only on a real login (not change-phone / cancel-deletion) and only on the phone-input page.
+        boolean show = activityMode == MODE_LOGIN && currentViewNum == VIEW_PHONE_INPUT;
+        qrLoginButtonView.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    // Called by QrLoginController when the QR is scanned & accepted (no 2FA).
+    public void onAuthSuccessForQr(TLRPC.TL_auth_authorization auth) {
+        onAuthSuccess(auth);
+    }
+
+    // Called by QrLoginController when the scanned account has 2FA — route to the native password page.
+    public void onQrLoginNeedPassword() {
+        TL_account.getPassword req = new TL_account.getPassword();
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            if (error == null) {
+                TL_account.Password password = (TL_account.Password) response;
+                if (!TwoStepVerificationActivity.canHandleCurrentPassword(password, true)) {
+                    AlertsCreator.showUpdateAppAlert(getParentActivity(), getString("UpdateAppAlert", R.string.UpdateAppAlert), true);
+                    return;
+                }
+                Bundle bundle = new Bundle();
+                SerializedData data = new SerializedData(password.getObjectSize());
+                password.serializeToStream(data);
+                bundle.putString("password", Utilities.bytesToHex(data.toByteArray()));
+                setPage(VIEW_PASSWORD, true, bundle, false);
+            } else {
+                needShowAlert(getString(R.string.RestorePasswordNoEmailTitle), error.text);
+            }
+        }), ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin);
     }
 
     private void fillNextCodeParams(Bundle params, TL_account.sentEmailCode res) {
@@ -2493,6 +2611,19 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     }
                     loadCountries();
                 });
+            }
+
+            // Novagram: "Log in with bot token" link — only on a real login (not change-phone / cancel-deletion).
+            if (activityMode == MODE_LOGIN) {
+                botLoginButton = new TextView(context);
+                botLoginButton.setText(LanguageCode.INSTANCE.getMyTitles(265));
+                botLoginButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText));
+                botLoginButton.setTextSize(15f);
+                botLoginButton.setTypeface(AndroidUtilities.bold());
+                botLoginButton.setGravity(Gravity.CENTER);
+                botLoginButton.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+                botLoginButton.setOnClickListener(v -> showBotLogin());
+                addView(botLoginButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 8, 0, 0));
             }
 
             if (bottomMargin > 0 && !AndroidUtilities.isSmallScreen()) {

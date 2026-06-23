@@ -116,6 +116,12 @@ import androidx.recyclerview.widget.ChatListItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import org.telegram.messenger.AccountInstance;
+import org.fenixuz.ui.text_style_dialog.TextStyleDialog;
+import org.fenixuz.utils.CameraSituation;
+import org.fenixuz.utils.ConfirmDialogsPref;
+import org.fenixuz.utils.MyStatus;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.ApplicationLoader;
@@ -571,6 +577,14 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     @Nullable
     protected EditTextCaption messageEditText;
+    // Novagram: on-device voice dictation (speak → text in the field). Lazy controller + the composer mic
+    // button (right attach row, like pro). Tap = start/stop, long-press = pick dictation language.
+    private org.fenixuz.utils.VoiceDictation voiceDictation;
+    private ImageView voiceDictationButton;
+    // Novagram: voice dictation runs continuously and stops ONLY when the user sends (fenixDictationBeforeSend)
+    // or leaves the chat (onPause). fenixDictationPendingSend = a send tap is waiting for the dictation to
+    // flush+translate its final text before the message actually goes out.
+    private boolean fenixDictationPendingSend;
     private SlowModeBtn slowModeButton;
     private int slowModeTimer;
     private Runnable updateSlowModeRunnable;
@@ -729,6 +743,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     private TLRPC.TL_document audioToSend;
     private String audioToSendPath;
     private MessageObject audioToSendMessageObject;
+    // Novagram auto-translate state. fenixTranslating = a translate request is in flight (guards against
+    // tap-spam firing parallel requests → flood-wait → lag). fenixSendOriginalOnce = the next Send sends
+    // the typed text untranslated (set after a failed translation, so the user can send as-is).
+    private boolean fenixTranslating;
+    private boolean fenixSendOriginalOnce;
     private VideoEditedInfo videoToSendMessageObject;
 
     protected boolean topViewShowed;
@@ -896,21 +915,31 @@ public class ChatActivityEnterView extends FrameLayout implements
                         return;
                     }
                 }
-                if (!CameraController.getInstance().isCameraInitied()) {
-                    CameraController.getInstance().initCamera(onFinishInitCameraRunnable);
-                } else {
-                    onFinishInitCameraRunnable.run();
-                }
-                if (!recordingAudioVideo) {
-                    recordingAudioVideo = true;
-                    updateRecordInterface(RECORD_STATE_ENTER, true);
-                    if (recordCircle != null) {
-                        recordCircle.showWaves(false, false);
+                // Fenix: ask front/back camera before opening the camera for a video message.
+                CameraSituation.INSTANCE.showPopupMenu(getContext(), audioVideoButtonContainer, new Function1<Integer, Unit>() {
+                    @Override
+                    public Unit invoke(Integer integer) {
+                        if (!CameraController.getInstance().isCameraInitied()) {
+                            CameraController.getInstance().initCamera(onFinishInitCameraRunnable);
+                        } else {
+                            onFinishInitCameraRunnable.run();
+                        }
+                        if (!recordingAudioVideo) {
+                            recordingAudioVideo = true;
+                            updateRecordInterface(RECORD_STATE_ENTER, true);
+                            if (recordCircle != null) {
+                                recordCircle.showWaves(false, false);
+                            }
+                            if (recordTimerView != null) {
+                                recordTimerView.reset();
+                            }
+                        }
+                        recordCircle.setLockTranslation(60);
+                        sendButtonVisible = true;
+                        startLockTransition();
+                        return null;
                     }
-                    if (recordTimerView != null) {
-                        recordTimerView.reset();
-                    }
-                }
+                });
             } else {
                 if (Build.VERSION.SDK_INT >= 23 && parentActivity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                     parentActivity.requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 3);
@@ -2744,6 +2773,21 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             });
 
+            // Novagram: composer mic for voice dictation — placed in the right attach row, like pro.
+            // Tap = start/stop dictating into the field; long-press = pick the dictation language.
+            voiceDictationButton = new ImageView(context);
+            voiceDictationButton.setScaleType(ImageView.ScaleType.CENTER);
+            voiceDictationButton.setImageResource(R.drawable.fenix_mic_ic);
+            voiceDictationButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
+            voiceDictationButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+            voiceDictationButton.setContentDescription(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(308));
+            voiceDictationButton.setOnClickListener(v -> toggleVoiceDictation());
+            voiceDictationButton.setOnLongClickListener(v -> {
+                openVoiceTranslateSheet();
+                return true;
+            });
+            attachLayout.addView(voiceDictationButton, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
+
             attachButton = new ImageView(context) {
                 @Override
                 public boolean dispatchTouchEvent(MotionEvent event) {
@@ -2904,6 +2948,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                                     });
                                     return true;
                                 }
+                                // Fenix confirm-to-send: enter the listen/trim preview instead of sending.
+                                if (ConfirmDialogsPref.INSTANCE.getConfirmVoice()) {
+                                    MediaController.getInstance().toggleRecordingPause(voiceOnce);
+                                    delegate.needStartRecordAudio(0);
+                                    if (slideText != null) {
+                                        slideText.setEnabled(false);
+                                    }
+                                    getParent().requestDisallowInterceptTouchEvent(true);
+                                    return true;
+                                }
                                 MediaController.getInstance().stopRecording(isInScheduleMode() ? 3 : 1, true, 0, voiceOnce, 0);
                                 delegate.needStartRecordAudio(0);
                             }
@@ -3021,6 +3075,15 @@ public class ChatActivityEnterView extends FrameLayout implements
                                 }
                                 if (recordingAudioVideo && isInScheduleMode()) {
                                     AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), (notify, scheduleDate, scheduleRepeatPeriod) -> MediaController.getInstance().stopRecording(1, notify, scheduleDate, false, 0), () -> MediaController.getInstance().stopRecording(0, false, 0, false, 0), resourcesProvider);
+                                }
+                                // Fenix confirm-to-send: enter the listen/trim preview instead of sending.
+                                if (ConfirmDialogsPref.INSTANCE.getConfirmVoice()) {
+                                    MediaController.getInstance().toggleRecordingPause(voiceOnce);
+                                    delegate.needStartRecordAudio(0);
+                                    if (slideText != null) {
+                                        slideText.setEnabled(false);
+                                    }
+                                    return true;
                                 }
                                 delegate.needStartRecordAudio(0);
                                 MediaController.getInstance().stopRecording(isInScheduleMode() ? 3 : 1, true, 0, voiceOnce, 0);
@@ -3383,6 +3446,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButtonContainer.addView(sendButton, LayoutHelper.createFrame(100, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
         sendButton.setOnClickListener(view -> {
             if ((messageSendPreview != null && messageSendPreview.isShowing()) || (runningAnimationAudio != null && runningAnimationAudio.isRunning()) || moveToSendStateRunnable != null) {
+                return;
+            }
+            // Novagram: if dictating, this send tap stops the dictation, flushes+translates the final
+            // text, and only then sends (returns true = this tap was consumed for that).
+            if (fenixDictationBeforeSend()) {
+                return;
+            }
+            // Novagram: if this chat has an auto-translate language, the first tap translates+previews; the
+            // next tap sends. Returns true when this tap was consumed for translation.
+            if (fenixAutoTranslateBeforeSend()) {
                 return;
             }
             sendMessage();
@@ -6237,7 +6310,167 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
+    // Novagram: open the voice-translate config sheet (pick speak + translate-to languages, then Start).
+    // This is the chat-menu / mic-long-press entry, mirroring pro.
+    public void openVoiceTranslateSheet() {
+        if (parentFragment == null) {
+            return;
+        }
+        try {
+            new org.fenixuz.ui.voice_translate.VoiceTranslateSheet(parentFragment, this::startVoiceDictation).show();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    // Novagram: the chat-menu "Voice input" entry — stop+translate if dictating, else open the config sheet.
+    // The mic in the composer hides once the field has text, so the always-present menu is the reliable stop.
+    public void onVoiceInputMenu() {
+        if (voiceDictation != null && voiceDictation.isListening()) {
+            voiceDictation.finish();
+        } else {
+            openVoiceTranslateSheet();
+        }
+    }
+
+    // Novagram: mic tap — start dictation, or finish it (the final result is then translated in onFinished).
+    public boolean toggleVoiceDictation() {
+        if (!ensureVoiceDictation()) {
+            return false;
+        }
+        if (voiceDictation.isListening()) {
+            voiceDictation.finish();
+            return false;
+        }
+        voiceDictation.start(messageEditText.getText());
+        return true;
+    }
+
+    // Novagram: start dictation (used by the sheet's Start button). No-op if already listening.
+    public void startVoiceDictation() {
+        if (!ensureVoiceDictation() || voiceDictation.isListening()) {
+            return;
+        }
+        voiceDictation.start(messageEditText.getText());
+    }
+
+    // Lazily build the recogniser (after the RECORD_AUDIO permission). Returns false if not ready.
+    private boolean ensureVoiceDictation() {
+        if (parentActivity == null || messageEditText == null) {
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= 23 && parentActivity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            parentActivity.requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 3);
+            return false;
+        }
+        if (voiceDictation == null) {
+            voiceDictation = new org.fenixuz.utils.VoiceDictation(parentActivity, new org.fenixuz.utils.VoiceDictation.Listener() {
+                @Override
+                public void onText(CharSequence text) {
+                    if (messageEditText == null) {
+                        return;
+                    }
+                    messageEditText.setText(text);
+                    messageEditText.setSelection(messageEditText.getText().length());
+                }
+
+                @Override
+                public void onListeningChanged(boolean listening) {
+                    updateVoiceDictationButton(listening);
+                    if (listening) {
+                        android.widget.Toast.makeText(parentActivity, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(309), android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                }
+
+                @Override
+                public void onFinished(CharSequence finalText) {
+                    onDictationFinished(finalText);
+                }
+
+                @Override
+                public void onUnavailable() {
+                    android.widget.Toast.makeText(parentActivity, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(310), android.widget.Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+        return true;
+    }
+
+    // Novagram: dictation finished — translate the complete recognised text to the chosen target, then (if
+    // a send tap is waiting) send. No translation when the target is "Off" (the field already holds the text).
+    private void onDictationFinished(CharSequence finalText) {
+        // The engine delivered (we're now in the translate phase, which finishes the pending send itself),
+        // so drop the no-result fallback — otherwise a slow translation could be cut off and sent untranslated.
+        AndroidUtilities.cancelRunOnUIThread(fenixDictationSendFallback);
+        String to = org.fenixuz.utils.VoiceDictation.getTranslateLang(getContext());
+        FileLog.d("VoiceDictation finished: to=" + to + " len=" + (finalText == null ? 0 : finalText.length()));
+        if (messageEditText == null || finalText == null || finalText.length() == 0 || to == null || to.isEmpty()) {
+            finishDictationSendIfPending();   // no target picked → pure dictation, just send if a tap waits
+            return;
+        }
+        // A second language is selected → translate. Use the SAME fast, robust Google-first engine as
+        // chat auto-translate (AutoTranslate.translate), and show the "Translating…" bulletin only here
+        // (when a target is set) so there's clear feedback while it works; no bulletin for plain dictation.
+        final Bulletin progress = parentFragment == null ? null :
+                BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.msg_translate, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(327)).setDuration(60000).show();
+        org.fenixuz.utils.AutoTranslate.translate(finalText, to, currentAccount, (translated, ok) -> {
+            if (progress != null) {
+                progress.hide();
+            }
+            if (messageEditText != null) {
+                if (ok && translated != null && translated.length() > 0) {
+                    messageEditText.setText(translated);
+                    messageEditText.setSelection(messageEditText.getText().length());
+                } else if (parentActivity != null) {
+                    android.widget.Toast.makeText(parentActivity, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(317), android.widget.Toast.LENGTH_SHORT).show();
+                }
+            }
+            finishDictationSendIfPending();   // send the (translated) text after translation completes
+        });
+    }
+
+    // Novagram: send tapped while dictating → stop+flush the dictation; the message is sent once the final
+    // text (and its translation) is ready, in onDictationFinished / the fallback. Returns true = tap consumed.
+    private boolean fenixDictationBeforeSend() {
+        if (voiceDictation == null || !voiceDictation.isListening()) {
+            return false;
+        }
+        fenixDictationPendingSend = true;
+        voiceDictation.finish();
+        // Fallback if the engine delivers no final result at all (nothing captured): send what's in the
+        // field anyway so a send tap is never swallowed. Longer than VoiceDictation's own 2.5s finish
+        // timeout, and cancelled the moment onDictationFinished runs, so it can't pre-empt a translation.
+        AndroidUtilities.runOnUIThread(fenixDictationSendFallback, 3000);
+        return true;
+    }
+
+    private final Runnable fenixDictationSendFallback = this::finishDictationSendIfPending;
+
+    // Perform the pending send exactly once (cancels the fallback so it can't double-send).
+    private void finishDictationSendIfPending() {
+        if (!fenixDictationPendingSend) {
+            return;
+        }
+        fenixDictationPendingSend = false;
+        AndroidUtilities.cancelRunOnUIThread(fenixDictationSendFallback);
+        sendMessage();
+    }
+
+    // Novagram: tint the composer mic red while dictating, default colour otherwise.
+    private void updateVoiceDictationButton(boolean listening) {
+        if (voiceDictationButton == null) {
+            return;
+        }
+        int color = listening ? getThemedColor(Theme.key_text_RedRegular) : getThemedColor(Theme.key_glass_defaultIcon);
+        voiceDictationButton.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
+    }
+
     public void onDestroy() {
+        // Novagram: release the speech recogniser with the composer.
+        if (voiceDictation != null) {
+            voiceDictation.destroy();
+            voiceDictation = null;
+        }
         if (audioTimelineView != null) {
             audioTimelineView.destroy();
         }
@@ -6359,6 +6592,10 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void onPause() {
         isPaused = true;
+        // Novagram: don't keep the mic open while the chat is backgrounded.
+        if (voiceDictation != null) {
+            voiceDictation.stop();
+        }
         if (senderSelectPopupWindow != null) {
             senderSelectPopupWindow.setPauseNotifications(false);
             senderSelectPopupWindow.dismiss();
@@ -6961,7 +7198,105 @@ public class ChatActivityEnterView extends FrameLayout implements
         isRecordingStateChanged();
     }
 
+    /**
+     * Novagram auto-translate hook. If this chat has a target language set, a single Send tap translates
+     * the typed text to it and, on success, sends it right away (one tap total). While the request is in
+     * flight, further taps are swallowed (no parallel requests → no flood-wait lag), with a "Translating…"
+     * bulletin for feedback. If translation fails, an error bulletin is shown and the NEXT tap sends the
+     * text untranslated. Returns true when the tap was consumed; false to let a normal send proceed.
+     *
+     * Engine: {@link org.fenixuz.utils.AutoTranslate#translate} — Telegram-server `messages.translateText`
+     * FIRST (reliable over Telegram's own connection, even where Google is restricted), falling back to a
+     * direct Google request if the server errors/returns empty. Trying both maximises success across
+     * language pairs and regions. Every step is logged ("AutoTranslate" tag) for diagnosis.
+     */
+    private boolean fenixAutoTranslateBeforeSend() {
+        if (fenixTranslating) {
+            return true;                     // a translation is already running — ignore extra taps
+        }
+        if (fenixSendOriginalOnce) {
+            fenixSendOriginalOnce = false;
+            return false;                    // user chose to send the original after a failed translate
+        }
+        if (audioToSend != null || messageEditText == null) {
+            return false;
+        }
+        final String lang = org.fenixuz.utils.AutoTranslate.getLang(dialog_id);
+        if (lang == null) {
+            return false;                    // auto-translate off for this chat
+        }
+        final CharSequence message = messageEditText.getTextToUse();
+        if (message == null || TextUtils.getTrimmedLength(message) == 0) {
+            return false;                    // nothing to translate
+        }
+        // Offline pre-check: don't spin for ~30s when the device is clearly offline (airplane mode / no
+        // network). Give instant feedback; the next tap sends the original as-is (same escape as a failure).
+        if (!org.telegram.messenger.ApplicationLoader.isNetworkOnline()) {
+            fenixSendOriginalOnce = true;
+            if (parentFragment != null) {
+                BulletinFactory.of(parentFragment).createErrorBulletin(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(329)).show();
+            }
+            return true;
+        }
+        fenixTranslating = true;
+        // Keep the "Translating…" indicator up for the WHOLE request. createSimpleBulletin auto-hides
+        // after DURATION_SHORT (1.5s) for short text, but a translation takes ~2-3s — so the indicator
+        // used to vanish mid-wait, leaving a dead gap that felt like a freeze. A long duration (we hide
+        // it ourselves) keeps the spinner visible the entire time. 60s is just a safety cap.
+        final Bulletin progress = parentFragment == null ? null :
+                BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.msg_translate, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(327)).setDuration(60000).show();
+        // settled = exactly one of {translate callback, watchdog} is allowed to act. Prevents a late
+        // callback (after a connected-but-dead/slow network finally times out) from double-sending, and
+        // prevents the UI from getting stuck if a callback never fires.
+        final boolean[] settled = {false};
+        final Runnable[] watchdog = new Runnable[1];
+        watchdog[0] = () -> {
+            if (settled[0]) {
+                return;
+            }
+            settled[0] = true;
+            fenixTranslating = false;
+            if (progress != null) {
+                progress.hide();
+            }
+            fenixSendOriginalOnce = true;     // unblock sending: next tap sends the original as-is
+            if (parentFragment != null) {
+                BulletinFactory.of(parentFragment).createErrorBulletin(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(328)).show();
+            }
+        };
+        AndroidUtilities.runOnUIThread(watchdog[0], 30000);
+        org.fenixuz.utils.AutoTranslate.translate(message, lang, currentAccount, (result, ok) -> {
+            if (settled[0]) {
+                return;                       // watchdog already handled it (gave up) — ignore the late result
+            }
+            settled[0] = true;
+            AndroidUtilities.cancelRunOnUIThread(watchdog[0]);
+            fenixTranslating = false;
+            if (progress != null) {
+                progress.hide();
+            }
+            if (messageEditText != null && ok && result != null && result.length() > 0) {
+                // Real translation came back → preview it and send immediately (single tap).
+                messageEditText.setText(result);
+                messageEditText.setSelection(result.length());
+                sendMessage();
+            } else {
+                // Both engines failed → don't silently send the wrong text; the next tap sends as-is.
+                fenixSendOriginalOnce = true;
+                if (parentFragment != null) {
+                    BulletinFactory.of(parentFragment).createErrorBulletin(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(328)).show();
+                }
+            }
+        });
+        return true;
+    }
+
     public boolean sendMessage() {
+        // Novagram: any send path stops voice dictation (the primary path translates first via
+        // fenixDictationBeforeSend; this quiet stop covers other paths, e.g. send-on-enter — no-op if idle).
+        if (voiceDictation != null && voiceDictation.isListening()) {
+            voiceDictation.stop();
+        }
         if (isInScheduleMode()) {
             AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), new AlertsCreator.ScheduleDatePickerDelegate() {
                 @Override
@@ -7078,7 +7413,32 @@ public class ChatActivityEnterView extends FrameLayout implements
                 millisecondsRecorded = 0;
                 return;
             }
-            CharSequence message = messageEditText == null ? "" : messageEditText.getTextToUse();
+            // Fenix: apply the user's default text style to the message right before sending.
+            TextStyleDialog.INSTANCE.changeTextStyle(this, messageEditText == null ? "" : messageEditText.getTextToUse().toString());
+            // Novagram: append the per-chat Auto text signature (styled) to outgoing text messages.
+            // Kept as a single assignment so `message` stays effectively final (it's captured by a lambda below).
+            CharSequence fenixBase = messageEditText == null ? "" : messageEditText.getTextToUse();
+            // Novagram ".heart": send the red heart over the wire instead of the literal ".heart" trigger, so the
+            // recipient gets a clean ❤️ (with Telegram's native single-emoji effect) — no ".heart" text and no
+            // "edited" tag. The multi-colour cycle then runs LOCALLY on the sender only (a synced animation on the
+            // recipient is impossible without flooding edits). armForSend() marks this dialog so the ❤️ send confirm
+            // (messageReceivedByServer) starts the local cycle. Auto text is skipped for the heart gag.
+            boolean fenixHeart = fenixBase != null && ".heart".equals(fenixBase.toString().trim());
+            if (fenixHeart) {
+                org.fenixuz.utils.HeartAnimator.INSTANCE.armForSend(dialog_id);
+            }
+            CharSequence fenixAutoText = (fenixHeart || TextUtils.isEmpty(fenixBase)) ? "" : org.fenixuz.utils.AutoTextAppender.INSTANCE.getStyledText(dialog_id,
+                    (messageEditText != null ? messageEditText.getPaint() : Theme.chat_msgTextPaint).getFontMetricsInt());
+            CharSequence message = fenixHeart ? org.fenixuz.utils.HeartAnimator.RED_HEART
+                    : (TextUtils.isEmpty(fenixAutoText) ? fenixBase : TextUtils.concat(fenixBase, fenixAutoText));
+            // Novagram ghost mode: the act of SENDING a message makes Telegram's server briefly mark you ONLINE
+            // (sending implies activity), which made the online dot "light up" even with ghost on. Re-assert the
+            // offline status ~1s later — MyStatus.setMyStatus() is a no-op unless ghost is enabled. (Matches pro.)
+            AndroidUtilities.runOnUIThread(MyStatus.INSTANCE::setMyStatus, 1000);
+            // Novagram: sending takes over the field, so stop any live dictation.
+            if (voiceDictation != null) {
+                voiceDictation.stop();
+            }
             if (parentFragment != null) {
                 TLRPC.Chat chat = parentFragment.getCurrentChat();
                 if (chat != null && chat.slowmode_enabled && !ChatObject.hasAdminRights(chat)) {
@@ -8525,9 +8885,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             final boolean fromPause = lastRecordState == RECORD_STATE_PREPARING;
 
             if (!fromPause) {
-                voiceOnce = false;
+                // fenixuz: a fresh recording defaults to view-once when the per-chat "one-time" setting is on.
+                // The user can still flip it for this single recording via the native "once" button.
+                voiceOnce = org.fenixuz.utils.OneTimeVoice.INSTANCE.isEnabled(dialog_id);
                 if (controlsView != null) {
-                    controlsView.periodDrawable.setValue(1, false, false);
+                    controlsView.periodDrawable.setValue(1, voiceOnce, false);
                 }
                 MediaDataController.getInstance(currentAccount).toggleDraftVoiceOnce(dialog_id, parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0, voiceOnce);
                 millisecondsRecorded = 0;

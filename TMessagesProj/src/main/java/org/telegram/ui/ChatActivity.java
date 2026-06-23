@@ -106,6 +106,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Space;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
@@ -132,6 +133,7 @@ import androidx.viewpager.widget.ViewPager;
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.zxing.common.detector.MathUtils;
 
+import org.fenixuz.utils.LanguageCode;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -163,6 +165,13 @@ import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LanguageDetector;
 import org.telegram.messenger.LiteMode;
+import org.fenixuz.ui.auto_answer.AutoAnswer;
+import org.fenixuz.ui.join_requests.JoinRequestsSheet;
+import org.fenixuz.ui.message_history.MessageHistory;
+import org.fenixuz.ui.text_style_dialog.TextStyleDialog;
+import org.fenixuz.utils.By;
+import org.fenixuz.utils.DeletedMsg;
+import org.fenixuz.utils.EditMessage;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MediaDataController;
@@ -419,6 +428,9 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenu.LazyItem attachItem;
     private ActionBarMenuItem.Item savedChatsItem, savedChatsGap;;
     private ActionBarMenuItem headerItem;
+    private ActionBarMenuItem.Item lockChatItem;
+    private ActionBarMenuItem.Item oneTimeMediaItem;
+    public org.fenixuz.ui.secret_chat.SecretLockScreenDialog chatLockScreenDialog = null;
     private ActionBarMenu.LazyItem editTextItem;
     protected ActionBarMenuItem searchItem;
     protected ActionBarMenuItem topicCreateItem;
@@ -477,6 +489,7 @@ public class ChatActivity extends BaseFragment implements
     // private ChatActivitySideControlsButtonsLayout topButtonsLayout;
     private ChatActivitySideControlsButtonsLayout sideControlsButtonsLayout;
     private boolean pagedownButtonShowedByScroll;
+    private boolean goToFirstButtonShowedByScroll; // Novagram: mirror of pagedownButtonShowedByScroll
     private int reactionsMentionCount;
     private int pollVotesMentionCount;
     public Bulletin messageSeenPrivacyBulletin;
@@ -1054,6 +1067,7 @@ public class ChatActivity extends BaseFragment implements
     private boolean startedTrackingSlidingView;
 
     private boolean canShowPagedownButton;
+    private boolean canShowGoToFirstButton; // Novagram: mirror of canShowPagedownButton (top button)
     private TextSelectionHint textSelectionHint;
     private boolean textSelectionHintWasShowed;
     private float lastTouchY;
@@ -1160,6 +1174,10 @@ public class ChatActivity extends BaseFragment implements
     public final static int OPTION_REPORT_CHAT = 23;
     public final static int OPTION_CANCEL_SENDING = 24;
     public final static int OPTION_UNVOTE = 25;
+    public final static int OPTION_FENIX_EDIT_HISTORY = 1000;
+    public final static int OPTION_FENIX_SPECIAL_FORWARD = 1001;
+
+    public static ChatActivity instance;
     public final static int OPTION_STOP_POLL_OR_QUIZ = 26;
     public final static int OPTION_VIEW_REPLIES_OR_THREAD = 27;
     public final static int OPTION_STATISTICS = 28;
@@ -1596,6 +1614,16 @@ public class ChatActivity extends BaseFragment implements
     private final static int open_forum = 61;
 
     private final static int translate = 62;
+    private final static int text_style = 994;
+    private final static int lock_chat = 995;
+    private final static int show_chat_id = 996;
+    private final static int one_time_media = 997;
+    private final static int accept_join_requests = 998;
+    private final static int join_all_accounts = 999;
+    private final static int auto_text = 1002;
+    private final static int fenix_settings = 1003;
+    private final static int voice_input = 1004;
+    private final static int auto_translate = 1005;
     private final static int scheduled = 63;
     private final static int edit_quick_reply = 64;
 
@@ -3250,9 +3278,59 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    @Override
+    public void fenixRenderHeartFrame(MessageObject obj, CharSequence heart) {
+        if (obj == null || obj.messageOwner == null || heart == null) {
+            return;
+        }
+        obj.messageOwner.message = heart.toString();
+        obj.messageOwner.entities = new ArrayList<>();
+        obj.applyNewText(heart);
+        // Force the heart to render at a big "single emoji" size regardless of the user's Large-Emoji
+        // setting / emoji-only detection, then rebuild the layout so the new size takes effect.
+        if (obj.messageText instanceof android.text.Spannable) {
+            org.telegram.messenger.Emoji.EmojiSpan[] spans = ((android.text.Spannable) obj.messageText)
+                    .getSpans(0, obj.messageText.length(), org.telegram.messenger.Emoji.EmojiSpan.class);
+            if (spans != null && spans.length > 0) {
+                android.text.TextPaint bigPaint = (Theme.chat_msgTextPaintEmoji != null
+                        && Theme.chat_msgTextPaintEmoji.length > 0 && Theme.chat_msgTextPaintEmoji[0] != null)
+                        ? Theme.chat_msgTextPaintEmoji[0] : Theme.chat_msgTextPaint;
+                int size = (int) (bigPaint.getTextSize() + AndroidUtilities.dp(4));
+                for (org.telegram.messenger.Emoji.EmojiSpan s : spans) {
+                    s.replaceFontMetrics(bigPaint.getFontMetricsInt(), size);
+                }
+                obj.resetLayout();
+                obj.generateLayout(null);
+            }
+        }
+        if (chatListView == null) {
+            return;
+        }
+        for (int i = 0; i < chatListView.getChildCount(); i++) {
+            View child = chatListView.getChildAt(i);
+            if (child instanceof ChatMessageCell && ((ChatMessageCell) child).getMessageObject() == obj) {
+                ((ChatMessageCell) child).forceResetMessageObject();
+                break;
+            }
+        }
+    }
+
+    /**
+     * Novagram "show chat id": the Bot-API recognizable id users actually expect — supergroups and channels
+     * are prefixed with -100… (matching @userinfobot and bot frameworks), basic groups are -id, and users
+     * are +id. Telegram stores the raw -id internally (see DialogObject.getPeerDialogId), so we only re-add
+     * the -100… offset for channels/supergroups; everything else already matches and is shown as-is.
+     */
+    private long fenixRecognizableId() {
+        if (currentChat != null && ChatObject.isChannel(currentChat)) {
+            return -1000000000000L - currentChat.id;
+        }
+        return dialog_id;
+    }
+
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        // Novagram: stop any running ".heart" animation for this chat so its timer doesn't outlive the screen.
+        org.fenixuz.utils.HeartAnimator.INSTANCE.cancel(dialog_id);
         if (messageMetricsView != null) {
             messageMetricsView.finish();
         }
@@ -3573,6 +3651,11 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public View createView(Context context) {
+        // Fenix auto-answer: allow re-answering this dialog after you re-open it.
+        if (AutoAnswer.INSTANCE.autoAnswerIsActive()) {
+            AutoAnswer.INSTANCE.removeAnsweredDialogId(dialog_id);
+        }
+        instance = this;
         Timer t = Timer.create("ChatActivity.createView");
 
         blurredBackgroundColorProvider = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_chat_messagePanelBackground) {
@@ -3973,6 +4056,35 @@ public class ChatActivity extends BaseFragment implements
                     if (!getMessagesController().getTranslateController().toggleTranslatingDialog(getDialogId(), true)) {
                         updateTopPanel(true);
                     }
+                } else if (id == text_style) {
+                    TextStyleDialog.INSTANCE.textStyleDialog(getContext());
+                } else if (id == accept_join_requests && currentChat != null) {
+                    new JoinRequestsSheet(ChatActivity.this, currentChat.id).show();
+                } else if (id == join_all_accounts && currentChat != null) {
+                    String joinUsername = ChatObject.getPublicUsername(currentChat);
+                    if (joinUsername != null) {
+                        Toast.makeText(getContext(), org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(296), Toast.LENGTH_SHORT).show();
+                        org.fenixuz.utils.JoinAllAccounts.INSTANCE.joinOnAllAccounts(currentAccount, joinUsername, (joined, total) ->
+                                Toast.makeText(org.telegram.messenger.ApplicationLoader.applicationContext,
+                                        joined + " " + org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(295),
+                                        Toast.LENGTH_SHORT).show());
+                    }
+                } else if (id == voice_input) {
+                    // Novagram: stop+translate if dictating, else open the voice-translate config sheet.
+                    if (chatActivityEnterView != null) {
+                        chatActivityEnterView.onVoiceInputMenu();
+                    }
+                } else if (id == auto_translate) {
+                    // Novagram: per-chat outgoing auto-translate language picker.
+                    if (getParentActivity() != null) {
+                        org.fenixuz.ui.auto_text.AutoTranslatePicker.show(getParentActivity(), dialog_id, null);
+                    }
+                } else if (id == fenix_settings) {
+                    // Novagram: open the consolidated per-chat tools screen (one-time media, auto-add text, lock).
+                    presentFragment(new org.fenixuz.ui.auto_text.ChatFenixSettings(dialog_id, ChatActivity.this));
+                } else if (id == show_chat_id) {
+                    AndroidUtilities.addToClipboard(String.valueOf(fenixRecognizableId()));
+                    Toast.makeText(getContext(), org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(41), android.widget.Toast.LENGTH_SHORT).show();
                 } else if (id == call || id == video_call) {
                     if (currentUser != null && getParentActivity() != null) {
                         VoIPHelper.startCall(currentUser, id == video_call, userInfo != null && userInfo.video_calls_available, getParentActivity(), getMessagesController().getUserFull(currentUser.id), getAccountInstance());
@@ -4390,6 +4502,36 @@ public class ChatActivity extends BaseFragment implements
             }
             translateItem = headerItem.lazilyAddSubItem(translate, R.drawable.msg_translate, LocaleController.getString(R.string.TranslateMessage));
             updateTranslateItemVisibility();
+            headerItem.lazilyAddSubItem(text_style, R.drawable.msg_text_outlined,   LanguageCode.INSTANCE.getMyTitles(166));
+            // Novagram: show this chat's id as the row label; tapping copies it to the clipboard.
+            headerItem.lazilyAddSubItem(show_chat_id, R.drawable.fenix_id_ic, String.valueOf(fenixRecognizableId()));
+            // Novagram: a single per-chat tools screen (one-time media, auto-add text, lock) keeps the menu tidy.
+            if (currentEncryptedChat == null && chatMode == MODE_DEFAULT) {
+                headerItem.lazilyAddSubItem(fenix_settings, R.drawable.msg_settings_old,
+                        org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(305));
+            }
+            // Novagram: voice dictation — speak into the message field (on-device speech-to-text).
+            if (chatMode == MODE_DEFAULT && (currentChat == null || ChatObject.canSendMessages(currentChat))) {
+                headerItem.lazilyAddSubItem(voice_input, R.drawable.fenix_mic_ic,
+                        org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(308));
+                // Novagram: auto-translate outgoing messages — moved here from the Novagram settings screen,
+                // sitting next to voice-to-text. Tapping opens the per-chat target-language picker.
+                headerItem.lazilyAddSubItem(auto_translate, R.drawable.msg_translate,
+                        org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(324));
+            }
+            // Novagram: bulk approve/decline pending join requests — only for channels/groups where you can invite.
+            if (currentChat != null && chatMode == MODE_DEFAULT && ChatObject.isChannel(currentChat)
+                    && ChatObject.canUserDoAdminAction(currentChat, ChatObject.ACTION_INVITE)) {
+                headerItem.lazilyAddSubItem(accept_join_requests, R.drawable.msg_invite,
+                        org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(279));
+            }
+            // Novagram: join this PUBLIC channel/group on all your other logged-in accounts at once.
+            if (currentChat != null && chatMode == MODE_DEFAULT && ChatObject.isChannel(currentChat)
+                    && ChatObject.getPublicUsername(currentChat) != null
+                    && UserConfig.getActivatedAccountsCount() > 1) {
+                headerItem.lazilyAddSubItem(join_all_accounts, R.drawable.outline_add_account,
+                        org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(294));
+            }
             if (currentChat != null && !currentChat.creator && !ChatObject.hasAdminRights(currentChat)) {
                 headerItem.lazilyAddSubItem(report, R.drawable.msg_report, LocaleController.getString(R.string.ReportChat));
             }
@@ -6654,6 +6796,7 @@ public class ChatActivity extends BaseFragment implements
         chatListView.setOnScrollListener(new RecyclerView.OnScrollListener() {
 
             private float totalDy = 0;
+            private float totalDyTop = 0; // Novagram: accumulator for the go-to-first button (mirror of totalDy)
             private boolean scrollUp;
             private final int scrollValue = AndroidUtilities.dp(100);
 
@@ -6803,6 +6946,53 @@ public class ChatActivity extends BaseFragment implements
                                     canShowPagedownButton = false;
                                     updatePagedownButtonVisibility(true);
                                     totalDy = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Novagram: go-to-first (↑) button — mirror of the pagedown block above.
+                //  - at the very TOP (first message reached): hidden — you can already see the start.
+                //  - at the very BOTTOM (newest): hidden too — exactly like Telegram's pagedown — so it never
+                //    covers the sent-status check (ptichka) on the user's last message; users complained they
+                //    couldn't tell if their message had been sent. It reappears as soon as you scroll up.
+                //  - in the middle: scroll UP (dy<0, toward older) shows it; scroll DOWN (dy>0, toward newer)
+                //    hides it — same dp(100) threshold + same BoolAnimator as pagedown => identical smoothness.
+                int lastVisibleItem = chatLayoutManager.findLastVisibleItemPosition();
+                if (lastVisibleItem != RecyclerView.NO_POSITION) {
+                    int totalItemCountTop = chatAdapter.getItemCount();
+                    boolean atFirstMessage = lastVisibleItem >= totalItemCountTop - 1 && endReached[0];
+                    boolean atNewestMessage = firstVisibleItem == 0 && forwardEndReached[0];
+                    if (atFirstMessage) {
+                        // checked first so a short chat that fits on one screen (top AND bottom) hides the button
+                        canShowGoToFirstButton = false;
+                        goToFirstButtonShowedByScroll = false;
+                        updateGoToFirstButtonVisibility(true);
+                    } else if (atNewestMessage) {
+                        // hide at the bottom so it never sits over the last message's sent-status check
+                        canShowGoToFirstButton = false;
+                        goToFirstButtonShowedByScroll = false;
+                        updateGoToFirstButtonVisibility(true);
+                    } else {
+                        final boolean isGoToFirstVisible = sideControlsButtonsLayout.isButtonVisible(
+                                ChatActivitySideControlsButtonsLayout.BUTTON_GO_TO_FIRST);
+                        if (dy < 0) {
+                            if (!isGoToFirstVisible) {
+                                totalDyTop += dy;
+                                if (totalDyTop < -scrollValue) {
+                                    totalDyTop = 0;
+                                    canShowGoToFirstButton = true;
+                                    updateGoToFirstButtonVisibility(true);
+                                    goToFirstButtonShowedByScroll = true;
+                                }
+                            }
+                        } else if (dy > 0) {
+                            if (goToFirstButtonShowedByScroll && isGoToFirstVisible) {
+                                totalDyTop += dy;
+                                if (totalDyTop > scrollValue) {
+                                    canShowGoToFirstButton = false;
+                                    updateGoToFirstButtonVisibility(true);
+                                    totalDyTop = 0;
                                 }
                             }
                         }
@@ -8908,7 +9098,33 @@ public class ChatActivity extends BaseFragment implements
         ViewCompat.setOnApplyWindowInsetsListener(fragmentView, this::onApplyWindowInsets);
         Timer.finish(t);
 
+        showChatLockIfNeeded();
+
         return fragmentView;
+    }
+
+    /** Per-chat lock: when [dialog_id] is locked and not yet unlocked this session, gate it behind the passcode. */
+    private boolean chatLockPassed = false;
+
+    /** Called by ChatFenixSettings: locking from that screen must not gate the chat you're already inside. */
+    public void markChatLockPassed() {
+        chatLockPassed = true;
+    }
+
+    private void showChatLockIfNeeded() {
+        if (chatLockPassed || chatLockScreenDialog != null) {
+            return;
+        }
+        if (!org.fenixuz.utils.Password.INSTANCE.isLocked(dialog_id)) {
+            return;
+        }
+        Activity activity = getParentActivity();
+        if (activity == null) {
+            return;
+        }
+        chatLockScreenDialog = new org.fenixuz.ui.secret_chat.SecretLockScreenDialog(this, activity, org.fenixuz.utils.Password.INSTANCE.credentialFor(dialog_id), () -> chatLockPassed = true);
+        chatLockScreenDialog.show();
+        chatLockScreenDialog.getSecretLockScreen().onShow(true, true, -1, -1, null, null);
     }
 
     private boolean lastImeVisible;
@@ -11060,6 +11276,27 @@ public class ChatActivity extends BaseFragment implements
             return;
         }
         translateItem.setVisibility(getMessagesController().getTranslateController().isTranslateDialogHidden(getDialogId()) && getMessagesController().getTranslateController().isDialogTranslatable(getDialogId()) ? View.VISIBLE : View.GONE);
+    }
+
+    private void updateLockChatItem() {
+        if (lockChatItem == null) {
+            return;
+        }
+        lockChatItem.setText(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(
+                org.fenixuz.utils.Password.INSTANCE.isLocked(dialog_id) ? 247 : 246));
+    }
+
+    // Novagram: label reflects the current per-chat one-time state (enable vs disable action).
+    private CharSequence oneTimeMediaTitle() {
+        return org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(
+                org.fenixuz.utils.OneTimeVoice.INSTANCE.isEnabled(dialog_id) ? 257 : 256);
+    }
+
+    private void updateOneTimeMediaItem() {
+        if (oneTimeMediaItem == null) {
+            return;
+        }
+        oneTimeMediaItem.setText(oneTimeMediaTitle());
     }
 
     private Animator infoTopViewAnimator;
@@ -15216,7 +15453,16 @@ public class ChatActivity extends BaseFragment implements
                     if (messagePreviewParams.forwardMessages != null) {
                         messagePreviewParams.forwardMessages.getSelectedMessages(messagesToForward);
                     }
-                    forwardMessages(messagesToForward, messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe ? scheduleDate + 1 : scheduleDate, payStars);
+                    // fenixuz: "Special forward" — if any forwarded message carries the one-shot flag,
+                    // force the native hide-sender path. Clear the flag so it never leaks to later forwards.
+                    boolean fenixHideSender = false;
+                    for (int fi = 0, fn = messagesToForward.size(); fi < fn; fi++) {
+                        if (messagesToForward.get(fi).hideSpetialFunction) {
+                            fenixHideSender = true;
+                            messagesToForward.get(fi).hideSpetialFunction = false;
+                        }
+                    }
+                    forwardMessages(messagesToForward, fenixHideSender || messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe ? scheduleDate + 1 : scheduleDate, payStars);
 //                }
             }
             if (forwardingPreviewView == null) {
@@ -16724,6 +16970,35 @@ public class ChatActivity extends BaseFragment implements
         }
 
         sideControlsButtonsLayout.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_PAGE_DOWN, show, animated);
+        updateGoToFirstButtonVisibility(animated);
+    }
+
+    // Novagram: "go to first message" (↑) button — mirror of updatePagedownButtonVisibility. The scroll-driven
+    // canShowGoToFirstButton state is set in the onScrolled handler (opposite directions to pagedown); here we
+    // just gate it with the same mode guards pagedown uses. showButton no-ops when unchanged.
+    private void updateGoToFirstButtonVisibility(boolean animated) {
+        if (sideControlsButtonsLayout == null) {
+            return;
+        }
+        // Resolve the two extremes here too (not only in the scroll handler) so the state is correct even
+        // without a scroll — e.g. right when the chat opens at the bottom it stays HIDDEN, so the button never
+        // covers the last message's sent-status check. In the middle we keep the scroll-driven state.
+        if (chatLayoutManager != null && chatAdapter != null) {
+            int itemCount = chatAdapter.getItemCount();
+            int last = chatLayoutManager.findLastVisibleItemPosition();
+            int first = chatLayoutManager.findFirstVisibleItemPosition();
+            if (endReached[0] && last != RecyclerView.NO_POSITION && last >= itemCount - 1) {
+                canShowGoToFirstButton = false;       // at the first message — already there
+            } else if (forwardEndReached[0] && first == 0) {
+                canShowGoToFirstButton = false;       // at the newest message — hide (like Telegram's pagedown)
+            }
+        }
+        boolean show = canShowGoToFirstButton && chatMode == MODE_DEFAULT && !messages.isEmpty()
+                && !textSelectionHelper.isInSelectionMode()
+                && !chatActivityEnterView.isRecordingAudioVideo()
+                && !isInsideContainer
+                && (!searching || getMediaDataController().searchResultMessages.isEmpty());
+        sideControlsButtonsLayout.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_GO_TO_FIRST, show, animated);
     }
 
     private void updateSearchUpDownButtonVisibility(boolean animated) {
@@ -21814,7 +22089,44 @@ public class ChatActivity extends BaseFragment implements
                 scheduleNowDialog.dismiss();
                 scheduleNowDialog = null;
             }
-            processDeletedMessages(markAsDeletedMessages, channelId, sent, !movedToScheduled);
+            // Fenix delete-save: keep deleted messages visible (and tag who deleted them) based on the chosen mode.
+            boolean fenixDeletedBy = DeletedMsg.INSTANCE.getMyDelete();
+            int fenixDeletedType = DeletedMsg.INSTANCE.getCheckType();
+            By fenixBy = fenixDeletedBy ? By.Me : By.You;
+            if (fenixDeletedBy) {
+                DeletedMsg.INSTANCE.setMyDelete(false);
+            }
+            ArrayList<MessageObject> fenixMessageObjects = DeletedMsg.INSTANCE.notify(markAsDeletedMessages, messages, dialog_id);
+            for (int i = 0; i < fenixMessageObjects.size(); i++) {
+                MessageObject old = messagesDict[0].get(fenixMessageObjects.get(i).getId());
+                int index = this.messages.indexOf(old);
+                if (index < 0) {
+                    continue;
+                }
+                this.messages.get(index).forceUpdate = true;
+                this.messages.get(index).deletedBy = DeletedMsg.INSTANCE.whoDeleteStr(fenixBy);
+                if (chatAdapter != null) {
+                    chatAdapter.notifyItemChanged(index);
+                }
+            }
+            if (DeletedMsg.SIMPLE == fenixDeletedType) {
+                processDeletedMessages(markAsDeletedMessages, channelId, sent, !movedToScheduled);
+            } else if (DeletedMsg.SECOND == fenixDeletedType) {
+                if (fenixBy == By.Me) {
+                    processDeletedMessages(markAsDeletedMessages, channelId, sent, !movedToScheduled);
+                }
+            } else if (DeletedMsg.ALL == fenixDeletedType) {
+                ArrayList<Integer> fenixM = new ArrayList<>();
+                if (fenixBy == By.Me) {
+                    fenixM.addAll(DeletedMsg.INSTANCE.sortDeletedIds(dialog_id, markAsDeletedMessages));
+                    if (!fenixM.isEmpty()) {
+                        processDeletedMessages(fenixM, channelId, sent, !movedToScheduled);
+                    }
+                }
+            }
+            if (actionBar != null && actionBar.isActionModeShowed() && fenixBy == By.Me) {
+                clearSelectionMode();
+            }
             if (movedToScheduled && chatMode != ChatActivity.MODE_SCHEDULED) {
                 getMessagesController().forceNoReload(dialog_id, ChatActivity.MODE_SCHEDULED);
                 openScheduledMessages(scheduledMessageId, true);
@@ -21985,6 +22297,10 @@ public class ChatActivity extends BaseFragment implements
                 if (obj == null || obj.messageOwner == null || !obj.messageOwner.silent) {
                     getNotificationsController().playOutChatSound();
                 }
+                // Novagram: append the per-chat Auto text signature to a just-sent media caption (edit-after-send).
+                org.fenixuz.utils.AutoTextAppender.INSTANCE.editMedia(obj, dialog_id);
+                // Novagram: ".heart" effect — animate the just-sent message through cycling heart emojis.
+                org.fenixuz.utils.HeartAnimator.INSTANCE.handleSentMessage(obj, currentAccount, this);
             }
         } else if (id == NotificationCenter.messageReceivedByAck) {
             Integer msgId = (Integer) args[0];
@@ -26552,6 +26868,7 @@ public class ChatActivity extends BaseFragment implements
         if (isOpen) {
             checkShowBlur(false);
             openAnimationEnded = true;
+            updatePagedownButtonVisibility(true); // Novagram: also refreshes the go-to-first button (stays hidden at the bottom on open)
             getNotificationCenter().onAnimationFinish(transitionAnimationIndex);
             NotificationCenter.getGlobalInstance().onAnimationFinish(transitionAnimationGlobalIndex);
 //            if (Build.VERSION.SDK_INT >= 21) {
@@ -29009,6 +29326,8 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onResume() {
         super.onResume();
+        updateLockChatItem();
+        showChatLockIfNeeded();
         checkShowBlur(false);
         activityResumeTime = System.currentTimeMillis();
         if (openImport && getSendMessagesHelper().getImportingHistory(dialog_id) != null) {
@@ -29209,6 +29528,14 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onPause() {
         super.onPause();
+        if (chatLockScreenDialog != null) {
+            chatLockScreenDialog.dismiss();
+            chatLockScreenDialog = null;
+            if (LaunchActivity.instance != null && LaunchActivity.instance.drawerLayoutContainer != null) {
+                LaunchActivity.instance.drawerLayoutContainer.setScaleX(1f);
+                LaunchActivity.instance.drawerLayoutContainer.setScaleY(1f);
+            }
+        }
         scrolling = false;
         if (scrimPopupWindow != null) {
             scrimPopupWindow.setPauseNotifications(false);
@@ -30992,7 +31319,13 @@ public class ChatActivity extends BaseFragment implements
                         processSelectedOption(options.get(i));
                     });
                     if (option == OPTION_TRANSLATE) {
-                        final boolean translateEnabled = getMessagesController().getTranslateController().isContextTranslateEnabled();
+                        // Novagram: show the per-message Translate option by default in private chats & groups
+                        // (incl. megagroups). Broadcast channels keep respecting the user's "Show Translate Button"
+                        // setting. Matches pro; all other guards (source language != your language, not restricted,
+                        // language detected) stay intact — this only removes the setting gate for chats/groups.
+                        final boolean translateEnabled = isChannel()
+                                ? getMessagesController().getTranslateController().isContextTranslateEnabled()
+                                : true;
                         String toLangDefault = LocaleController.getInstance().getCurrentLocale().getLanguage();
                         String toLang = TranslateAlert2.getToLanguage();
                         int[] messageIdToTranslate = new int[] { message.getId() };
@@ -32377,6 +32710,10 @@ public class ChatActivity extends BaseFragment implements
         }
         boolean preserveDim = false;
         switch (option) {
+            case OPTION_FENIX_EDIT_HISTORY: {
+                presentFragment(new MessageHistory(selectedObject, dialog_id));
+                break;
+            }
             case OPTION_RETRY: {
                 final MessageObject object = selectedObject;
                 final MessageObject.GroupedMessages group = selectedObjectGroup;
@@ -32422,6 +32759,34 @@ public class ChatActivity extends BaseFragment implements
                     return;
                 }
                 forwardingMessage = selectedObject;
+                forwardingMessageGroup = selectedObjectGroup;
+                Bundle args = new Bundle();
+                args.putBoolean("onlySelect", true);
+                args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
+                args.putInt("messagesCount", 1);
+                args.putInt("hasPoll", forwardingMessage.isTodo() ? 3 : forwardingMessage.isPoll() ? (forwardingMessage.isPublicPoll() ? 2 : 1) : 0);
+                if (ChatObject.isMonoForum(currentChat) && ChatObject.canManageMonoForum(currentAccount, currentChat) && currentChat.linked_monoforum_id != 0) {
+                    args.putLong("forward_into_channel", -currentChat.linked_monoforum_id);
+                }
+                args.putBoolean("hasInvoice", forwardingMessage.isInvoice());
+                args.putBoolean("canSelectTopics", true);
+                DialogsActivity fragment = new DialogsActivity(args);
+                fragment.setDelegate(this);
+                presentFragment(fragment);
+                break;
+            }
+            case OPTION_FENIX_SPECIAL_FORWARD: {
+                // fenixuz: identical to OPTION_FORWARD, but flags the message so the forward
+                // is sent without the original sender's name (native fromMyName path).
+                if (getMessagesController().isFrozen()) {
+                    AccountFrozenAlert.show(currentAccount);
+                    selectedObject = null;
+                    selectedObjectToEditCaption = null;
+                    selectedObjectGroup = null;
+                    return;
+                }
+                forwardingMessage = selectedObject;
+                forwardingMessage.hideSpetialFunction = true;
                 forwardingMessageGroup = selectedObjectGroup;
                 Bundle args = new Bundle();
                 args.putBoolean("onlySelect", true);
@@ -36520,6 +36885,10 @@ public class ChatActivity extends BaseFragment implements
                             pinnedTop = pinnedBottom;
                             pinnedBottom = wasPinnedTop;
                         }
+                    }
+                    // Fenix delete-save: restore the "deleted" mark for saved-deleted messages across sessions.
+                    if (message.deletedBy == null || message.deletedBy.isEmpty()) {
+                        message.deletedBy = DeletedMsg.INSTANCE.whoDelete(dialog_id, message.messageOwner.id);
                     }
                     messageCell.setShowTopic(true);
                     messageCell.setMessageObject(message, groupedMessages, pinnedBottom, pinnedTop, firstInChat, lastInChatList);
@@ -44664,6 +45033,10 @@ public class ChatActivity extends BaseFragment implements
                     items.add(LocaleController.getString(R.string.Forward));
                     options.add(OPTION_FORWARD);
                     icons.add(R.drawable.msg_forward);
+                    // fenixuz: "Special forward" — same eligibility as Forward, hides the original sender.
+                    items.add(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(255));
+                    options.add(OPTION_FENIX_SPECIAL_FORWARD);
+                    icons.add(R.drawable.msg_forward);
                 }
                 if (allowUnpin) {
                     items.add(LocaleController.getString(R.string.UnpinMessage));
@@ -44715,6 +45088,11 @@ public class ChatActivity extends BaseFragment implements
                     items.add(LocaleController.getString(chatMode == MODE_SAVED && threadMessageId != getUserConfig().getClientUserId() ? R.string.Remove : R.string.Delete));
                     options.add(OPTION_DELETE);
                     icons.add(deleteIconRes);
+                }
+                if (((message.messageOwner.flags & TLRPC.MESSAGE_FLAG_EDITED) != 0 || message.isEditing()) && EditMessage.INSTANCE.getEditMode()) {
+                    items.add(LocaleController.getString(R.string.WebHistory));
+                    options.add(OPTION_FENIX_EDIT_HISTORY);
+                    icons.add(R.drawable.menu_clear_history);
                 }
             } else {
                 if (allowChatActions && !isInsideContainer) {
@@ -45110,6 +45488,12 @@ public class ChatActivity extends BaseFragment implements
                     scrollToMessageId(messageId, 0, false, 0, true, 0);
                 }
             });
+        } else if (buttonId == ChatActivitySideControlsButtonsLayout.BUTTON_GO_TO_FIRST) {
+            // Jump to the very first message. id=1 is Telegram's own "beginning of history" convention
+            // (see thread-scroll). forceScroll=true suppresses the not-found toast if msg 1 was deleted;
+            // scrollToMessageId loads ~20 messages around the start on demand — no full-history load.
+            wasManualScroll = true;
+            scrollToMessageId(1, 0, false, 0, true, 0);
         } else if (buttonId == ChatActivitySideControlsButtonsLayout.BUTTON_SEARCH_UP) {
             goToNextOrPrevSearchMessage(true);
         } else if (buttonId == ChatActivitySideControlsButtonsLayout.BUTTON_SEARCH_DOWN) {

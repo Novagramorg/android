@@ -1466,6 +1466,38 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         if (array == null) {
             array = new ArrayList<>();
         }
+        // Novagram strangers. Always build a FRESH copy — getDialogsArray returns the LIVE backing list
+        // for DIALOGS_TYPE_DEFAULT, so mutating it in place would permanently delete dialogs. ONE rule
+        // (StrangerShield.belongsInInbox) splits the dialogs: the inbox screen keeps the strangers, the
+        // main list keeps everything else. While the shield is on, each stranger is captured so it stays
+        // filed in the inbox even after the shield is turned off.
+        final boolean fenixStrangerInbox = parentFragment != null && parentFragment.isFenixStrangerInbox();
+        if (dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT
+                && (fenixStrangerInbox || org.fenixuz.utils.StrangerShield.isEnabled() || org.fenixuz.utils.StrangerShield.hasCaptured(currentAccount))) {
+            if (fenixStrangerInbox) {
+                hasHints = false;
+            }
+            final boolean shieldOn = org.fenixuz.utils.StrangerShield.isEnabled();
+            ArrayList<TLRPC.Dialog> fenixResult = new ArrayList<>(array.size());
+            for (int a = 0, N = array.size(); a < N; a++) {
+                TLRPC.Dialog d = array.get(a);
+                if (d == null) {
+                    continue;
+                }
+                boolean inbox = false;
+                if (DialogObject.isUserDialog(d.id)) {
+                    TLRPC.User u = messagesController.getUser(d.id);
+                    if (shieldOn && org.fenixuz.utils.StrangerShield.isStranger(u)) {
+                        org.fenixuz.utils.StrangerShield.capture(currentAccount, d.id);
+                    }
+                    inbox = org.fenixuz.utils.StrangerShield.belongsInInbox(currentAccount, u, d.id);
+                }
+                if (inbox == fenixStrangerInbox) {
+                    fenixResult.add(d);
+                }
+            }
+            array = fenixResult;
+        }
         dialogsCount = array.size();
         isEmpty = false;
         if (dialogsCount == 0 && parentFragment.isArchive()) {
@@ -1473,7 +1505,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
             return;
         }
 
-        if (!hasHints && dialogsType == 0 && folderId == 0 && messagesController.isDialogsEndReached(folderId) && !forceUpdatingContacts) {
+        if (!hasHints && dialogsType == 0 && folderId == 0 && !fenixStrangerInbox && messagesController.isDialogsEndReached(folderId) && !forceUpdatingContacts) {
             if (messagesController.getAllFoldersDialogsCount() <= 10 && ContactsController.getInstance(currentAccount).doneLoadingContacts && !ContactsController.getInstance(currentAccount).contacts.isEmpty()) {
                 onlineContacts = new ArrayList<>(ContactsController.getInstance(currentAccount).contacts);
                 long selfId = UserConfig.getInstance(currentAccount).clientUserId;

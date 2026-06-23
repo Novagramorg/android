@@ -1291,6 +1291,8 @@ public class LocaleController {
         if (localeInfo == null) {
             return 0;
         }
+        // Fenix: keep our LanguageCode (getMyTitles) in sync with Telegram's selected app language.
+        org.fenixuz.utils.LanguageCode.INSTANCE.setLanguageCode(localeInfo.getLangCode());
         int requestId = 0;
         boolean hasBase = localeInfo.hasBaseLang();
         File pathToFile = localeInfo.getPathToFile();
@@ -1469,7 +1471,7 @@ public class LocaleController {
     public static String getString(@StringRes int res) {
         String key = resourcesCacheMap.get(res);
         if (res == R.string.AppName){
-            return "FenixUz";
+            return "Novagram";
         }
         if (key == null) {
             resourcesCacheMap.put(res, key = ApplicationLoader.applicationContext.getResources().getResourceEntryName(res));

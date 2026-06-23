@@ -16,6 +16,7 @@ import com.google.android.exoplayer2.util.Consumer;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
+import org.fenixuz.utils.StoryUtil;
 import org.telegram.SQLite.SQLitePreparedStatement;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -282,6 +283,9 @@ public class StoriesController {
     }
 
     public boolean hasStories() {
+        if (StoryUtil.INSTANCE.getHideStoryMode()) {
+            return false;
+        }
         return (dialogListStories != null && dialogListStories.size() > 0) || hasSelfStories();
     }
 
@@ -4199,6 +4203,9 @@ public class StoriesController {
     }
 
     public boolean hasOnlySelfStories() {
+        if (StoryUtil.INSTANCE.getHideStoryMode()) {
+            return false;
+        }
         return hasSelfStories() && (getDialogListStories().isEmpty() || (getDialogListStories().size() == 1 && DialogObject.getPeerDialogId(getDialogListStories().get(0).peer) == UserConfig.getInstance(currentAccount).clientUserId));
     }
 

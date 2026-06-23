@@ -240,7 +240,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         tabs = new GlassTabView[5];
         tabs[INDEX_CHATS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CHATS, R.string.MainTabsChats);
-        tabs[INDEX_CONTACTS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CHECKLIST, R.string.MainTabsTodo);
+        tabs[INDEX_CONTACTS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CONTACTS, R.string.MainTabsContacts);
         tabs[INDEX_SETTINGS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.SETTINGS, R.string.Settings);
         tabs[INDEX_CALLS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CALLS, R.string.MainTabsCalls);
         tabs[INDEX_PROFILE] = GlassTabView.createAvatar(context, resourceProvider, currentAccount, R.string.MainTabsProfile);
@@ -325,7 +325,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             return;
         }
 
-        final int unreadCount = MessagesStorage.getInstance(currentAccount).getMainUnreadCount();
+        int unreadCount = MessagesStorage.getInstance(currentAccount).getMainUnreadCount();
+        // Novagram "Protect from strangers": when the shield is OFF, captured strangers are still hidden
+        // from the main list (filed in the inbox), so drop their unread from the bottom "Chats" badge too
+        // (while ON, calcUnreadCounters already excludes all strangers and this returns 0).
+        unreadCount -= org.fenixuz.utils.StrangerShield.countInboxedUnreadChats(currentAccount);
         if (unreadCount > 0) {
             final String unreadCountFmt = LocaleController.formatNumber(unreadCount, ',');
             tabs[INDEX_CHATS].setCounter(unreadCountFmt, false, animated);
@@ -537,8 +541,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     protected BaseFragment createBaseFragmentAt(int position) {
         if (position == POSITION_CONTACTS) {
             Bundle args = new Bundle();
+            // As a TAB ROOT, Contacts must NOT remove itself when opening a chat — otherwise the tab's
+            // fragment stack empties and Back from the chat exits the whole app. (Same as the Calls tab.)
+            args.putBoolean("needFinishFragment", false);
             args.putBoolean("hasMainTabs", true);
-            return new org.fenixuz.todo.TodoActivity(args);
+            return new ContactsActivity(args);
         } else if (position == POSITION_CALLS_OR_SETTINGS) {
             if (getUserConfig().showCallsTab) {
                 Bundle args = new Bundle();

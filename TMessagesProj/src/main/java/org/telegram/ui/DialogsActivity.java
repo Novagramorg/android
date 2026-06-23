@@ -95,6 +95,11 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.ViewPager;
 
 import org.telegram.messenger.AccountInstance;
+import org.fenixuz.ui.create_folder_dialog.FolderIcons;
+import org.fenixuz.ui.chat_preview.ChatPreviewBottomSheet;
+import org.fenixuz.ui.secret_chat.SecretLockScreenDialog;
+import org.fenixuz.ui.secret_chat.SecretPassword;
+import org.fenixuz.utils.StoryUtil;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.ApplicationLoader;
@@ -573,6 +578,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private ActionBarMenuSubItem readItem;
     @Nullable
     private ActionBarMenuSubItem blockItem;
+    @Nullable
+    private ActionBarMenuSubItem secretChatItem;
+    public SecretLockScreenDialog secretLockScreenDialog = null;
 
     private float additionalFloatingTranslation;
     private float floatingButtonPanOffset;
@@ -666,6 +674,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private boolean canDeletePsaSelected;
 
     private int folderId;
+    // Novagram "Stranger chats" inbox mode: this DialogsActivity instance shows ONLY non-contact
+    // private chats (the ones the "Protect from strangers" toggle hides from the main list).
+    private boolean fenixStrangerInbox;
+
+    public boolean isFenixStrangerInbox() {
+        return fenixStrangerInbox;
+    }
 
     private final static int pin = 100;
     private final static int read = 101;
@@ -678,6 +693,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private final static int pin2 = 108;
     private final static int add_to_folder = 109;
     private final static int remove_from_folder = 110;
+    private final static int secret_chat = 111;
 
     private final static int ARCHIVE_ITEM_STATE_PINNED = 0;
     private final static int ARCHIVE_ITEM_STATE_SHOWED = 1;
@@ -2781,6 +2797,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             checkCanWrite = arguments.getBoolean("checkCanWrite", true);
             afterSignup = arguments.getBoolean("afterSignup", false);
             folderId = arguments.getInt("folderId", 0);
+            fenixStrangerInbox = arguments.getBoolean("fenixStrangerInbox", false);
             resetDelegate = arguments.getBoolean("resetDelegate", true);
             messagesCount = arguments.getInt("messagesCount", 0);
             hasPoll = arguments.getInt("hasPoll", 0);
@@ -3449,10 +3466,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             actionBar.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
         } else {
-            if (searchString != null || folderId != 0) {
+            if (searchString != null || folderId != 0 || fenixStrangerInbox) {
                 actionBar.setBackButtonDrawable(backDrawable = new BackDrawable(false));
             }
-            if (folderId != 0) {
+            if (fenixStrangerInbox) {
+                actionBar.setTitle(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(321));
+            } else if (folderId != 0) {
                 actionBar.setTitle(getString(R.string.ArchivedChats));
             } else {
                 statusDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(null, dp(26));
@@ -3487,7 +3506,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         if (
             (initialDialogsType == DIALOGS_TYPE_DEFAULT && !onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) &&
-            folderId == 0 && TextUtils.isEmpty(searchString)
+            folderId == 0 && TextUtils.isEmpty(searchString) && !fenixStrangerInbox
         ) {
             filterTabsView = new FilterTabsView(context, resourceProvider) {
                 @Override
@@ -3570,6 +3589,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     ArrayList<MessagesController.DialogFilter> dialogFilters = getMessagesController().getDialogFilters();
                     if (!tab.isDefault && (tab.id < 0 || tab.id >= dialogFilters.size())) {
                         return;
+                    }
+                    // Fenix: in folder-icon mode the tab shows no text, so show the selected folder's name in the title.
+                    if (FolderIcons.INSTANCE.isIconMode()) {
+                        actionBar.setTitle(tab.title);
                     }
                     viewPages[1].selectedType = tab.id;
                     viewPages[1].setVisibility(View.VISIBLE);
@@ -3970,7 +3993,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         undoView.showWithAction(did, UndoView.ACTION_REMOVED_FROM_FOLDER, neverShow.size(), filter, null, null);
                     }
                     hideActionMode(false);
-                } else if (id == pin || id == read || id == delete || id == clear || id == mute || id == archive || id == block || id == archive2 || id == pin2) {
+                } else if (id == pin || id == read || id == delete || id == clear || id == mute || id == archive || id == block || id == archive2 || id == pin2 || id == secret_chat) {
                     performSelectedDialogsAction(selectedDialogs, id, true, false);
                 }
             }
@@ -5546,6 +5569,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         checkUi_searchFieldStyle();
 
         ViewCompat.setOnApplyWindowInsetsListener(fragmentView, this::onApplyWindowInsets);
+
+        if (folderId == SecretPassword.SECRET_FOLDER_ID) {
+            actionBar.setTitle(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(213));
+            if (SecretPassword.INSTANCE.hasPassword()) {
+                secretLockScreenDialog = new SecretLockScreenDialog(this, context, SecretPassword.INSTANCE.credential(), null);
+                secretLockScreenDialog.show();
+                secretLockScreenDialog.getSecretLockScreen().onShow(true, true, -1, -1, null, null);
+            }
+        }
+
         return fragmentView;
     }
 
@@ -6642,6 +6675,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         readItem = otherItem.addSubItem(read, R.drawable.msg_markread, LocaleController.getString(R.string.MarkAsRead));
         clearItem = otherItem.addSubItem(clear, R.drawable.msg_clear, LocaleController.getString(R.string.ClearHistory));
         blockItem = otherItem.addSubItem(block, R.drawable.msg_block, LocaleController.getString(R.string.BlockUser));
+        secretChatItem = otherItem.addSubItem(secret_chat, R.drawable.msg_secret, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(215));
+        secretChatItem.setVisibility(View.GONE);
 
         muteItem.setOnLongClickListener(e -> {
             performSelectedDialogsAction(selectedDialogs, mute, true, true);
@@ -6744,7 +6779,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             filterOptions = null;
         }
         ArrayList<MessagesController.DialogFilter> filters = getMessagesController().getDialogFilters();
-        if (filters.size() > 1) {
+        // Novagram: when "hide folder tabs" is on, route to the hide path (else-branch) regardless of filter
+        // count — that branch already does the full cleanup AND sets canShowFilterTabsView=false, which the
+        // 50dp list-padding/offset logic keys off, so no extra layout handling is needed.
+        if (filters.size() > 1 && !org.fenixuz.utils.HideTabs.INSTANCE.isEnabled()) {
             if (force || filterTabsView.getVisibility() != View.VISIBLE) {
                 boolean animatedUpdateItems = animated;
                 if (filterTabsView.getVisibility() != View.VISIBLE) {
@@ -6906,6 +6944,25 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onResume() {
         super.onResume();
+        // Novagram: re-apply the "hide folder tabs" toggle once when returning from the settings screen
+        // (DialogsActivity is paused while that screen is open, so the change is applied here on resume).
+        if (org.fenixuz.utils.HideTabs.INSTANCE.consumeDirty()) {
+            updateFilterTabs(true, true);
+        }
+        // Secret way in: long-press the "Novagram" toolbar/title on the main dialogs screen.
+        // Title taps are handled by the ActionBar itself (titleActionRunnable), so the long-press
+        // listener belongs on the ActionBar, not the title view.
+        if (folderId == 0 && !onlySelect && actionBar != null) {
+            actionBar.setOnLongClickListener(v -> {
+                if (SecretPassword.INSTANCE.hasPassword() && !actionBar.isActionModeShowed() && !actionBar.isSearchFieldVisible()) {
+                    Bundle args = new Bundle();
+                    args.putInt("folderId", SecretPassword.SECRET_FOLDER_ID);
+                    presentFragment(new DialogsActivity(args));
+                    return true;
+                }
+                return false;
+            });
+        }
         if (dialogStoriesCell != null) {
             dialogStoriesCell.onResume();
         }
@@ -7123,6 +7180,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onPause() {
         super.onPause();
+        if (secretLockScreenDialog != null) {
+            secretLockScreenDialog.dismiss();
+            secretLockScreenDialog = null;
+            if (LaunchActivity.instance != null && LaunchActivity.instance.drawerLayoutContainer != null) {
+                LaunchActivity.instance.drawerLayoutContainer.setScaleX(1f);
+                LaunchActivity.instance.drawerLayoutContainer.setScaleY(1f);
+            }
+        }
         if (storiesBulletin != null) {
             storiesBulletin.hide();
             storiesBulletin = null;
@@ -8123,7 +8188,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (!actionBar.isActionModeShowed() && !AndroidUtilities.isTablet() && !onlySelect && view instanceof DialogCell && !getMessagesController().isForum(((DialogCell) view).getDialogId()) && !rightSlidingDialogContainer.hasFragment()) {
             DialogCell cell = (DialogCell) view;
             if (cell.isPointInsideAvatar(x, y)) {
-                return showChatPreview(cell);
+                return showChatPreviewAsBottomSheet(cell);
             }
         }
         if (rightSlidingDialogContainer != null && rightSlidingDialogContainer.hasFragment()) {
@@ -8287,6 +8352,31 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
         }
         return null;
+    }
+
+    // Novagram ghost preview: long-press a dialog avatar -> read messages / listen audio / view media
+    // in a bottom sheet WITHOUT sending any read receipt to the other side. Folders and encrypted
+    // dialogs aren't previewable, so they fall back to Telegram's default long-press handling.
+    public boolean showChatPreviewAsBottomSheet(DialogCell cell) {
+        long dialogId = cell.getDialogId();
+        if (cell.isDialogFolder() || dialogId == 0 || DialogObject.isEncryptedDialog(dialogId)) {
+            return showChatPreview(cell);
+        }
+        // A locked chat must stay locked in the preview too — gate it behind the passcode first.
+        if (org.fenixuz.utils.Password.INSTANCE.isLocked(dialogId)) {
+            SecretLockScreenDialog lock = new SecretLockScreenDialog(this, getParentActivity(), org.fenixuz.utils.Password.INSTANCE.credentialFor(dialogId), () -> {
+                ChatPreviewBottomSheet sheet = new ChatPreviewBottomSheet(getParentActivity(), dialogId, getParentActivity());
+                showDialog(sheet);
+            });
+            lock.show();
+            lock.getSecretLockScreen().onShow(true, true, -1, -1, null, null);
+            cell.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            return true;
+        }
+        ChatPreviewBottomSheet bottomSheet = new ChatPreviewBottomSheet(getParentActivity(), dialogId, getParentActivity());
+        showDialog(bottomSheet);
+        cell.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+        return true;
     }
 
     public boolean showChatPreview(DialogCell cell) {
@@ -8981,6 +9071,19 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     finishFragment();
                 }
             }
+            hideActionMode(false);
+            return;
+        } else if (action == secret_chat) {
+            ArrayList<Long> copy = new ArrayList<>(selectedDialogs);
+            boolean toSecret = folderId != SecretPassword.SECRET_FOLDER_ID;
+            for (int i = 0; i < copy.size(); i++) {
+                if (toSecret) {
+                    SecretPassword.INSTANCE.addSecret(copy.get(i));
+                } else {
+                    SecretPassword.INSTANCE.removeSecret(copy.get(i));
+                }
+            }
+            getMessagesController().addDialogToFolder(copy, toSecret ? SecretPassword.SECRET_FOLDER_ID : 0, -1, null, 0);
             hideActionMode(false);
             return;
         } else if ((action == pin || action == pin2) && canPinCount != 0) {
@@ -9691,6 +9794,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 blockItem.setVisibility(View.GONE);
             } else {
                 blockItem.setVisibility(View.VISIBLE);
+            }
+        }
+        if (secretChatItem != null) {
+            if (SecretPassword.INSTANCE.hasPassword()) {
+                secretChatItem.setVisibility(View.VISIBLE);
+                if (folderId == SecretPassword.SECRET_FOLDER_ID) {
+                    secretChatItem.setTextAndIcon(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(216), R.drawable.msg_removefolder);
+                } else {
+                    secretChatItem.setTextAndIcon(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(215), R.drawable.msg_secret);
+                }
+            } else {
+                secretChatItem.setVisibility(View.GONE);
             }
         }
         if (removeFromFolderItem != null) {
@@ -13171,6 +13286,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 });
             });
             io.addGap();
+            if (StoryUtil.INSTANCE.getHideStoryModeForVisibilityOnActionBar()) {
+                io.add(StoryUtil.INSTANCE.getHideStoryBtnIcon(), StoryUtil.INSTANCE.getStoryTitle(), () -> {
+                    StoryUtil.INSTANCE.changeHideStoryMode();
+                    updateStoriesVisibility(true);
+                });
+            }
             io.add(R.drawable.outline_groups_24, getString(R.string.NewGroup), () -> {
                 Bundle args = new Bundle();
                 presentFragment(new GroupCreateActivity(args));

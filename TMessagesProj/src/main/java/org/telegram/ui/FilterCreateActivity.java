@@ -45,6 +45,10 @@ import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import org.fenixuz.ui.create_folder_dialog.CreateFolderIconBottomSheetDialog;
+import org.fenixuz.ui.create_folder_dialog.FolderIcons;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BotWebViewVibrationEffect;
@@ -122,6 +126,7 @@ public class FilterCreateActivity extends BaseFragment {
     private boolean nameChangedManually;
 
     private MessagesController.DialogFilter filter;
+    private int newFolderIcon = 0; // Fenix: selected custom folder icon (res id), 0 = none/default
     private boolean creatingNew;
     private boolean doNotCloseWhenSave;
     private CharSequence newFilterName;
@@ -1071,6 +1076,9 @@ public class FilterCreateActivity extends BaseFragment {
             filter.flags = newFilterFlags;
             checkDoneButton(true);
 
+            // Fenix: persist the chosen custom folder icon (filter.id is final after save).
+            FolderIcons.INSTANCE.setIconRes(filter.id, newFolderIcon);
+
             getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
 
             if (after != null) {
@@ -1522,7 +1530,29 @@ public class FilterCreateActivity extends BaseFragment {
                     });
                     editText.setPadding(dp(23 - 16), editText.getPaddingTop(), editText.getPaddingRight(), editText.getPaddingBottom());
                     cell.editTextEmoji.getEditText().setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-                    view = cell;
+
+                    // Fenix: a folder-icon button next to the name field; tapping it opens the icon picker.
+                    if (newFolderIcon == 0) {
+                        newFolderIcon = FolderIcons.INSTANCE.getSelectedIconRes(filter.id);
+                    }
+                    FrameLayout iconWrap = new FrameLayout(mContext);
+                    iconWrap.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    iconWrap.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, LocaleController.isRTL ? 0 : 64, 0, !LocaleController.isRTL ? 0 : 64, 0));
+                    ImageView folderIconView = new ImageView(mContext);
+                    folderIconView.setScaleType(ImageView.ScaleType.CENTER);
+                    folderIconView.setImageResource(newFolderIcon != 0 ? newFolderIcon : R.drawable.msg_folders);
+                    folderIconView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
+                    folderIconView.setOnClickListener(v -> new CreateFolderIconBottomSheetDialog(mContext, newFolderIcon, new Function1<Integer, Unit>() {
+                        @Override
+                        public Unit invoke(Integer icon) {
+                            newFolderIcon = icon;
+                            folderIconView.setImageResource(newFolderIcon);
+                            checkDoneButton(true);
+                            return null;
+                        }
+                    }));
+                    iconWrap.addView(folderIconView, LayoutHelper.createFrame(48, 48, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 6, 2, 6, 0));
+                    view = iconWrap;
                     break;
                 }
                 case VIEW_TYPE_SHADOW:

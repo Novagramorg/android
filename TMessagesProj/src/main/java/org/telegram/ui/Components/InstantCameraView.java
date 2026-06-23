@@ -70,6 +70,7 @@ import androidx.core.graphics.ColorUtils;
 
 import com.google.android.exoplayer2.ExoPlayer;
 
+import org.fenixuz.utils.CameraSituation;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.AutoDeleteMediaTask;
@@ -738,6 +739,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             recordedTime = 0;
             progress = 0;
         }
+        // Fenix: use the camera the user picked in the front/back popup.
+        isFrontface = CameraSituation.INSTANCE.isFront();
         cancelled = false;
         file = null;
         encryptedFile = null;

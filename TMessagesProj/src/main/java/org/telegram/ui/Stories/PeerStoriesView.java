@@ -69,6 +69,8 @@ import androidx.core.graphics.ColorUtils;
 import androidx.core.math.MathUtils;
 import androidx.recyclerview.widget.ChatListItemAnimator;
 
+import org.fenixuz.utils.GhostStory;
+import org.fenixuz.utils.GhostVariable;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
@@ -2098,6 +2100,24 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     }
                                 });
                             }
+                        }
+
+                        // Novagram: when the Download-stories toggle is on, add a real "Save story" item that
+                        // works regardless of Premium or the author's save restriction (reuses native saveToGallery()).
+                        // Suppressed when the native real save above is already shown (Premium + shareable).
+                        boolean fenixNativeSaveShown = !unsupported && allowShare && !currentStory.isLive
+                                && UserConfig.getInstance(currentAccount).isPremium();
+                        if (org.fenixuz.utils.StoryDownload.INSTANCE.isEnabled() && !fenixNativeSaveShown
+                                && !unsupported && !currentStory.isLive
+                                && currentStory.storyItem != null
+                                && !(currentStory.storyItem instanceof TL_stories.TL_storyItemSkipped)) {
+                            ActionBarMenuItem.addItem(popupLayout, R.drawable.msg_gallery,
+                                    org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(299), false, resourcesProvider).setOnClickListener(v -> {
+                                saveToGallery();
+                                if (popupMenu != null) {
+                                    popupMenu.dismiss();
+                                }
+                            });
                         }
 
                         if (!MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && !isChannel) {
@@ -7015,6 +7035,9 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                         userStories = userFull.stories;
                     }
                 }
+            }
+            if (GhostStory.INSTANCE.getGhostMode() || GhostVariable.INSTANCE.getGhostMode()) {
+                return;
             }
             if (isActive && this.storyItem != null && userStories != null && ((!StoriesUtilities.hasExpiredViews(storyItem) && (this.storyItem.id > userStories.max_read_id || this.storyItem.id > storiesController.dialogIdToMaxReadId.get(dialogId, 0))) || isSelf)) {
                 if (storyViewer.overrideUserStories != null) {

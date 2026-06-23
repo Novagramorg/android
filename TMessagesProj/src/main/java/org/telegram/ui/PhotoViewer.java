@@ -2170,6 +2170,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private final static int gallery_menu_chromecast = 24;
     private final static int gallery_menu_create_sticker = 25;
     private final static int gallery_menu_delete2 = 26;
+    private final static int fenix_photo_to_text = 200;   // Novagram: OCR "Scan text"
 
     private final static int ads_sponsor_info = 101;
     private final static int ads_about = 102;
@@ -5066,6 +5067,14 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         return;
                     }
                     closePhoto(true, false);
+                } else if (id == fenix_photo_to_text) {
+                    // Novagram: OCR — recognise the text in the current photo (its cached file, no permission needed).
+                    if (currentMessageObject != null && parentActivity != null) {
+                        File f = FileLoader.getInstance(currentAccount).getPathToMessage(currentMessageObject.messageOwner);
+                        if (f != null && f.exists()) {
+                            new org.fenixuz.ui.photo_to_text.PhotoToText(parentActivity, currentAccount, f.toString());
+                        }
+                    }
                 } else if (id == gallery_menu_save) {
                     if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && parentActivity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                         parentActivity.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
@@ -6004,9 +6013,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         menuItem.addSubItem(gallery_menu_hide_translation, R.drawable.msg_translate, getString(R.string.HideTranslation)).setColors(0xfffafafa, 0xfffafafa);
         menuItem.addSubItem(gallery_menu_delete, R.drawable.msg_delete, getString(R.string.Delete)).setColors(0xfffafafa, 0xfffafafa);
         menuItem.addSubItem(gallery_menu_cancel_loading, R.drawable.msg_cancel, getString(R.string.StopDownload)).setColors(0xfffafafa, 0xfffafafa);
+        // Novagram: OCR "Scan text" — shown only for image messages (see setIsAboutToSwitchToIndex).
+        menuItem.addSubItem(fenix_photo_to_text, R.drawable.msg_photo_text_framed3, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(330)).setColors(0xfffafafa, 0xfffafafa);
         menuItem.redrawPopup(0xf9222222);
         menuItem.hideSubItem(gallery_menu_translate);
         menuItem.hideSubItem(gallery_menu_hide_translation);
+        menuItem.hideSubItem(fenix_photo_to_text);
         setMenuItemIcon(false, true);
         menuItem.setPopupItemsSelectorColor(0x0fffffff);
 
@@ -14615,6 +14627,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         final boolean forward = index >= switchingToIndex;
         int wasIndex = switchingToIndex;
         switchingToIndex = index;
+        // Novagram: hide OCR by default each switch; the message-photo branch re-shows it for images only.
+        if (menuItem != null) {
+            menuItem.hideSubItem(fenix_photo_to_text);
+        }
 
         boolean isVideo = false;
         boolean isLivePhoto = false;
@@ -14903,6 +14919,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 galleryButton.setVisibility(View.VISIBLE);
                 galleryGap.setVisibility(View.VISIBLE);
                 menuItem.showSubItem(gallery_menu_share);
+                // Novagram: OCR makes sense only for a still image (not video/gif/document).
+                if (newMessageObject.isPhoto()) {
+                    menuItem.showSubItem(fenix_photo_to_text);
+                }
             }
             groupedPhotosListView.fillList();
         } else if (!secureDocuments.isEmpty()) {

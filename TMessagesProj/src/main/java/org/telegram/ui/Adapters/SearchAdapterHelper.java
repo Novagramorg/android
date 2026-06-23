@@ -223,13 +223,13 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        if (!allowChats || canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat) || !allowGlobalResults && ChatObject.isNotInChat(chat) || !filter(chat)) {
+                                        if (!allowChats || canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat) || !allowGlobalResults && ChatObject.isNotInChat(chat) || !filter(chat) || isInSecretFolder(-chat.id)) {
                                             continue;
                                         }
                                         globalSearch.add(chat);
                                         globalSearchMap.put(-chat.id, chat);
                                     } else if (user != null) {
-                                        if (canAddGroupsOnly || !allowBots && user.bot || !allowSelf && user.self || !allowGlobalResults && b == 1 && !user.contact || !filter(user)) {
+                                        if (canAddGroupsOnly || !allowBots && user.bot || !allowSelf && user.self || !allowGlobalResults && b == 1 && !user.contact || !filter(user) || isInSecretFolder(user.id)) {
                                             continue;
                                         }
                                         globalSearch.add(user);
@@ -250,13 +250,13 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        if (!allowChats || canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat) || -chat.id == exceptDialogId || !filter(chat)) {
+                                        if (!allowChats || canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat) || -chat.id == exceptDialogId || !filter(chat) || isInSecretFolder(-chat.id)) {
                                             continue;
                                         }
                                         localServerSearch.add(chat);
                                         globalSearchMap.put(-chat.id, chat);
                                     } else if (user != null) {
-                                        if (canAddGroupsOnly || !allowBots && user.bot || !allowSelf && user.self || user.id == exceptDialogId || !filter(user)) {
+                                        if (canAddGroupsOnly || !allowBots && user.bot || !allowSelf && user.self || user.id == exceptDialogId || !filter(user) || isInSecretFolder(user.id)) {
                                             continue;
                                         }
                                         localServerSearch.add(user);
@@ -415,6 +415,12 @@ public class SearchAdapterHelper {
             }
         }
         removeGroupSearchFromGlobal();
+    }
+
+    /** Secret-folder chats must never appear in server/global search results either. */
+    private boolean isInSecretFolder(long dialogId) {
+        TLRPC.Dialog d = MessagesController.getInstance(currentAccount).dialogs_dict.get(dialogId);
+        return d != null && d.folder_id == org.fenixuz.ui.secret_chat.SecretPassword.SECRET_FOLDER_ID;
     }
 
     public void mergeResults(ArrayList<Object> localResults) {

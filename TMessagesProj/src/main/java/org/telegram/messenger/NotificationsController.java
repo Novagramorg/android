@@ -1311,6 +1311,20 @@ public class NotificationsController extends BaseController {
                         }
                     }
                     canAddValue = canAddValue && !messageObject.isStoryPush;
+                    // Novagram "Protect from strangers": an inboxed stranger's private DM must neither
+                    // notify NOR count toward the unread/app-badge. While the shield is on, capture the
+                    // stranger so it stays filed in the inbox (silent) even after the shield is off.
+                    if (canAddValue && DialogObject.isUserDialog(dialog_id)) {
+                        TLRPC.User fenixUser = getMessagesController().getUser(dialog_id);
+                        if (org.fenixuz.utils.StrangerShield.isStranger(fenixUser)) {
+                            if (org.fenixuz.utils.StrangerShield.isEnabled()) {
+                                org.fenixuz.utils.StrangerShield.capture(currentAccount, dialog_id);
+                            }
+                            if (org.fenixuz.utils.StrangerShield.belongsInInbox(currentAccount, fenixUser, dialog_id)) {
+                                canAddValue = false;
+                            }
+                        }
+                    }
 
                     if (canAddValue) {
                         if (getMessagesController().isForum(dialog_id)) {
@@ -1345,6 +1359,8 @@ public class NotificationsController extends BaseController {
             if (storiesUpdated) {
                 updateStoryPushesRunnable();
             }
+            // Novagram unread-message reminder: arm a single delayed reminder for incoming messages.
+            org.fenixuz.utils.MessageReminder.INSTANCE.onNewMessages(messageObjects);
             if (countDownLatch != null) {
                 countDownLatch.countDown();
             }
@@ -1489,6 +1505,38 @@ public class NotificationsController extends BaseController {
             notifyCheck = false;
             if (showBadgeNumber) {
                 setBadge(getTotalAllUnreadCount());
+            }
+            // Novagram unread-message reminder: cancel the reminder only on an actual read (count went down).
+            org.fenixuz.utils.MessageReminder.INSTANCE.onRead(total_unread_count < old_unread_count);
+        });
+    }
+
+    /**
+     * Novagram "Protect from strangers": clear any notifications/badge already accumulated for
+     * non-contact private DMs that arrived BEFORE the shield was switched on. Reuses the tested
+     * "mark as read" path ({@link #processDialogsUpdateRead}) with newCount=0 per stranger dialog —
+     * it removes them from pushDialogs, subtracts them from total_unread_count, drops their push
+     * messages, rebuilds the notification without them, and refreshes the app badge.
+     */
+    public void fenixDismissStrangers() {
+        notificationsQueue.postRunnable(() -> {
+            try {
+                LongSparseIntArray toDismiss = null;
+                for (int i = 0; i < pushDialogs.size(); i++) {
+                    long did = pushDialogs.keyAt(i);
+                    if (DialogObject.isUserDialog(did)
+                            && org.fenixuz.utils.StrangerShield.isStranger(getMessagesController().getUser(did))) {
+                        if (toDismiss == null) {
+                            toDismiss = new LongSparseIntArray();
+                        }
+                        toDismiss.put(did, 0);
+                    }
+                }
+                if (toDismiss != null) {
+                    processDialogsUpdateRead(toDismiss);
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
             }
         });
     }
@@ -1722,6 +1770,11 @@ public class NotificationsController extends BaseController {
                                         continue;
                                     }
                                 }
+                                // Novagram "Protect from strangers": don't count an inboxed stranger in the badge.
+                                if (dialog != null && DialogObject.isUserDialog(dialog.id)
+                                        && org.fenixuz.utils.StrangerShield.belongsInInbox(a, MessagesController.getInstance(a).getUser(dialog.id), dialog.id)) {
+                                    continue;
+                                }
                                 if (dialog != null) {
                                     count += MessagesController.getInstance(a).getDialogUnreadCount(dialog);
                                 }
@@ -1742,6 +1795,11 @@ public class NotificationsController extends BaseController {
                                     if (ChatObject.isNotInChat(chat)) {
                                         continue;
                                     }
+                                }
+                                // Novagram "Protect from strangers": don't count an inboxed stranger in the badge.
+                                if (DialogObject.isUserDialog(dialog.id)
+                                        && org.fenixuz.utils.StrangerShield.belongsInInbox(a, MessagesController.getInstance(a).getUser(dialog.id), dialog.id)) {
+                                    continue;
                                 }
                                 if (MessagesController.getInstance(a).getDialogUnreadCount(dialog) != 0) {
                                     count++;
@@ -4533,7 +4591,7 @@ public class NotificationsController extends BaseController {
             PendingIntent contentIntent = PendingIntent.getActivity(ApplicationLoader.applicationContext, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_ONE_SHOT);
 
             mBuilder.setContentTitle(name)
-                    .setSmallIcon(R.drawable.bird_red)
+                    .setSmallIcon(R.drawable.ic_stat_novagram)
                     .setAutoCancel(true)
                     .setNumber(total_unread_count)
                     .setContentIntent(contentIntent)
@@ -4704,6 +4762,11 @@ public class NotificationsController extends BaseController {
                 } else {
                     mBuilder.addAction(R.drawable.ic_ab_reply, LocaleController.getString(R.string.Reply), PendingIntent.getBroadcast(ApplicationLoader.applicationContext, 2, replyIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
                 }
+            }
+            // Novagram "Protect from strangers": stay silent for a private DM from a non-contact
+            // (chat == null → one-on-one; groups still notify even if a stranger posts in them).
+            if (org.fenixuz.utils.StrangerShield.isEnabled() && chat == null && org.fenixuz.utils.StrangerShield.isStranger(user)) {
+                return;
             }
             showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType);
             scheduleNotificationRepeat();
@@ -5511,7 +5574,7 @@ public class NotificationsController extends BaseController {
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(ApplicationLoader.applicationContext)
                     .setContentTitle(name)
-                    .setSmallIcon(R.drawable.bird_red)
+                    .setSmallIcon(R.drawable.ic_stat_novagram)
                     .setContentText(text.toString())
                     .setAutoCancel(true)
                     .setNumber(dialogKey.story ? storyPushMessages.size() : messageObjects.size())

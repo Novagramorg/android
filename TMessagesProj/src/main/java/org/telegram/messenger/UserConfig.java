@@ -24,8 +24,15 @@ import java.util.Arrays;
 public class UserConfig extends BaseController {
 
     public static int selectedAccount;
-    public final static int MAX_ACCOUNT_DEFAULT_COUNT = 3;
-    public final static int MAX_ACCOUNT_COUNT = 4;
+    // Novagram: 32 accounts for everyone (premium gate removed; MAX_ACCOUNT_DEFAULT_COUNT == MAX_ACCOUNT_COUNT).
+    // MUST stay equal to the NATIVE jni/tgnet/Defines.h MAX_ACCOUNT_COUNT (it sizes jniEnv[] + the getInstance pool).
+    // Empty slots are free thanks to lazy init (ApplicationLoader skips non-activated accounts; native getInstance
+    // creates a manager only on first use). Lowered 100 -> 32 because every `for (a < MAX_ACCOUNT_COUNT)` startup loop
+    // (loadConfig probe, MediaController/ImageLoader cross-account observers) runs INTERPRETED on the first cold launch
+    // before ART AOT-compiles, so 100 iterations added several seconds to first-install start; 32 keeps "many
+    // accounts" while cutting that one-time cold-start tax ~3x. Warm launches were already ~0.4s either way.
+    public final static int MAX_ACCOUNT_COUNT = 32;
+    public final static int MAX_ACCOUNT_DEFAULT_COUNT = MAX_ACCOUNT_COUNT;
 
     private final Object sync = new Object();
     private volatile boolean configLoaded;
@@ -121,7 +128,8 @@ public class UserConfig extends BaseController {
     }
 
     public static int getMaxAccountCount() {
-        return hasPremiumOnAccounts() ? 5 : 3;
+        // Novagram: same generous limit for everyone — no premium gate on accounts.
+        return MAX_ACCOUNT_COUNT;
     }
 
     public int getNewMessageId() {

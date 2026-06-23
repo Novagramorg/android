@@ -542,7 +542,7 @@ public class ContactsAdapter extends RecyclerListView.SectionsAdapter {
                     arr = usersSectionsDict.get(sortedUsersSectionsArray.get(section - (onlyUsers != 0 && !isAdmin ? 0 : 1)));
                 }
                 TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(arr.get(position).user_id);
-                userCell.setData(user, null, null, 0);
+                userCell.setDatas(user, null, null, 0, true);
                 userCell.setChecked(selectedContacts.indexOfKey(user.id) >= 0, false);
                 if (ignoreUsers != null) {
                     if (ignoreUsers.indexOfKey(user.id) >= 0) {

@@ -29,6 +29,10 @@ import android.util.SparseIntArray;
 import androidx.annotation.UiThread;
 import androidx.collection.LongSparseArray;
 
+import org.fenixuz.utils.By;
+import org.fenixuz.utils.DeletedMsg;
+import org.fenixuz.utils.EditMessage;
+import org.fenixuz.utils.WhoDeletedMsg;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
@@ -2112,7 +2116,7 @@ public class MessagesStorage extends BaseController {
                 cursor.dispose();
                 cursor = null;
                 if (!mids.isEmpty()) {
-                    markMessagesAsDeletedInternal(selfId, mids, true, 0, 0);
+                    markMessagesAsDeletedInternal(selfId, mids, true, 0, 0, false, By.You);
                     updateDialogsWithDeletedMessages(selfId, -selfId, mids, null, false);
                     AndroidUtilities.runOnUIThread(() -> {
                         getMessagesController().markDialogMessageAsDeleted(selfId, mids);
@@ -2922,7 +2926,12 @@ public class MessagesStorage extends BaseController {
                         }
                     }
                 }
-                if ((flags & MessagesController.DIALOG_FILTER_FLAG_NON_CONTACTS) != 0) {
+                // Novagram "Protect from strangers": when enabled, the MAIN chats-tab badge (a == N)
+                // must not count non-contact (stranger) chats — they're hidden from the main list, so
+                // their unread shouldn't add to the bottom "Chats" tab counter. Custom folders (a < N)
+                // and the archive counter are left untouched.
+                if ((flags & MessagesController.DIALOG_FILTER_FLAG_NON_CONTACTS) != 0
+                        && !(a == N && org.fenixuz.utils.StrangerShield.isEnabled())) {
                     if ((flags & MessagesController.DIALOG_FILTER_FLAG_ONLY_ARCHIVED) == 0) {
                         unreadCount += nonContacts[0][0];
                         if ((flags & MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_MUTED) == 0) {
@@ -3605,6 +3614,26 @@ public class MessagesStorage extends BaseController {
         });
     }
 
+    /**
+     * Novagram "Protect from strangers": recompute the unread counters (so the bottom "Chats" tab
+     * badge picks up / drops the stranger exclusion in {@link #calcUnreadCounters}) and push the new
+     * value to the UI. Mirrors {@link #saveDialogFilter}'s apply block. Call when the shield toggles.
+     */
+    public void fenixRecalcMainUnread() {
+        storageQueue.postRunnable(() -> {
+            calcUnreadCounters(false);
+            AndroidUtilities.runOnUIThread(() -> {
+                ArrayList<MessagesController.DialogFilter> filters = getMessagesController().dialogFilters;
+                for (int a = 0, N = filters.size(); a < N; a++) {
+                    filters.get(a).unreadCount = filters.get(a).pendingUnreadCount;
+                }
+                mainUnreadCount = pendingMainUnreadCount;
+                archiveUnreadCount = pendingArchiveUnreadCount;
+                getNotificationCenter().postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_READ_DIALOG_MESSAGE);
+            });
+        });
+    }
+
     public void saveDialogFiltersOrderInternal() {
         SQLitePreparedStatement state = null;
         try {
@@ -4135,7 +4164,7 @@ public class MessagesStorage extends BaseController {
                     getFileLoader().cancelLoadFiles(namesToDelete);
                     getMessagesController().markDialogMessageAsDeleted(dialogId, mids);
                 });
-                markMessagesAsDeletedInternal(dialogId, mids, false, 0, 0);
+                markMessagesAsDeletedInternal(dialogId, mids, false, 0, 0, false, By.You);
                 updateDialogsWithDeletedMessagesInternal(dialogId, DialogObject.isChatDialog(dialogId) ? -dialogId : 0, mids, null);
                 getFileLoader().deleteFiles(filesToDelete, 0);
                 if (!mids.isEmpty()) {
@@ -6303,7 +6332,12 @@ public class MessagesStorage extends BaseController {
                         }
                     }
                 }
-                if ((flags & MessagesController.DIALOG_FILTER_FLAG_NON_CONTACTS) != 0) {
+                // Novagram "Protect from strangers": when enabled, the MAIN chats-tab badge (a == N)
+                // must not count non-contact (stranger) chats — they're hidden from the main list, so
+                // their unread shouldn't add to the bottom "Chats" tab counter. Custom folders (a < N)
+                // and the archive counter are left untouched.
+                if ((flags & MessagesController.DIALOG_FILTER_FLAG_NON_CONTACTS) != 0
+                        && !(a == N && org.fenixuz.utils.StrangerShield.isEnabled())) {
                     if ((flags & MessagesController.DIALOG_FILTER_FLAG_ONLY_ARCHIVED) == 0) {
                         unreadCount += nonContacts[0][0];
                         if ((flags & MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_MUTED) == 0) {
@@ -13515,7 +13549,7 @@ public class MessagesStorage extends BaseController {
                         ArrayList<Integer> mids = dialogs.valueAt(a);
                         AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, mids, 0L, false));
                         updateDialogsWithReadMessagesInternal(mids, null, null, null, null);
-                        markMessagesAsDeletedInternal(dialogId, mids, true, 0, 0);
+                        markMessagesAsDeletedInternal(dialogId, mids, true, 0, 0, false, By.You);
                         updateDialogsWithDeletedMessagesInternal(dialogId, 0, mids, null);
                     }
                 }
@@ -13563,9 +13597,53 @@ public class MessagesStorage extends BaseController {
         AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.quickRepliesUpdated));
     }
 
-    private ArrayList<Long> markMessagesAsDeletedInternal(long dialogId, ArrayList<Integer> messages, boolean deleteFiles, int mode, int threadMessageId) {
+    private ArrayList<Long> markMessagesAsDeletedInternal(long dialogId, ArrayList<Integer> messages, boolean deleteFiles, int mode, int threadMessageId, boolean clear, By whoDeleted) {
         SQLiteCursor cursor = null;
         SQLitePreparedStatement state = null;
+
+        // Fenix delete-save: capture deleted messages instead of removing them, depending on the chosen mode.
+        int deletedType = DeletedMsg.INSTANCE.getCheckType();
+        if ((DeletedMsg.SECOND == deletedType || DeletedMsg.ALL == deletedType) && !clear) {
+            try {
+                String myIds = TextUtils.join(",", messages);
+                if (dialogId != 0) {
+                    cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, data, read_state, out, mention, mid FROM messages_v2 WHERE mid IN(%s) AND uid = %d", myIds, dialogId));
+                } else {
+                    cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, data, read_state, out, mention, mid FROM messages_v2 WHERE mid IN(%s) AND is_channel = 0", myIds));
+                }
+            } catch (Exception e) {}
+
+            try {
+                while (cursor.next()) {
+                    long did = cursor.longValue(0);
+                    if (DeletedMsg.SECOND == deletedType && By.Me != whoDeleted) {
+                        ArrayList<WhoDeletedMsg> deletedMsgs = DeletedMsg.INSTANCE.getAllIds();
+                        for (Integer message : messages) {
+                            deletedMsgs.add(new WhoDeletedMsg(did, message, whoDeleted));
+                        }
+                        DeletedMsg.INSTANCE.saveDeletedMessagesId(deletedMsgs);
+                        messages.clear();
+                    } else if (DeletedMsg.ALL == deletedType) {
+                        ArrayList<WhoDeletedMsg> deletedMsgs = DeletedMsg.INSTANCE.getAllIds();
+                        ArrayList<Integer> m = new ArrayList();
+                        if (By.Me == whoDeleted) {
+                            m.addAll(DeletedMsg.INSTANCE.sortDeletedIds(did, messages));
+                        }
+                        for (Integer message : messages) {
+                            deletedMsgs.add(new WhoDeletedMsg(did, message, whoDeleted));
+                        }
+                        DeletedMsg.INSTANCE.saveDeletedMessagesId(deletedMsgs);
+                        messages.clear();
+                        messages.addAll(m);
+                    }
+                }
+            } catch (Exception e) {}
+            if (cursor != null) {
+                cursor.dispose();
+                cursor = null;
+            }
+        }
+
         try {
             if (getUserConfig().getClientUserId() == dialogId) {
                 database.executeFast(String.format(Locale.US, "DELETE FROM tag_message_id WHERE mid IN(%s)", TextUtils.join(",", messages))).stepThis().dispose();
@@ -14362,9 +14440,21 @@ public class MessagesStorage extends BaseController {
             return null;
         }
         if (useQueue) {
-            storageQueue.postRunnable(() -> markMessagesAsDeletedInternal(dialogId, messages, deleteFiles, mode, topicId));
+            storageQueue.postRunnable(() -> markMessagesAsDeletedInternal(dialogId, messages, deleteFiles, mode, topicId, false, By.You));
         } else {
-            return markMessagesAsDeletedInternal(dialogId, messages, deleteFiles, mode, topicId);
+            return markMessagesAsDeletedInternal(dialogId, messages, deleteFiles, mode, topicId, false, By.You);
+        }
+        return null;
+    }
+
+    public ArrayList<Long> markMessagesAsDeleted(long dialogId, ArrayList<Integer> messages, boolean useQueue, boolean deleteFiles, int mode, int topicId, boolean clear, By whoDeleted) {
+        if (messages.isEmpty()) {
+            return null;
+        }
+        if (useQueue) {
+            storageQueue.postRunnable(() -> markMessagesAsDeletedInternal(dialogId, messages, deleteFiles, mode, topicId, clear, whoDeleted));
+        } else {
+            return markMessagesAsDeletedInternal(dialogId, messages, deleteFiles, mode, topicId, clear, whoDeleted);
         }
         return null;
     }
@@ -15288,6 +15378,9 @@ public class MessagesStorage extends BaseController {
                                 if (data != null) {
                                     TLRPC.Message oldMessage = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
                                     oldMessage.readAttachPath(data, getUserConfig().clientUserId);
+                                    if (EditMessage.INSTANCE.getEditMode()) {
+                                        EditMessage.INSTANCE.saveEditedMsg(oldMessage, dialogId);
+                                    }
                                     data.reuse();
                                     if (reactionUpdates != null) {
                                         reactionUpdates.add(new SavedReactionsUpdate(selfId, oldMessage, message));

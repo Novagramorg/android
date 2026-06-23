@@ -133,16 +133,18 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         MessagesController.getGlobalMainSettings().edit().putLong("intro_crashed_time", System.currentTimeMillis()).apply();
 
         titles = new CharSequence[]{
-                "FenixUz"
+                "Novagram"
         };
         messages = new String[]{
-                "Welcome to our FenixUz application. This is a very fast and powerful messenger."
+                "Welcome to our Novagram application. This is a very fast and powerful messenger."
         };
         return true;
     }
 
     @Override
     public View createView(Context context) {
+        // Novagram: count this device once (anonymous, Android-ID de-dup, off the main thread).
+        org.telegram.messenger.Utilities.globalQueue.postRunnable(() -> org.fenixuz.analytics.AnalyticsRemote.INSTANCE.addInstallIfFirstTime(context));
         logoDrawable = context.getResources().getDrawable(R.drawable.logo_fenix).mutate();
         logoDrawable.setBounds(0, dp(8.666f), dp(115), dp(35));
         // SpannableStringBuilder ssb = new SpannableStringBuilder(LocaleController.getString(R.string.Page1Title));

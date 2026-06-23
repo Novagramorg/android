@@ -89,6 +89,10 @@ import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
 import org.telegram.messenger.AccountInstance;
+import org.fenixuz.ui.confirmToSendMessages.ConfirmDialog;
+import org.fenixuz.utils.ConfirmDialogsPref;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.CompoundEmoji;
@@ -523,7 +527,17 @@ public class EmojiView extends FrameLayout implements NotificationCenter.Notific
 
         @Override
         public void sendSticker(TLRPC.Document sticker, String query, Object parent, boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
-            delegate.onStickerSelected(null, sticker, query, parent, null, notify, scheduleDate, 0);
+            if (ConfirmDialogsPref.INSTANCE.getConfirmSticker() && fragment != null) {
+                ConfirmDialog.INSTANCE.showDialog(fragment, EmojiView.this.getContext(), new Function1<Boolean, Unit>() {
+                    @Override
+                    public Unit invoke(Boolean aBoolean) {
+                        delegate.onStickerSelected(null, sticker, query, parent, null, notify, scheduleDate, 0);
+                        return null;
+                    }
+                });
+            } else {
+                delegate.onStickerSelected(null, sticker, query, parent, null, notify, scheduleDate, 0);
+            }
         }
 
         @Override
@@ -2040,7 +2054,18 @@ public class EmojiView extends FrameLayout implements NotificationCenter.Notific
                             return;
                         }
                         if (position < gifAdapter.recentItemsCount) {
-                            delegate.onGifSelected(view, recentGifs.get(position), null, "gif", true, 0, 0);
+                            if (ConfirmDialogsPref.INSTANCE.getConfirmGif()) {
+                                int p = position;
+                                ConfirmDialog.INSTANCE.showDialog(fragment, context, new Function1<Boolean, Unit>() {
+                                    @Override
+                                    public Unit invoke(Boolean aBoolean) {
+                                        delegate.onGifSelected(view, recentGifs.get(p), null, "gif", true, 0, 0);
+                                        return null;
+                                    }
+                                });
+                            } else {
+                                delegate.onGifSelected(view, recentGifs.get(position), null, "gif", true, 0, 0);
+                            }
                         } else {
                             int resultPos = position;
                             if (gifAdapter.recentItemsCount > 0) {
@@ -2055,8 +2080,20 @@ public class EmojiView extends FrameLayout implements NotificationCenter.Notific
                         if (position < 0 || position >= gifSearchAdapter.results.size()) {
                             return;
                         }
-                        delegate.onGifSelected(view, gifSearchAdapter.results.get(position), gifSearchAdapter.lastSearchImageString, gifSearchAdapter.bot, true, 0, 0);
-                        updateRecentGifs();
+                        if (ConfirmDialogsPref.INSTANCE.getConfirmGif()) {
+                            int p = position;
+                            ConfirmDialog.INSTANCE.showDialog(fragment, context, new Function1<Boolean, Unit>() {
+                                @Override
+                                public Unit invoke(Boolean aBoolean) {
+                                    delegate.onGifSelected(view, gifSearchAdapter.results.get(p), gifSearchAdapter.lastSearchImageString, gifSearchAdapter.bot, true, 0, 0);
+                                    updateRecentGifs();
+                                    return null;
+                                }
+                            });
+                        } else {
+                            delegate.onGifSelected(view, gifSearchAdapter.results.get(position), gifSearchAdapter.lastSearchImageString, gifSearchAdapter.bot, true, 0, 0);
+                            updateRecentGifs();
+                        }
                     }
                 };
 
@@ -2292,7 +2329,18 @@ public class EmojiView extends FrameLayout implements NotificationCenter.Notific
                     return;
                 }
                 cell.disable();
-                delegate.onStickerSelected(cell, cell.getSticker(), query, cell.getParentObject(), cell.getSendAnimationData(), true, 0, 0);
+                if (ConfirmDialogsPref.INSTANCE.getConfirmSticker()) {
+                    String q = query;
+                    ConfirmDialog.INSTANCE.showDialog(fragment, context, new Function1<Boolean, Unit>() {
+                        @Override
+                        public Unit invoke(Boolean aBoolean) {
+                            delegate.onStickerSelected(cell, cell.getSticker(), q, cell.getParentObject(), cell.getSendAnimationData(), true, 0, 0);
+                            return null;
+                        }
+                    });
+                } else {
+                    delegate.onStickerSelected(cell, cell.getSticker(), query, cell.getParentObject(), cell.getSendAnimationData(), true, 0, 0);
+                }
             };
             stickersGridView.setOnItemClickListener(stickersOnItemClickListener);
             stickersGridView.setGlowColor(getThemedColor(Theme.key_chat_emojiPanelBackground));

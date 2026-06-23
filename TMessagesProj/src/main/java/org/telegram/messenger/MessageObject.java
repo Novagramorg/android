@@ -210,6 +210,7 @@ public class MessageObject {
     public int dateKeyInt;
     public String monthKey;
     public boolean deleted;
+    public String deletedBy;
     public boolean deletedByThanos;
     public float audioProgress;
     public float forceSeekTo = -1;
@@ -324,6 +325,10 @@ public class MessageObject {
     public TLRPC.TL_channelAdminLogEvent currentEvent;
 
     public boolean forceUpdate;
+
+    // fenixuz: special forward — one-shot flag that hides the original sender's name.
+    // Set by the "Special forward" menu item, consumed (and cleared) once at forward-send time.
+    public boolean hideSpetialFunction;
 
     public SendAnimationData sendAnimationData;
 
