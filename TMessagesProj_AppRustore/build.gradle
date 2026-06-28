@@ -1,0 +1,172 @@
+apply plugin: 'com.android.application'
+
+repositories {
+    mavenCentral()
+    google()
+}
+
+configurations {
+    compile.exclude module: 'support-v4'
+}
+
+configurations.all {
+    exclude group: 'com.google.firebase', module: 'firebase-core'
+    exclude group: 'androidx.recyclerview', module: 'recyclerview'
+}
+
+dependencies {
+    implementation project(':TMessagesProj')
+    implementation 'androidx.fragment:fragment:1.8.9'
+    implementation 'androidx.core:core:1.16.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
+}
+
+android {
+    compileSdkVersion 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig.applicationId = "org.messenger_pro.messenger"
+
+    sourceSets.main.jniLibs.srcDirs = ['../TMessagesProj/jni/']
+
+    lintOptions {
+        disable 'MissingTranslation'
+        disable 'ExtraTranslation'
+        disable 'BlockedPrivateApi'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+
+        coreLibraryDesugaringEnabled true
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("../TMessagesProj/config/rustore.keystore")
+            storePassword getRustoreProp("RUSTORE_STORE_PASSWORD")
+            keyAlias getRustoreProp("RUSTORE_KEY_ALIAS")
+            keyPassword getRustoreProp("RUSTORE_KEY_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+            jniDebuggable true
+            applicationIdSuffix ".beta"
+            minifyEnabled false
+            shrinkResources false
+            multiDexEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro', '../TMessagesProj/proguard-rules-beta.pro'
+            ndk.debugSymbolLevel = 'FULL'
+        }
+        release {
+            debuggable false
+            jniDebuggable false
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources false
+            multiDexEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro'
+            ndk.debugSymbolLevel = 'FULL'
+        }
+    }
+
+    sourceSets.debug {
+        manifest.srcFile '../TMessagesProj/config/debug/AndroidManifest.xml'
+    }
+
+    sourceSets.release {
+        manifest.srcFile '../TMessagesProj/config/release/AndroidManifest.xml'
+    }
+
+    flavorDimensions "minApi"
+
+    productFlavors {
+        afat {
+            ndk {
+                abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            }
+            sourceSets.debug {
+                manifest.srcFile '../TMessagesProj/config/debug/AndroidManifest_SDK23.xml'
+            }
+            sourceSets.release {
+                manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_SDK23.xml'
+            }
+            ext {
+                abiVersionCode = 9
+            }
+        }
+    }
+
+    defaultConfig.versionCode = getRustoreVersionCode()
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "app-rustore.apk"
+            // Bitta universal APK — versionCode to'g'ridan-to'g'ri RUSTORE_VERSION_CODE'dan (RuStore'dagidan katta bo'lishi shart).
+            output.versionCodeOverride = defaultConfig.versionCode
+        }
+    }
+
+    variantFilter { variant ->
+        def names = variant.flavors*.name
+        if (variant.buildType.name != "release" && !names.contains("afat")) {
+            setIgnore(true)
+        }
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 35
+        versionName getRustoreVersionName()
+        ndkVersion "21.4.7075529"
+
+        multiDexEnabled true
+
+        vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
+
+        externalNativeBuild {
+            cmake {
+                version '3.10.2'
+                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21'
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+    namespace 'org.telegram.messenger.rustore'
+
+    lintOptions {
+        checkReleaseBuilds false
+    }
+}
+
+// RuStore imzo kaliti / versiya qiymatlarini local.properties'dan o'qiydi (git'ga ketmaydi).
+def getRustoreProp(String name) {
+    def f = rootProject.file('local.properties')
+    if (f.exists()) {
+        def p = new Properties()
+        p.load(new FileInputStream(f))
+        def v = p[name]
+        return v != null ? v : ""
+    }
+    return ""
+}
+
+def getRustoreVersionCode() {
+    def v = getRustoreProp("RUSTORE_VERSION_CODE")
+    return (v == null || v.toString().trim().isEmpty()) ? 6658 : v.toString().trim().toInteger()
+}
+
+def getRustoreVersionName() {
+    def v = getRustoreProp("RUSTORE_VERSION_NAME")
+    return (v == null || v.toString().trim().isEmpty()) ? "12.6.4" : v.toString().trim()
+}
+
+apply plugin: 'com.google.gms.google-services'
