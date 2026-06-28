@@ -2,7 +2,6 @@ package org.fenixuz.ui
 
 import android.content.Context
 import android.media.RingtoneManager
-import android.os.SystemClock
 import android.view.View
 import android.widget.FrameLayout
 import org.fenixuz.ui.auto_answer.AutoAnswer
@@ -21,6 +20,13 @@ import org.fenixuz.utils.MessageReminder
 import org.fenixuz.utils.StoryDownload
 import org.fenixuz.utils.StoryUtil
 import org.fenixuz.utils.StrangerShield
+import org.fenixuz.utils.EditMessage
+import org.fenixuz.utils.DeletedMsg
+import org.fenixuz.utils.GhostVariable
+import org.fenixuz.utils.Password
+import org.fenixuz.ui.secret_chat.SecretPassword
+import org.fenixuz.ui.secret_chat.SecretPasscodeScreen
+import org.fenixuz.ui.secret_chat.SecretPasswordType
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DownloadController
 import org.telegram.messenger.MessagesController
@@ -62,12 +68,13 @@ class FenixSettings : UniversalFragment() {
     private val STRANGER_SHIELD = 18
     private val STRANGER_INBOX = 19
 
-    // Secret gesture: SECRET_TAP_TARGET taps on the title within SECRET_TAP_WINDOW_MS
-    // (measured from the first tap) open the hidden [AdvancedTools] screen.
-    private val SECRET_TAP_TARGET = 5
-    private val SECRET_TAP_WINDOW_MS = 3000L
-    private var secretTapCount = 0
-    private var secretFirstTapTime = 0L
+    // Previously hidden behind a 5-tap secret gesture — now surfaced directly in this list.
+    private val EDIT_SAVE = 20
+    private val DELETE_SAVE = 21
+    private val GHOST_MODE = 22
+    private val SECRET_CHAT = 23
+    private val CHANGE_COMMON_PASSWORD = 24
+    private val FINGERPRINT_UNLOCK = 25
 
     // Onboarding: a toolbar "?" replays the full feature tour; the short tour auto-runs once on first open.
     private val HELP_BUTTON = 1001
@@ -109,9 +116,6 @@ class FenixSettings : UniversalFragment() {
         // Transparent/adaptive toolbar that blends with the list, like other settings menus.
         actionBar.setAdaptiveBackground(listView)
 
-        // Secret entry point: 5 quick taps on the title open the hidden Advanced screen.
-        actionBar.titleTextView?.setOnClickListener { onTitleTapped() }
-
         // Toolbar "?" → replay the guided tour on demand (for anyone who skipped or wants a refresher).
         actionBar.createMenu().addItem(HELP_BUTTON, R.drawable.outline_question_mark)
         actionBar.setActionBarMenuOnItemClick(object : ActionBar.ActionBarMenuOnItemClick() {
@@ -147,8 +151,12 @@ class FenixSettings : UniversalFragment() {
         step(STORY_GHOST, 232, 233),
         step(STORY_HIDE, 136, 137),
         step(STORY_DOWNLOAD, 297, 298),
+        step(EDIT_SAVE, 23, 72),
+        step(DELETE_SAVE, 31, 235),
         step(DOWNLOAD_STOP, 183, 196),
         step(AUTO_ANSWER_ACTIVE, 228, 239),
+        step(GHOST_MODE, 32, 245),
+        step(SECRET_CHAT, 213, 217),
         step(CONFIRM_STICKER, 190, 191),
         step(FOLDER_ICONS, 240, 241),
         step(HIDE_TABS, 260, 261),
@@ -175,22 +183,6 @@ class FenixSettings : UniversalFragment() {
         listView.clipToPadding = false
     }
 
-    /** Counts title taps inside a rolling window; opens [AdvancedTools] once the target is hit. */
-    private fun onTitleTapped() {
-        val now = SystemClock.elapsedRealtime()
-        if (secretTapCount == 0 || now - secretFirstTapTime > SECRET_TAP_WINDOW_MS) {
-            // Start a fresh window with this tap as the first.
-            secretFirstTapTime = now
-            secretTapCount = 1
-        } else {
-            secretTapCount++
-        }
-        if (secretTapCount >= SECRET_TAP_TARGET) {
-            secretTapCount = 0
-            presentFragment(AdvancedTools())
-        }
-    }
-
     override fun fillItems(items: ArrayList<UItem>, adapter: UniversalAdapter) {
         items.add(UItem.asHeader(LanguageCode.getMyTitles(135)))
         items.add(
@@ -204,6 +196,17 @@ class FenixSettings : UniversalFragment() {
         items.add(
             UItem.asButtonCheck(STORY_DOWNLOAD, LanguageCode.getMyTitles(297), LanguageCode.getMyTitles(298))
                 .setChecked(StoryDownload.isEnabled())
+        )
+        items.add(UItem.asShadow(null))
+
+        items.add(UItem.asHeader(LanguageCode.getMyTitles(234)))
+        items.add(
+            UItem.asButtonCheck(EDIT_SAVE, LanguageCode.getMyTitles(23), LanguageCode.getMyTitles(72))
+                .setChecked(EditMessage.editMode)
+        )
+        items.add(
+            UItem.asButtonCheck(DELETE_SAVE, LanguageCode.getMyTitles(31), LanguageCode.getMyTitles(235))
+                .setChecked(DeletedMsg.getCheckType() != DeletedMsg.SIMPLE)
         )
         items.add(UItem.asShadow(null))
 
@@ -221,6 +224,34 @@ class FenixSettings : UniversalFragment() {
         )
         items.add(UItem.asButton(AUTO_ANSWER_MSG, LanguageCode.getMyTitles(238)))
         items.add(UItem.asShadow(null))
+
+        items.add(UItem.asHeader(LanguageCode.getMyTitles(244)))
+        items.add(
+            UItem.asButtonCheck(GHOST_MODE, LanguageCode.getMyTitles(32), LanguageCode.getMyTitles(245))
+                .setChecked(GhostVariable.ghostMode)
+        )
+        items.add(
+            UItem.asButtonCheck(SECRET_CHAT, LanguageCode.getMyTitles(213), LanguageCode.getMyTitles(217))
+                .setChecked(SecretPassword.hasPassword())
+        )
+        items.add(UItem.asShadow(null))
+
+        // Chat-lock management — same conditional rows the hidden screen used to show.
+        val showChangeCommon = Password.hasCommonPassword()
+        val showFingerprint = Password.hasAnyLock() && Password.isFingerprintHardwareAvailable()
+        if (showChangeCommon || showFingerprint) {
+            items.add(UItem.asHeader(LanguageCode.getMyTitles(252)))
+            if (showChangeCommon) {
+                items.add(UItem.asButton(CHANGE_COMMON_PASSWORD, LanguageCode.getMyTitles(251)))
+            }
+            if (showFingerprint) {
+                items.add(
+                    UItem.asButtonCheck(FINGERPRINT_UNLOCK, LanguageCode.getMyTitles(253), LanguageCode.getMyTitles(254))
+                        .setChecked(Password.isFingerprintEnabled())
+                )
+            }
+            items.add(UItem.asShadow(null))
+        }
 
         items.add(UItem.asHeader(LanguageCode.getMyTitles(190)))
         items.add(
@@ -291,6 +322,37 @@ class FenixSettings : UniversalFragment() {
 
     override fun onClick(item: UItem, view: View, position: Int, x: Float, y: Float) {
         when (item.id) {
+            EDIT_SAVE -> {
+                EditMessage.changeEditMode(!EditMessage.editMode)
+                (view as NotificationsCheckCell).setChecked(EditMessage.editMode)
+            }
+            DELETE_SAVE -> {
+                val enabled = DeletedMsg.getCheckType() != DeletedMsg.SIMPLE
+                DeletedMsg.saveCheckType(if (enabled) DeletedMsg.SIMPLE else DeletedMsg.SECOND)
+                (view as NotificationsCheckCell).setChecked(DeletedMsg.getCheckType() != DeletedMsg.SIMPLE)
+            }
+            GHOST_MODE -> {
+                // Toggles GhostVariable.ghostMode → re-asserts offline via MyStatus; backend hooks already wired.
+                GhostVariable.changeGhostMode()
+                (view as NotificationsCheckCell).setChecked(GhostVariable.ghostMode)
+            }
+            SECRET_CHAT -> {
+                // Secure switch: ON asks to create a passcode, OFF asks to confirm before removing.
+                // Checked state follows SecretPassword.hasPassword(), refreshed in onResume after the flow.
+                if (SecretPassword.hasPassword()) {
+                    presentFragment(SecretPasscodeScreen(SecretPassword.editor(), SecretPasswordType.CHANGE))
+                } else {
+                    presentFragment(SecretPasscodeScreen(SecretPassword.editor(), SecretPasswordType.SET_NEW))
+                }
+            }
+            CHANGE_COMMON_PASSWORD -> {
+                presentFragment(SecretPasscodeScreen(Password.editorForCommonPassword(), SecretPasswordType.SET_NEW))
+            }
+            FINGERPRINT_UNLOCK -> {
+                val enabled = !Password.isFingerprintEnabled()
+                Password.setFingerprintEnabled(enabled)
+                (view as NotificationsCheckCell).setChecked(enabled)
+            }
             STORY_GHOST -> {
                 GhostStory.changeGhostMode(!GhostStory.ghostMode)
                 (view as NotificationsCheckCell).setChecked(GhostStory.ghostMode)
@@ -419,6 +481,14 @@ class FenixSettings : UniversalFragment() {
                 }
             }, 2500)
         } catch (ignore: Exception) {
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Reflect secret-chat / fingerprint state after returning from a passcode screen.
+        if (listView != null) {
+            listView.adapter.update(true)
         }
     }
 
