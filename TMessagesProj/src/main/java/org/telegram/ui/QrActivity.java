@@ -156,7 +156,7 @@ public class QrActivity extends BaseFragment {
     private FrameLayout themeLayout;
     private BackupImageView avatarImageView;
     private QrView qrView;
-    private RLottieImageView logoImageView;
+    private ImageView logoImageView;
     private ImageView closeImageView;
 
     private Bitmap emojiThemeIcon;
@@ -330,10 +330,8 @@ public class QrActivity extends BaseFragment {
         });
         rootLayout.addView(qrView);
 
-        logoImageView = new RLottieImageView(context);
-        logoImageView.setAutoRepeat(true);
-        logoImageView.setAnimation(R.raw.qr_code_logo_2, 60, 60);
-        logoImageView.playAnimation();
+        logoImageView = new ImageView(context);
+        logoImageView.setImageResource(R.drawable.qr_logo_novagram);
         rootLayout.addView(logoImageView);
 
         avatarImageView = new BackupImageView(context);
@@ -402,7 +400,6 @@ public class QrActivity extends BaseFragment {
             }
             fragmentView.postDelayed(() -> {
                 onItemSelected(currentTheme, 0, true);
-                logoImageView.getAnimatedDrawable().cacheFrame(LOGO_OPTIMAL_FRAME);
             }, 17);
         }, 25);
 
@@ -741,8 +738,6 @@ public class QrActivity extends BaseFragment {
 
         themeLayout.setVisibility(View.GONE);
         closeImageView.setVisibility(View.GONE);
-        logoImageView.setVisibility(View.GONE);
-        RLottieDrawable drawable = logoImageView.getAnimatedDrawable();
 
         if (qrView != null) {
             qrView.setForShare(true);
@@ -751,13 +746,10 @@ public class QrActivity extends BaseFragment {
         fragmentView.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         fragmentView.layout(0, 0, width, height);
         fragmentView.draw(canvas);
-        drawable.setBounds(logoImageView.getLeft(), logoImageView.getTop(), logoImageView.getRight(), logoImageView.getBottom());
-        drawable.drawFrame(canvas, LOGO_OPTIMAL_FRAME);
         canvas.setBitmap(null);
 
         themeLayout.setVisibility(View.VISIBLE);
         closeImageView.setVisibility(View.VISIBLE);
-        logoImageView.setVisibility(View.VISIBLE);
 
         ViewGroup parent = (ViewGroup) fragmentView.getParent();
         fragmentView.layout(0, 0, parent.getWidth(), parent.getHeight());

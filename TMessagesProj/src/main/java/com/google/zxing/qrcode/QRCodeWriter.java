@@ -19,6 +19,7 @@ package com.google.zxing.qrcode;
 import static org.telegram.messenger.AndroidUtilities.readRes;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -35,6 +36,7 @@ import com.google.zxing.qrcode.encoder.Encoder;
 import com.google.zxing.qrcode.encoder.QRCode;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SvgHelper;
 
@@ -188,9 +190,11 @@ public final class QRCodeWriter {
       }
     }
 
-    Bitmap icon = SvgHelper.getBitmap(readRes(R.raw.qr_logo), imageSize, imageSize, false);
+    Bitmap iconSrc = BitmapFactory.decodeResource(ApplicationLoader.applicationContext.getResources(), R.drawable.qr_logo_novagram);
+    Bitmap icon = (iconSrc.getWidth() == imageSize && iconSrc.getHeight() == imageSize) ? iconSrc : Bitmap.createScaledBitmap(iconSrc, imageSize, imageSize, true);
     canvas.drawBitmap(icon, imageX, imageX, null);
-    icon.recycle();
+    if (icon != iconSrc) icon.recycle();
+    iconSrc.recycle();
 
     canvas.setBitmap(null);
 
