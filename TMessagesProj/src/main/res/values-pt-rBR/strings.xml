@@ -273,7 +273,7 @@
     <string name="ALongTimeAgo">visto há muito tempo</string>
     <string name="NewMessageTitle">Nova Mensagem</string>
     <string name="InviteFriendsHelp">Selecione os contatos para convidar ao Novagram</string>
-    <string name="InviteToTelegram">CONVIDAR PARA O FENIXUZ</string>
+    <string name="InviteToTelegram">CONVIDAR PARA O NOVAGRAM</string>
     <string name="ShareTelegram">Compartilhar o Novagram...</string>
     <string name="UpdateContactsTitle">Atualizar contatos?</string>
     <string name="UpdateContactsMessage">O Novagram detectou muitos contatos não sincronizados, deseja sincronizá-los agora? Escolha \'OK\' se você está usando seu próprio celular, cartão SIM e conta do Google.</string>
