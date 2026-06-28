@@ -18,8 +18,9 @@ import org.telegram.messenger.AndroidUtilities
  *   users/usersCount                 { allUsers }   — total account logins (each login = +1)
  *   uniqueInstallUsers/{androidId}   { created_at } — one doc per device, for de-dup
  *   uniqueInstallUsersCount/usersCount { allUsers } — unique-install total
- *   config/display                   { installBaseOffset } — a vanity base added to the shown install
- *                                                            number; defaults to 500 000, set to 0 to remove.
+ *   config/display                   { installBaseOffset } — an OPTIONAL base added to the shown install
+ *                                                            number; 0 (no base) when the field is absent.
+ *                                                            (same for accountBaseOffset) — NOTHING is hard-coded.
  *
  * Clean rewrite of pro's AnalyticsRemote, fixing its three real flaws:
  *  1. Pro hit Firestore.get() on EVERY first-screen show. Here a local SharedPreferences flag short-circuits
@@ -41,12 +42,6 @@ object AnalyticsRemote {
     /** Last successfully shown numbers — re-displayed INSTANTLY on the next open (no network wait). */
     private const val KEY_CACHE_INSTALLS = "fenix_cache_installs"
     private const val KEY_CACHE_ACCOUNTS = "fenix_cache_accounts"
-
-    /** Shown when config/display.installBaseOffset is absent — the requested 500K cold-start base. */
-    private const val DEFAULT_INSTALL_BASE = 500_000L
-
-    /** Shown when config/display.accountBaseOffset is absent — the requested 250K cold-start base. */
-    private const val DEFAULT_ACCOUNT_BASE = 250_000L
 
     /**
      * Count this device once, ever. Cheap: a local flag means after the first success we never touch the
@@ -85,31 +80,31 @@ object AnalyticsRemote {
             .set(mapOf("allUsers" to FieldValue.increment(1)), SetOptions.merge())
     }
 
-    fun getInstallCount(cb: (Long) -> Unit) = read("uniqueInstallUsersCount", "usersCount", "allUsers", 0L, cb)
+    // All four reads return null when the doc/field is missing OR the network read fails — so callers can
+    // tell "no data yet" apart from a real zero. Nothing is hard-coded; every number comes from Firestore.
+    fun getInstallCount(cb: (Long?) -> Unit) = read("uniqueInstallUsersCount", "usersCount", "allUsers", cb)
 
-    fun getAccountCount(cb: (Long) -> Unit) = read("users", "usersCount", "allUsers", 0L, cb)
+    fun getAccountCount(cb: (Long?) -> Unit) = read("users", "usersCount", "allUsers", cb)
 
-    /** The vanity base added to the displayed install count; 500 000 until the owner changes/zeroes it. */
-    fun getInstallBaseOffset(cb: (Long) -> Unit) =
-        read("config", "display", "installBaseOffset", DEFAULT_INSTALL_BASE, cb)
+    /** Optional base for the install count; comes ONLY from config/display.installBaseOffset (treated as 0 if absent). */
+    fun getInstallBaseOffset(cb: (Long?) -> Unit) = read("config", "display", "installBaseOffset", cb)
 
-    /** The vanity base added to the displayed account count; 250 000 until the owner changes/zeroes it. */
-    fun getAccountBaseOffset(cb: (Long) -> Unit) =
-        read("config", "display", "accountBaseOffset", DEFAULT_ACCOUNT_BASE, cb)
+    /** Optional base for the account count; comes ONLY from config/display.accountBaseOffset (treated as 0 if absent). */
+    fun getAccountBaseOffset(cb: (Long?) -> Unit) = read("config", "display", "accountBaseOffset", cb)
 
     // ---- Instant-display layer ---------------------------------------------------------------------
     // The screen shows these cached numbers the moment it opens (zero network), then quietly corrects
     // them once the live values arrive — so the user never stares at an empty/placeholder figure.
 
-    /** Last shown install total, or the 500K base on first open — so the screen is NEVER empty. */
+    /** Last shown install total, or 0 before the first successful Firebase read. No fake base. */
     @JvmStatic
     fun cachedInstallsOrBase(context: Context): Long =
-        prefs(context).getLong(KEY_CACHE_INSTALLS, DEFAULT_INSTALL_BASE)
+        prefs(context).getLong(KEY_CACHE_INSTALLS, 0L)
 
-    /** Last shown account total, or the 250K base on first open — so the screen is NEVER empty. */
+    /** Last shown account total, or 0 before the first successful Firebase read. No fake base. */
     @JvmStatic
     fun cachedAccountsOrBase(context: Context): Long =
-        prefs(context).getLong(KEY_CACHE_ACCOUNTS, DEFAULT_ACCOUNT_BASE)
+        prefs(context).getLong(KEY_CACHE_ACCOUNTS, 0L)
 
     /**
      * Live install figure = base offset + real unique installs. The two reads fire in PARALLEL (not
@@ -117,17 +112,20 @@ object AnalyticsRemote {
      */
     @JvmStatic
     fun getInstallsDisplay(context: Context, cb: (Long) -> Unit) {
-        var base: Long? = null
-        var real: Long? = null
+        var base: Long? = null; var baseDone = false
+        var real: Long? = null; var realDone = false
         fun emit() {
-            val b = base ?: return
-            val r = real ?: return
-            val total = b + r
-            prefs(context).edit().putLong(KEY_CACHE_INSTALLS, total).apply()
-            cb(total)
+            if (!baseDone || !realDone) return          // wait for BOTH reads to come back
+            if (real != null) {                         // live count arrived → base(or 0) + real, then cache it
+                val total = (base ?: 0L) + real!!
+                prefs(context).edit().putLong(KEY_CACHE_INSTALLS, total).apply()
+                cb(total)
+            } else {
+                cb(cachedInstallsOrBase(context))       // read failed → keep last known, never wipe to 0
+            }
         }
-        getInstallBaseOffset { base = it; emit() }   // both callbacks land on the UI thread (see read)
-        getInstallCount { real = it; emit() }        // → no race; whichever is second triggers emit()
+        getInstallBaseOffset { base = it; baseDone = true; emit() }
+        getInstallCount { real = it; realDone = true; emit() }
     }
 
     /**
@@ -136,28 +134,32 @@ object AnalyticsRemote {
      */
     @JvmStatic
     fun getAccountsDisplay(context: Context, cb: (Long) -> Unit) {
-        var base: Long? = null
-        var real: Long? = null
+        var base: Long? = null; var baseDone = false
+        var real: Long? = null; var realDone = false
         fun emit() {
-            val b = base ?: return
-            val r = real ?: return
-            val total = b + r
-            prefs(context).edit().putLong(KEY_CACHE_ACCOUNTS, total).apply()
-            cb(total)
+            if (!baseDone || !realDone) return
+            if (real != null) {
+                val total = (base ?: 0L) + real!!
+                prefs(context).edit().putLong(KEY_CACHE_ACCOUNTS, total).apply()
+                cb(total)
+            } else {
+                cb(cachedAccountsOrBase(context))
+            }
         }
-        getAccountBaseOffset { base = it; emit() }
-        getAccountCount { real = it; emit() }
+        getAccountBaseOffset { base = it; baseDone = true; emit() }
+        getAccountCount { real = it; realDone = true; emit() }
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
-    private fun read(col: String, doc: String, field: String, def: Long, cb: (Long) -> Unit) {
+    // Returns the Long field, or null when the doc/field is missing or the network read fails.
+    private fun read(col: String, doc: String, field: String, cb: (Long?) -> Unit) {
         db.collection(col).document(doc).get()
             .addOnSuccessListener { d ->
-                val v = if (d != null && d.exists()) (d.getLong(field) ?: def) else def
+                val v = if (d != null && d.exists()) d.getLong(field) else null
                 AndroidUtilities.runOnUIThread { cb(v) }
             }
-            .addOnFailureListener { AndroidUtilities.runOnUIThread { cb(def) } }
+            .addOnFailureListener { AndroidUtilities.runOnUIThread { cb(null) } }
     }
 
     /** Permission-free, stable per app-signing-key (survives reinstall/cache-clear). @SuppressLint only mutes lint. */
