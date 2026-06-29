@@ -672,9 +672,10 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             chatListInfoRow = rowCount++;
 
             // Novagram app icon picker: brand icon + color variants (Amethyst/Emerald/Crimson/Mint/Violet).
-            appIconHeaderRow = rowCount++;
-            appIconSelectorRow = rowCount++;
-            appIconShadowRow = rowCount++;
+            // TEMPORARILY HIDDEN — rows left at -1 so the picker isn't shown; re-enable later by restoring these.
+//            appIconHeaderRow = rowCount++;
+//            appIconSelectorRow = rowCount++;
+//            appIconShadowRow = rowCount++;
 
             swipeGestureHeaderRow = rowCount++;
             swipeGestureRow = rowCount++;
