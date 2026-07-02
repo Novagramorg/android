@@ -251,7 +251,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
             HintDialogCell cell = (HintDialogCell) holder.itemView;
 
-            TLRPC.TL_topPeer peer = MediaDataController.getInstance(currentAccount).hints.get(position);
+            TLRPC.TL_topPeer peer = getVisibleHints(currentAccount).get(position);
             TLRPC.Dialog dialog = new TLRPC.TL_dialog();
             TLRPC.Chat chat = null;
             TLRPC.User user = null;
@@ -278,7 +278,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
 
         @Override
         public int getItemCount() {
-            return MediaDataController.getInstance(currentAccount).hints.size();
+            return getVisibleHints(currentAccount).size();
         }
     }
 
@@ -743,8 +743,16 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
 
                 final ArrayList<RecentSearchObject> arrayList = new ArrayList<>();
                 final LongSparseArray<RecentSearchObject> hashMap = new LongSparseArray<>();
+                final ArrayList<Long> secretToDelete = new ArrayList<>();
                 while (cursor.next()) {
                     long did = cursor.longValue(0);
+                    // Secret-folder chats must never sit in search recents. Drop the row here — on every
+                    // load — so a chat made secret in ANY prior session is purged too, not only ones
+                    // secreted after the delete-on-add hook ran.
+                    if (org.fenixuz.ui.secret_chat.SecretPassword.INSTANCE.isSecret(did)) {
+                        secretToDelete.add(did);
+                        continue;
+                    }
 
                     boolean add = false;
                     if (DialogObject.isEncryptedDialog(did)) {
@@ -776,6 +784,13 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                 }
                 cursor.dispose();
 
+                if (!secretToDelete.isEmpty()) {
+                    try {
+                        MessagesStorage.getInstance(currentAccount).getDatabase().executeFast("DELETE FROM search_recent WHERE did IN (" + TextUtils.join(",", secretToDelete) + ")").stepThis().dispose();
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                }
 
                 ArrayList<TLRPC.User> users = new ArrayList<>();
 
@@ -1720,7 +1735,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     private boolean hasHints() {
-        return !searchWas && !MediaDataController.getInstance(currentAccount).hints.isEmpty() && (dialogsType != DialogsActivity.DIALOGS_TYPE_START_ATTACH_BOT || dialogsActivity.allowUsers);
+        return !searchWas && !getVisibleHints(currentAccount).isEmpty() && (dialogsType != DialogsActivity.DIALOGS_TYPE_START_ATTACH_BOT || dialogsActivity.allowUsers);
     }
 
     private int messagesSectionPosition = -1;
@@ -2330,13 +2345,61 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         return currentItemCount;
     }
 
+    private static long hintDialogId(TLRPC.TL_topPeer peer) {
+        if (peer == null || peer.peer == null) {
+            return 0;
+        }
+        if (peer.peer.user_id != 0) {
+            return peer.peer.user_id;
+        }
+        if (peer.peer.channel_id != 0) {
+            return -peer.peer.channel_id;
+        }
+        if (peer.peer.chat_id != 0) {
+            return -peer.peer.chat_id;
+        }
+        return 0;
+    }
+
+    /**
+     * Top-peer "suggestions" with secret-folder chats removed, so a secret chat never shows there either.
+     * Search-screen only (never the main dialog-list scroll path). Fast path: when no hint is secret — the
+     * overwhelmingly common case — the shared list is returned as-is with zero copy/allocation.
+     */
+    private static ArrayList<TLRPC.TL_topPeer> getVisibleHints(int currentAccount) {
+        ArrayList<TLRPC.TL_topPeer> hints = MediaDataController.getInstance(currentAccount).hints;
+        int firstSecret = -1;
+        for (int i = 0, n = hints.size(); i < n; i++) {
+            if (isSecretFolderDialog(hintDialogId(hints.get(i)))) {
+                firstSecret = i;
+                break;
+            }
+        }
+        if (firstSecret == -1) {
+            return hints;
+        }
+        ArrayList<TLRPC.TL_topPeer> result = new ArrayList<>(hints.size() - 1);
+        for (int i = 0; i < firstSecret; i++) {
+            result.add(hints.get(i));
+        }
+        for (int i = firstSecret + 1, n = hints.size(); i < n; i++) {
+            if (!isSecretFolderDialog(hintDialogId(hints.get(i)))) {
+                result.add(hints.get(i));
+            }
+        }
+        return result;
+    }
+
     /** Secret-folder chats must never surface in search; they live only in the locked folder view. */
-    private boolean isSecretFolderDialog(long dialogId) {
+    private static boolean isSecretFolderDialog(long dialogId) {
         if (dialogId == 0) {
             return false;
         }
-        TLRPC.Dialog d = MessagesController.getInstance(currentAccount).dialogs_dict.get(dialogId);
-        return d != null && d.folder_id == org.fenixuz.ui.secret_chat.SecretPassword.SECRET_FOLDER_ID;
+        // Authoritative, sync-independent check: the persistent secret-id list (SecretPassword drives the
+        // folder-100 re-assert). The dialogs_dict folder_id is transient — the server resets it to 0 on
+        // re-login/sync until sortDialogs re-applies folder 100, and in that window secret chats leaked
+        // into search (recent/global/local), which is exactly the bug this fixes.
+        return org.fenixuz.ui.secret_chat.SecretPassword.INSTANCE.isSecret(dialogId);
     }
 
     private boolean isSecretFolderObject(Object obj) {

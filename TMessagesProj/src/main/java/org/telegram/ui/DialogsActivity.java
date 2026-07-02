@@ -9117,10 +9117,36 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             boolean toSecret = folderId != SecretPassword.SECRET_FOLDER_ID;
             for (int i = 0; i < copy.size(); i++) {
                 if (toSecret) {
-                    SecretPassword.INSTANCE.addSecret(copy.get(i));
+                    final long secretDid = copy.get(i);
+                    SecretPassword.INSTANCE.addSecret(secretDid);
+                    // Purge the chat from search recents completely so a now-secret chat leaves no trace
+                    // and never reappears there. Two parts: (1) in-memory removal when the search UI is
+                    // loaded (immediate), and (2) an UNCONDITIONAL delete of the persistent search_recent
+                    // row — removeRecentSearch alone early-returns (and skips the DB) when the recent list
+                    // isn't loaded yet, which let the entry reload on the next search open.
+                    if (searchViewPager != null && searchViewPager.dialogsSearchAdapter != null) {
+                        searchViewPager.dialogsSearchAdapter.removeRecentSearch(secretDid);
+                    }
+                    MessagesStorage.getInstance(currentAccount).getStorageQueue().postRunnable(() -> {
+                        try {
+                            MessagesStorage.getInstance(currentAccount).getDatabase().executeFast("DELETE FROM search_recent WHERE did = " + secretDid).stepThis().dispose();
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                        }
+                    });
+                    // Drop it from search suggestions (top-peers) too: removePeer frees the in-memory slot,
+                    // deletes the local rating and resets it server-side so it is not re-suggested later
+                    // (no need to re-add on un-secret). It matches user correspondents; group/channel peers
+                    // are covered by the getVisibleHints() display filter instead.
+                    getMediaDataController().removePeer(secretDid);
                 } else {
                     SecretPassword.INSTANCE.removeSecret(copy.get(i));
                 }
+            }
+            if (toSecret) {
+                // Force the suggestions row to re-bind now so the just-secreted chat is gone on the very
+                // first look (removePeer only fires reloadHints for user peers; this covers every type).
+                getNotificationCenter().postNotificationName(NotificationCenter.reloadHints);
             }
             getMessagesController().addDialogToFolder(copy, toSecret ? SecretPassword.SECRET_FOLDER_ID : 0, -1, null, 0);
             hideActionMode(false);

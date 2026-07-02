@@ -419,8 +419,10 @@ public class SearchAdapterHelper {
 
     /** Secret-folder chats must never appear in server/global search results either. */
     private boolean isInSecretFolder(long dialogId) {
-        TLRPC.Dialog d = MessagesController.getInstance(currentAccount).dialogs_dict.get(dialogId);
-        return d != null && d.folder_id == org.fenixuz.ui.secret_chat.SecretPassword.SECRET_FOLDER_ID;
+        // Use the authoritative secret-id list, not the transient dialogs_dict folder_id (reset to 0 on
+        // re-login/sync until sortDialogs re-asserts folder 100 — that window leaked secret chats into
+        // the global/local server search results).
+        return org.fenixuz.ui.secret_chat.SecretPassword.INSTANCE.isSecret(dialogId);
     }
 
     public void mergeResults(ArrayList<Object> localResults) {
