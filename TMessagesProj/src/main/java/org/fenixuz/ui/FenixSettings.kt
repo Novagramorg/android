@@ -75,6 +75,7 @@ class FenixSettings : UniversalFragment() {
     private val SECRET_CHAT = 23
     private val CHANGE_COMMON_PASSWORD = 24
     private val FINGERPRINT_UNLOCK = 25
+    private val GHOST_ACTIONBAR_BTN = 26
 
     // Onboarding: a toolbar "?" replays the full feature tour; the short tour auto-runs once on first open.
     private val HELP_BUTTON = 1001
@@ -231,6 +232,10 @@ class FenixSettings : UniversalFragment() {
                 .setChecked(GhostVariable.ghostMode)
         )
         items.add(
+            UItem.asButtonCheck(GHOST_ACTIONBAR_BTN, LanguageCode.getMyTitles(342), LanguageCode.getMyTitles(343))
+                .setChecked(GhostVariable.ghostMenuVisibilityOnActionBar)
+        )
+        items.add(
             UItem.asButtonCheck(SECRET_CHAT, LanguageCode.getMyTitles(213), LanguageCode.getMyTitles(217))
                 .setChecked(SecretPassword.hasPassword())
         )
@@ -335,6 +340,12 @@ class FenixSettings : UniversalFragment() {
                 // Toggles GhostVariable.ghostMode → re-asserts offline via MyStatus; backend hooks already wired.
                 GhostVariable.changeGhostMode()
                 (view as NotificationsCheckCell).setChecked(GhostVariable.ghostMode)
+            }
+            GHOST_ACTIONBAR_BTN -> {
+                // Show/hide the quick ghost toggle on the main dialogs action bar (DialogsActivity reads
+                // this flag in onResume → updateGhostButton). Default OFF; opt-in here.
+                GhostVariable.changeGhostModeVisibilityOnActionBar()
+                (view as NotificationsCheckCell).setChecked(GhostVariable.ghostMenuVisibilityOnActionBar)
             }
             SECRET_CHAT -> {
                 // Secure switch: ON asks to create a passcode, OFF asks to confirm before removing.

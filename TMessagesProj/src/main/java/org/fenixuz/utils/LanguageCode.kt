@@ -1706,6 +1706,8 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(339, "This indicator is the number of active accounts added to the application.", "Bu raqam — ilovaga qo'shilgan faol akkauntlar soni.", "Данный показатель представляет собой количество активных аккаунтов, добавленных в приложение."))
         titlesLanguages.add(TitleLanguages(340, "Skip", "O'tkazib yuborish", "Пропустить"))
         titlesLanguages.add(TitleLanguages(341, "Lock this chat behind a passcode", "Bu suhbatni parol bilan himoyalang", "Заблокируйте этот чат паролем"))
+        titlesLanguages.add(TitleLanguages(342, "Ghost button on home", "Asosiy oynada Ghost tugmasi", "Кнопка призрака на главном экране"))
+        titlesLanguages.add(TitleLanguages(343, "Show a quick toggle next to search to turn Ghost mode on/off from the chat list", "Ghost rejimini suhbatlar ro'yxatidan tez yoqib-o'chirish uchun qidiruv yonida tugma chiqaradi", "Показывать кнопку рядом с поиском для быстрого включения/выключения режима призрака из списка чатов"))
     }
 
     init {

@@ -6,7 +6,7 @@ import org.telegram.messenger.R
 
 object GhostVariable {
     var ghostMode = false
-    var ghostMenuVisibilityOnActionBar = true
+    var ghostMenuVisibilityOnActionBar = false
 
     private var sharedPreferences =
         ApplicationLoader.applicationContext.getSharedPreferences("db", Context.MODE_PRIVATE)
@@ -15,7 +15,7 @@ object GhostVariable {
     init {
         ghostMode = sharedPreferences.getBoolean("ghost", false)
         ghostMenuVisibilityOnActionBar =
-            sharedPreferences.getBoolean("ghost_btn_visibility_on_action_bar", true)
+            sharedPreferences.getBoolean("ghost_btn_visibility_on_action_bar", false)
     }
 
     fun getGhostBtnIcon(): Int {

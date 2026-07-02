@@ -489,6 +489,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private ValueAnimator contactsAlphaAnimator;
     private ViewPage[] viewPages;
     private ActionBarMenuItem passcodeItem;
+    private ActionBarMenuItem ghostItem;
     private ActionBarMenuItem downloadsItem;
     private DownloadProgressIcon downloadProgressIcon;
     private boolean downloadsItemVisible;
@@ -3242,6 +3243,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             proxyMenuSubItem.setTextAndIcon(getString(R.string.MenuProxyTitle), 0, proxyDrawable);
             proxyMenuSubItem.setContentDescription(getString(R.string.ProxySettings));
 
+            // Novagram: quick Ghost-mode toggle on the main action bar (next to search/lock).
+            // Hidden by default — user opts in via Novagram settings (ghostMenuVisibilityOnActionBar).
+            ghostItem = menu.addItem(2, org.fenixuz.utils.GhostVariable.INSTANCE.getGhostBtnIcon());
+            ghostItem.setContentDescription(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(32));
+            updateGhostButton();
+
             passcodeItem = menu.addItem(1, R.drawable.outline_header_lock_24);
             passcodeItem.setContentDescription(getString(R.string.AccDescrPasscodeLock));
 
@@ -3882,6 +3889,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     ((LaunchActivity) getParentActivity()).showPasscodeActivity(false, true, position[0] + passcodeItem.getMeasuredWidth() / 2, position[1] + passcodeItem.getMeasuredHeight() / 2, () -> passcodeItem.setAlpha(1.0f), () -> passcodeItem.setAlpha(0.0f));
                     getNotificationsController().showNotifications();
                     checkUi_itemPasscodeVisibility();
+                } else if (id == 2) {
+                    // Toggle Ghost mode; icon swaps (red eyes = on, teal = off) via updateGhostButton.
+                    org.fenixuz.utils.GhostVariable.INSTANCE.changeGhostMode();
+                    updateGhostButton();
                 } else if (id == 3) {
                     showSearch(true, true, true);
                     fragmentSearchFieldWatcher.toggleSearch(true);
@@ -6941,7 +6952,26 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    @Override
+    // Novagram: refresh the main action-bar Ghost toggle — swap on/off icon and apply the
+    // "show on action bar" visibility flag.
+    //  • OFF → tint the ghost to the same color as the search / dots icons so it blends into the bar.
+    //  • ON  → clear the tint so the ghost shows its own colors (blue body + red "lit" eyes).
+    private void updateGhostButton() {
+        if (ghostItem == null) {
+            return;
+        }
+        final boolean on = org.fenixuz.utils.GhostVariable.INSTANCE.getGhostMode();
+        ghostItem.setIcon(org.fenixuz.utils.GhostVariable.INSTANCE.getGhostBtnIcon());
+        if (ghostItem.getIconView() != null) {
+            if (on) {
+                ghostItem.getIconView().setColorFilter(null);
+            } else {
+                ghostItem.getIconView().setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC_IN));
+            }
+        }
+        ghostItem.setVisibility(org.fenixuz.utils.GhostVariable.INSTANCE.getGhostMenuVisibilityOnActionBar() ? View.VISIBLE : View.GONE);
+    }
+
     public void onResume() {
         super.onResume();
         // Novagram: re-apply the "hide folder tabs" toggle once when returning from the settings screen
@@ -6983,6 +7013,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         if (!onlySelect && folderId == 0) {
             getMediaDataController().checkStickers(MediaDataController.TYPE_EMOJI);
+            // Reflect ghost state + visibility changed from the Novagram settings screen.
+            updateGhostButton();
         }
         if (searchViewPager != null) {
             searchViewPager.onResume();
@@ -11645,6 +11677,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 actionBar.setPopupItemsSelectorColor(getThemedColor(Theme.key_dialogButtonSelector), true);
                 actionBar.updateColors();
             }
+            // Reapply Ghost icon tint after theme change; ActionBar re-tints menu icons to the
+            // default color and would otherwise expose the raw drawable colors in the OFF state.
+            updateGhostButton();
             if (statusDrawable != null) {
                 updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
             }
