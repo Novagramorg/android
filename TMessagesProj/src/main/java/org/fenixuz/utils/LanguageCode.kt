@@ -1708,6 +1708,13 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(341, "Lock this chat behind a passcode", "Bu suhbatni parol bilan himoyalang", "Заблокируйте этот чат паролем"))
         titlesLanguages.add(TitleLanguages(342, "Ghost button on home", "Asosiy oynada Ghost tugmasi", "Кнопка призрака на главном экране"))
         titlesLanguages.add(TitleLanguages(343, "Show a quick toggle next to search to turn Ghost mode on/off from the chat list", "Ghost rejimini suhbatlar ro'yxatidan tez yoqib-o'chirish uchun qidiruv yonida tugma chiqaradi", "Показывать кнопку рядом с поиском для быстрого включения/выключения режима призрака из списка чатов"))
+        titlesLanguages.add(TitleLanguages(344, "Bots", "Botlar", "Боты"))
+        titlesLanguages.add(TitleLanguages(345, "Novagram bots", "Novagram botlari", "Боты Novagram"))
+        titlesLanguages.add(TitleLanguages(346, "Handy bots — tap to open and start", "Foydali botlar — bosib oching va ishga tushiring", "Полезные боты — нажмите, чтобы открыть и запустить"))
+        titlesLanguages.add(TitleLanguages(347, "Media & downloads", "Media va yuklab olish", "Медиа и загрузки"))
+        titlesLanguages.add(TitleLanguages(348, "Media editing", "Media tahrirlash", "Редактирование медиа"))
+        titlesLanguages.add(TitleLanguages(349, "Tools", "Vositalar", "Инструменты"))
+        titlesLanguages.add(TitleLanguages(350, "Useful & fun", "Foydali va ko'ngil ochar", "Полезное и развлечения"))
     }
 
     init {

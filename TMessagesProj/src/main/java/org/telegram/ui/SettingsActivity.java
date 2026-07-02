@@ -61,6 +61,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.fenixuz.ui.FenixSettings;
+import org.fenixuz.ui.bots.BotsActivity;
 import org.fenixuz.ui.chat_finder.ChatFinder;
 import org.fenixuz.utils.LanguageCode;
 import org.telegram.PhoneFormat.PhoneFormat;
@@ -705,6 +706,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         items.add(UItem.asHeader("Novagram"));
         items.add(SettingCell.Factory.of(100, 0xFF7E57C2, 0xFF5E35B1, R.drawable.settings_folders, LanguageCode.INSTANCE.getMyTitles(236)));
+        items.add(SettingCell.Factory.of(105, 0xFF2CBE8C, 0xFF17A06E, R.drawable.msg_bot, LanguageCode.INSTANCE.getMyTitles(344)));
         items.add(SettingCell.Factory.of(101, 0xFF1BA4ED, 0xFF1488E1, R.drawable.menu_profile_colors, LanguageCode.INSTANCE.getMyTitles(120)));
         items.add(SettingCell.Factory.of(102, 0xFFC46EF4, 0xFF9F55DF, R.drawable.msg_filled_storageusage, LanguageCode.INSTANCE.getMyTitles(121)));
         items.add(SettingCell.Factory.of(103, 0xFFF28B31, 0xFFE26314, R.drawable.msg_usersearch, LanguageCode.INSTANCE.getMyTitles(123)));
@@ -892,6 +894,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
             case 100:
                 presentFragment(new FenixSettings());
+                break;
+            case 105:
+                presentFragment(new BotsActivity());
                 break;
             case 101:
                 presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC));

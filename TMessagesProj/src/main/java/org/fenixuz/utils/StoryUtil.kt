@@ -34,6 +34,22 @@ object StoryUtil {
         }
     }
 
+    // Set when the tray-hide toggle is flipped from the settings screen. DialogsActivity consumes it
+    // at the very TOP of onResume (before the permission-prompt branches that can early-return), so the
+    // stories tray refreshes on every device — including Android 14 (full-screen-intent prompt) and
+    // MIUI, where onResume returns early and never reaches the tail updateStoriesVisibility() call.
+    private var storyVisibilityDirty = false
+
+    fun markStoryVisibilityDirty() {
+        storyVisibilityDirty = true
+    }
+
+    fun consumeStoryVisibilityDirty(): Boolean {
+        val dirty = storyVisibilityDirty
+        storyVisibilityDirty = false
+        return dirty
+    }
+
     fun changeHideStoryMode() {
         hideStoryMode = !hideStoryMode
         editor.putBoolean("hide_story", hideStoryMode)

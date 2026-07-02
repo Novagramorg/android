@@ -370,6 +370,8 @@ class FenixSettings : UniversalFragment() {
             }
             STORY_HIDE -> {
                 StoryUtil.changeHideStoryMode()
+                // Ask DialogsActivity to refresh the stories tray when we return (see markStoryVisibilityDirty).
+                StoryUtil.markStoryVisibilityDirty()
                 (view as NotificationsCheckCell).setChecked(StoryUtil.hideStoryMode)
             }
             STORY_DOWNLOAD -> {

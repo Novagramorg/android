@@ -6979,6 +6979,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (org.fenixuz.utils.HideTabs.INSTANCE.consumeDirty()) {
             updateFilterTabs(true, true);
         }
+        // Novagram: apply the "hide stories tray" toggle changed from the settings screen. Done here at
+        // the TOP of onResume — before the permission-prompt branches that can early-return (Android 14
+        // full-screen-intent, MIUI lockscreen) — so the tray refreshes on every device. The tail
+        // updateStoriesVisibility() call further down is skipped by those early returns.
+        if (StoryUtil.INSTANCE.consumeStoryVisibilityDirty()) {
+            updateStoriesVisibility(true);
+        }
         // Secret way in: long-press the "Novagram" toolbar/title on the main dialogs screen.
         // Title taps are handled by the ActionBar itself (titleActionRunnable), so the long-press
         // listener belongs on the ActionBar, not the title view.
