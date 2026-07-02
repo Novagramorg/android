@@ -2587,6 +2587,10 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
 
     public void seenSponsoredPeer(TLRPC.TL_sponsoredPeer sponsoredPeer) {
         if (sponsoredPeer == null) return;
+        // Ghost mode: pure pass-through — don't report the impression AND don't record the
+        // random_id in the de-dup set, so turning Ghost off later cleanly resumes reporting for
+        // that serving. (Called per row bind in getView, so keep it a single O(1) field read.)
+        if (org.fenixuz.utils.GhostVariable.INSTANCE.getGhostMode()) return;
         boolean sent = false;
         for (byte[] r : seenSponsoredPeers) {
             if (Arrays.equals(r, sponsoredPeer.random_id)) {

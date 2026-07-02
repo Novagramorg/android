@@ -849,7 +849,8 @@ public class VideoAds {
         if (ad == null) return;
         final TLRPC.TL_messages_viewSponsoredMessage req = new TLRPC.TL_messages_viewSponsoredMessage();
         req.random_id = ad.random_id;
-        if (!BuildVars.DEBUG_PRIVATE_VERSION) {
+        // Ghost mode: don't report the video-ad impression to the server.
+        if (!BuildVars.DEBUG_PRIVATE_VERSION && !org.fenixuz.utils.GhostVariable.INSTANCE.getGhostMode()) {
             ConnectionsManager.getInstance(currentAccount).sendRequest(req, null);
         }
     }

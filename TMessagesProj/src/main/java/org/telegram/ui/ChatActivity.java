@@ -35974,9 +35974,13 @@ public class ChatActivity extends BaseFragment implements
             return;
         }
         object.viewsReloaded = true;
-        TLRPC.TL_messages_viewSponsoredMessage req = new TLRPC.TL_messages_viewSponsoredMessage();
-        req.random_id = object.sponsoredId;
-        getConnectionsManager().sendRequest(req, null);
+        // Ghost mode: don't report the ad impression to the server ("seen" stays unsent).
+        // Local bookkeeping below is unchanged so the ad still renders normally.
+        if (!org.fenixuz.utils.GhostVariable.INSTANCE.getGhostMode()) {
+            TLRPC.TL_messages_viewSponsoredMessage req = new TLRPC.TL_messages_viewSponsoredMessage();
+            req.random_id = object.sponsoredId;
+            getConnectionsManager().sendRequest(req, null);
+        }
         getMessagesController().markSponsoredAsRead(dialog_id, object);
     }
 
