@@ -3630,7 +3630,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                     dp(-DEFAULT_HEIGHT) +
                     innerTranslationX + attachLayoutPaddingTranslationX + attachLayoutTranslationX +
                     dp(giftButton != null && giftButton.getVisibility() == View.VISIBLE ? -DEFAULT_HEIGHT : 0) * (giftButton == null ? 0 : giftButton.getAlpha()) +
-                    dp(botButton != null && botButton.getVisibility() == VISIBLE ? -DEFAULT_HEIGHT : 0) * (botButton == null ? 0 : botButton.getAlpha())
+                    dp(botButton != null && botButton.getVisibility() == VISIBLE ? -DEFAULT_HEIGHT : 0) * (botButton == null ? 0 : botButton.getAlpha()) +
+                    // Novagram: step past the always-visible voice-dictation mic so schedule doesn't land on it.
+                    dp(voiceDictationButton != null && voiceDictationButton.getVisibility() == View.VISIBLE ? -DEFAULT_HEIGHT : 0) * (voiceDictationButton == null ? 0 : voiceDictationButton.getAlpha())
                 );
             }
         };
@@ -8825,12 +8827,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (isStories && isLiveComment) {
             layoutParams.rightMargin = dp(suggestButtonVisible ? 50 : 2) + Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT));
         } else if (attachVisible == 1 || attachVisible == 2/* && layoutParams.rightMargin != dp(2)*/) {
+            // Novagram: the always-visible voice-dictation mic is an extra DEFAULT_HEIGHT slot inside
+            // attachLayout that these fixed margins never counted, so reserve room for it — otherwise
+            // the hint/text extends under the mic.
+            int mic = (voiceDictationButton != null && voiceDictationButton.getVisibility() == VISIBLE) ? dp(DEFAULT_HEIGHT) : 0;
             if (botButton != null && botButton.getVisibility() == VISIBLE && scheduledButton != null && scheduledButton.getVisibility() == VISIBLE && attachButton != null && attachButton.getVisibility() == VISIBLE) {
-                layoutParams.rightMargin = dp(146);
+                layoutParams.rightMargin = dp(146) + mic;
             } else if (botButton != null && botButton.getVisibility() == VISIBLE || notifyButton != null && notifyButton.getVisibility() == VISIBLE || scheduledButton != null && scheduledButton.getTag() != null) {
-                layoutParams.rightMargin = dp(98);
+                layoutParams.rightMargin = dp(98) + mic;
             } else {
-                layoutParams.rightMargin = dp(50);
+                layoutParams.rightMargin = dp(50) + mic;
             }
         } else {
             if (scheduledButton != null && scheduledButton.getTag() != null) {
