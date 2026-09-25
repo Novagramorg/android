@@ -208,7 +208,15 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     public final StoriesUtilities.AvatarStoryParams storyParams = new StoriesUtilities.AvatarStoryParams(false) {
         @Override
         public boolean isAvatarClickable(long dialogId, TLRPC.Chat chat, TLRPC.User user) {
-            return (chat != null && chat.linked_community_id != 0 || user != null && user.linked_community_id != 0) && !insideCommunityList;
+            if ((chat != null && chat.linked_community_id != 0 || user != null && user.linked_community_id != 0) && !insideCommunityList) {
+                return true;
+            }
+            // Novagram: claim the avatar for "tap to open the profile". Saying yes here is what makes
+            // checkOnTouchEvent set up the ButtonBounce, call requestDisallowInterceptTouchEvent(true) and
+            // swallow the touch -- so the avatar alone reacts and the row does not light up as if the chat
+            // had been tapped. Routing this through onItemClick instead, as the first version did, is exactly
+            // why the whole row was flashing.
+            return !insideCommunityList && org.fenixuz.utils.AvatarOpensProfile.wantsAvatarTap(parentFragment, DialogCell.this);
         }
 
         @Override
@@ -227,6 +235,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         return true;
                     }
                 }
+            }
+
+            // Novagram: a visible story ring wins. processOpenStory() asks us first and only falls through to
+            // the story when we answer false, so this ordering is the whole precedence rule -- and it keys off
+            // what is actually DRAWN rather than re-deriving "has stories", which is both cheaper and exactly
+            // what the user sees.
+            if (currentState != StoriesUtilities.STATE_EMPTY) {
+                return false;
+            }
+            if (org.fenixuz.utils.AvatarOpensProfile.openProfile(parentFragment, DialogCell.this)) {
+                return true;
             }
 
             return super.onAvatarClick(view, dialogId);
