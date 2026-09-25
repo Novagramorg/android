@@ -8052,6 +8052,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (getParentActivity() == null) {
             return;
         }
+        // Novagram: a tap on the avatar opens the peer's profile instead of the chat. Placed ahead of the
+        // resolution below so it does not have to be threaded through every branch of it, but gated on the
+        // two modes where the avatar means something else: in selection mode it is a checkbox, and when the
+        // list is a picker (forward / share) a tap must choose the chat. A story ring or a community badge
+        // never reaches here at all -- DialogCell's touch handler consumes those first.
+        if (!actionBar.isActionModeShowed() && !onlySelect
+                && org.fenixuz.utils.AvatarOpensProfile.handleTap(this, view, x, y)) {
+            return;
+        }
         long dialogId = 0;
         long topicId = 0;
         int message_id = 0;

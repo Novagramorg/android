@@ -1788,6 +1788,8 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(401, "%1\$s holds only the first %2\$d chats — Telegram's limit per folder.", "%1\$s papkasiga faqat birinchi %2\$d ta chat sig'di — Telegram'ning papka uchun cheklovi.", "В папку «%1\$s» вошли только первые %2\$d чатов — это ограничение Telegram."))
         titlesLanguages.add(TitleLanguages(402, "Remove these folders from your account?", "Bu papkalar akkauntingizdan o'chirilsinmi?", "Удалить эти папки из вашего аккаунта?"))
         titlesLanguages.add(TitleLanguages(403, "Folders updated", "Papkalar yangilandi", "Папки обновлены"))
+        titlesLanguages.add(TitleLanguages(404, "Avatar opens profile", "Avatar profilni ochadi", "Аватар открывает профиль"))
+        titlesLanguages.add(TitleLanguages(405, "In the chat list, tap a round avatar to open that profile instead of the chat. If the avatar has a story ring, the story still opens first.", "Chatlar ro'yxatida dumaloq avatarni bossangiz chat emas, profil ochiladi. Avatarda story halqasi bo'lsa, avval story ochilaveradi.", "В списке чатов нажмите на круглый аватар, чтобы открыть профиль, а не чат. Если у аватара есть кольцо истории, сначала откроется история."))
     }
 
     init {
