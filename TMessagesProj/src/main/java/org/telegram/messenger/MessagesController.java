@@ -10549,7 +10549,20 @@ public class MessagesController extends BaseController implements NotificationCe
         checkReadTasks();
 
         if (getUserConfig().isClientActivated()) {
-            if (!ignoreSetOnline && getConnectionsManager().getPauseTime() == 0 && ApplicationLoader.isScreenOn && !ApplicationLoader.mainInterfacePausedStageQueue) {
+            // Novagram ghost mode: say NOTHING about presence, in either direction.
+            //
+            // Sending offline=true is not the harmless half of this. It means "I went offline just now", and
+            // the server answers by stamping was_online = now -- it is the exact call made below when the app
+            // is backgrounded, and the reason "last seen just now" appears when you close Telegram. On this
+            // 55-second loop it was re-stamping the user's last seen for as long as they had the app open, so
+            // ghost mode was not hiding the timestamp, it was continuously refreshing it. The opposite of
+            // what it promises.
+            //
+            // Staying silent leaves the server's record where it already was. Going offline when ghost is
+            // switched ON is still handled, once, by GhostVariable.changeGhostMode() -> MyStatus.
+            if (GhostVariable.INSTANCE.getGhostMode()) {
+                // nothing -- deliberately
+            } else if (!ignoreSetOnline && getConnectionsManager().getPauseTime() == 0 && ApplicationLoader.isScreenOn && !ApplicationLoader.mainInterfacePausedStageQueue) {
                 if (ApplicationLoader.mainInterfacePausedStageQueueTime != 0 && Math.abs(ApplicationLoader.mainInterfacePausedStageQueueTime - System.currentTimeMillis()) > 1000) {
                     if (statusSettingState != 1 && (lastStatusUpdateTime == 0 || Math.abs(System.currentTimeMillis() - lastStatusUpdateTime) >= 55000 || offlineSent)) {
                         statusSettingState = 1;
@@ -10559,6 +10572,9 @@ public class MessagesController extends BaseController implements NotificationCe
                         }
 
                         TL_account.updateStatus req = new TL_account.updateStatus();
+                        // Always false here -- ghost mode returned above. Kept as the flag rather than a
+                        // literal so that if the guard above is ever lost to a bad merge, the worst case is
+                        // silence instead of announcing the user online.
                         req.offline = GhostVariable.INSTANCE.getGhostMode();
                         statusRequest = getConnectionsManager().sendRequest(req, (response, error) -> {
                             if (error == null) {
