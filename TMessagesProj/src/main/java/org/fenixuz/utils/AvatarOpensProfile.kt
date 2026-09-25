@@ -93,6 +93,11 @@ object AvatarOpensProfile {
         val did = target(fragment, cell)
         if (did == 0L) return false
         val args = Bundle()
+        // Opening the chat from this profile should drop the profile, so Back returns to the chat list the
+        // user started from rather than making them press it twice. ProfileActivity.openChat() already reads
+        // this key for users and defaults it to true; openGroup()/openForum() now read it too, which is what
+        // makes groups behave the same as private chats instead of leaving a profile behind.
+        args.putBoolean("removeFragmentOnChatOpen", true)
         if (DialogObject.isUserDialog(did)) {
             args.putLong("user_id", did)
         } else {

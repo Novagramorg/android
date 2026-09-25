@@ -7047,7 +7047,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         ChatActivity chatActivity = new ChatActivity(args);
-        presentFragment(chatActivity, false);
+        // Novagram: honour the same "removeFragmentOnChatOpen" argument openChat() already reads for users.
+        // It defaults to FALSE here, so every existing caller keeps upstream's behaviour; only an opener that
+        // asks for it gets the profile taken off the stack. Needed because a profile reached from the chat
+        // list is not the case this path assumes -- it assumes you came FROM the chat, which
+        // finishFragmentIfPreviousIsChatActivity() above already handles -- so without this, Back from the
+        // chat lands on the profile instead of the list, and groups behave differently from private chats.
+        presentFragment(chatActivity, arguments.getBoolean("removeFragmentOnChatOpen", false));
     }
 
     private void openForum() {
@@ -7057,7 +7063,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         ChatActivity chatActivity = new ChatActivity(args);
-        presentFragment(chatActivity, false);
+        presentFragment(chatActivity, arguments.getBoolean("removeFragmentOnChatOpen", false));
     }
 
     private void openDiscussion() {
