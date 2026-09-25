@@ -8,6 +8,7 @@ import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.ui.Cells.DialogCell
+import org.telegram.ui.Components.RecyclerListView
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.ProfileActivity
 
@@ -97,8 +98,10 @@ object AvatarOpensProfile {
         } else {
             args.putLong("chat_id", -did)
         }
-        fragment!!.presentFragment(ProfileActivity(args))
-        return true
+        // Report what actually happened. presentFragment refuses while a transition is running or once the
+        // fragment has lost its layout; saying "handled" then would swallow the tap for no reason, whereas a
+        // false lets upstream's own handling run out its course.
+        return fragment!!.presentFragment(ProfileActivity(args))
     }
 
     /**
@@ -109,6 +112,15 @@ object AvatarOpensProfile {
     private fun target(fragment: DialogsActivity?, cell: DialogCell?): Long {
         if (!isEnabled()) return 0L
         if (fragment == null || cell == null) return 0L
+        // A tap that lands while the list is still flinging is the user stopping the scroll, not choosing a
+        // peer. Declining here hands the touch back to the RecyclerView, which absorbs it as a scroll-stop
+        // and fires no click at all -- the familiar behaviour. Claiming it instead would open a profile every
+        // time somebody halted a fast scroll with their thumb near the left edge, and since every avatar is
+        // now clickable (not just ones with a story ring) that would be a frequent, baffling jump.
+        val list = cell.parent
+        if (list is RecyclerListView && list.scrollState != RecyclerListView.SCROLL_STATE_IDLE) {
+            return 0L
+        }
         // Selection mode: the avatar is a checkbox, and a tap there has to go on meaning "select".
         if (fragment.actionBar?.isActionModeShowed == true) return 0L
         // A cell standing in for a message hit (search results) is not a peer we can profile.
