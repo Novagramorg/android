@@ -267,6 +267,20 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         @Override
         public void onLongPress() {
+            // Novagram: claiming the avatar for "tap opens the profile" also moved the avatar's LONG press
+            // here, off DialogsActivity.onItemLongClick -- and that is where the choice of preview used to be
+            // made. Without this the gesture silently downgraded to Telegram's native preview instead of our
+            // ChatPreviewBottomSheet (which also carries the per-chat passcode gate), which is a regression
+            // the avatar change introduced, not a pre-existing quirk.
+            //
+            // Only when the avatar is ours to claim: a drawn story ring keeps upstream's behaviour, and the
+            // toggle being off means we never got here in the first place. haptic = false because the touch
+            // handler already buzzed before calling us.
+            if (currentState == StoriesUtilities.STATE_EMPTY && parentFragment != null
+                    && org.fenixuz.utils.AvatarOpensProfile.wantsAvatarTap(parentFragment, DialogCell.this)) {
+                parentFragment.showChatPreviewAsBottomSheet(DialogCell.this, false);
+                return;
+            }
             if (delegate == null) {
                 return;
             }

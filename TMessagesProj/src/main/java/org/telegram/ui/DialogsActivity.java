@@ -8654,6 +8654,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     // in a bottom sheet WITHOUT sending any read receipt to the other side. Folders and encrypted
     // dialogs aren't previewable, so they fall back to Telegram's default long-press handling.
     public boolean showChatPreviewAsBottomSheet(DialogCell cell) {
+        return showChatPreviewAsBottomSheet(cell, true);
+    }
+
+    /**
+     * [haptic] is false when the caller has already buzzed. The avatar's own touch handler
+     * (StoriesUtilities.AvatarStoryParams) fires LONG_PRESS feedback before it invokes onLongPress, so
+     * buzzing again there would be felt as a double tick.
+     */
+    public boolean showChatPreviewAsBottomSheet(DialogCell cell, boolean haptic) {
         long dialogId = cell.getDialogId();
         if (cell.isDialogFolder() || dialogId == 0 || DialogObject.isEncryptedDialog(dialogId)) {
             return showChatPreview(cell);
@@ -8666,12 +8675,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             });
             lock.show();
             lock.getSecretLockScreen().onShow(true, true, -1, -1, null, null);
-            cell.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            if (haptic) {
+                cell.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            }
             return true;
         }
         ChatPreviewBottomSheet bottomSheet = new ChatPreviewBottomSheet(getParentActivity(), dialogId, getParentActivity());
         showDialog(bottomSheet);
-        cell.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+        if (haptic) {
+            cell.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+        }
         return true;
     }
 
