@@ -73,6 +73,12 @@ public class LocaleController {
 
     private volatile FastDateFormat formatterDay;
     public FastDateFormat getFormatterDay() {
+        // Novagram: every clock time in the app comes through here, so this one branch is what turns
+        // 12:01 into 12:01:45 everywhere at once. Handing back the other formatter rather than rebuilding
+        // this one means there is no cache to invalidate and no window holding a stale instance.
+        if (org.fenixuz.utils.TimeWithSeconds.isEnabled()) {
+            return getFormatterDayWithSeconds();
+        }
         if (formatterDay == null) {
             synchronized (this) {
                 if (formatterDay == null) {

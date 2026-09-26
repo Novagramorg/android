@@ -24,6 +24,7 @@ import org.fenixuz.utils.GhostStory
 import org.fenixuz.utils.HideTabs
 import org.fenixuz.folders.AdminFolders
 import org.fenixuz.utils.AvatarOpensProfile
+import org.fenixuz.utils.TimeWithSeconds
 import org.fenixuz.utils.LanguageCode
 import org.fenixuz.utils.MessageReminder
 import org.fenixuz.utils.StoryDownload
@@ -95,6 +96,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val ADMIN_FOLDERS = 30
     private val ADMIN_FOLDERS_REFRESH = 31
     private val AVATAR_PROFILE = 32
+    private val TIME_SECONDS = 33
 
     // Onboarding: a toolbar "?" replays the full feature tour; the short tour auto-runs once on first open.
     private val HELP_BUTTON = 1001
@@ -126,7 +128,8 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         APK_SHIELD to "block_apk",
         ROUND_CAMERA_FRONT to "round_video_camera",
         ADMIN_FOLDERS to "admin_folders",
-        AVATAR_PROFILE to "avatar_profile"
+        AVATAR_PROFILE to "avatar_profile",
+        TIME_SECONDS to "time_seconds"
     )
     private var targetConsumed = false
     private var flashAnimator: ValueAnimator? = null
@@ -363,6 +366,10 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             UItem.asButtonCheck(AVATAR_PROFILE, LanguageCode.getMyTitles(404), LanguageCode.getMyTitles(405))
                 .setChecked(AvatarOpensProfile.isEnabled())
         )
+        items.add(
+            UItem.asButtonCheck(TIME_SECONDS, LanguageCode.getMyTitles(406), LanguageCode.getMyTitles(407))
+                .setChecked(TimeWithSeconds.isEnabled())
+        )
         // Every one of these operations is a chain of server round-trips, and AdminFolders refuses a second
         // one while the first is running -- that refusal is what stops a quick off-then-on from producing
         // duplicate folders. Saying so in the UI is the missing half: a row that ignores a tap without
@@ -568,6 +575,10 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             ADMIN_FOLDERS_REFRESH -> {
                 AdminFolders.refresh(this, currentAccount) { result -> reportAdminFolders(result, null, null) }
                 listView?.adapter?.update(true)
+            }
+            TIME_SECONDS -> {
+                TimeWithSeconds.toggle()
+                (view as NotificationsCheckCell).setChecked(TimeWithSeconds.isEnabled())
             }
             AVATAR_PROFILE -> {
                 AvatarOpensProfile.toggle()

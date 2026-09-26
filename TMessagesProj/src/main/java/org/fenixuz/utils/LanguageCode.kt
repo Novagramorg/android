@@ -1790,6 +1790,8 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(403, "Folders updated", "Papkalar yangilandi", "Папки обновлены"))
         titlesLanguages.add(TitleLanguages(404, "Avatar opens profile", "Avatar profilni ochadi", "Аватар открывает профиль"))
         titlesLanguages.add(TitleLanguages(405, "In the chat list, tap a round avatar to open that profile instead of the chat. If the avatar has a story ring, the story still opens first.", "Chatlar ro'yxatida dumaloq avatarni bossangiz chat emas, profil ochiladi. Avatarda story halqasi bo'lsa, avval story ochilaveradi.", "В списке чатов нажмите на круглый аватар, чтобы открыть профиль, а не чат. Если у аватара есть кольцо истории, сначала откроется история."))
+        titlesLanguages.add(TitleLanguages(406, "Show seconds", "Sekundlarni ko'rsatish", "Показывать секунды"))
+        titlesLanguages.add(TitleLanguages(407, "Show clock times as 12:01:45 instead of 12:01, everywhere in the app. In the chat list only today's chats show a clock at all — older ones show a weekday or a date.", "Vaqtlar 12:01 emas, 12:01:45 ko'rinishida chiqadi — ilovaning hamma joyida. Chatlar ro'yxatida faqat bugungi chatlarda soat ko'rinadi, eskilarida hafta kuni yoki sana turadi.", "Показывать время как 12:01:45 вместо 12:01 по всему приложению. В списке чатов часы есть только у сегодняшних — у остальных день недели или дата."))
     }
 
     init {
