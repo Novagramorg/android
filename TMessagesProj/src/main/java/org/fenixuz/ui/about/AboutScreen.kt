@@ -455,7 +455,7 @@ class AboutScreen : BaseFragment() {
 
     companion object {
         /** Telegram upstream this fork is built on. Bump only when we actually merge a newer Telegram base. */
-        private const val TELEGRAM_BASE = "12.10.1"
+        private const val TELEGRAM_BASE = "12.10.6"
         private const val SUPPORT_ADMIN = "Avazbekedu"
         /** Our two official channels, linked from the About screen. */
         private const val CHANNEL_UZ = "Novagramtg"
