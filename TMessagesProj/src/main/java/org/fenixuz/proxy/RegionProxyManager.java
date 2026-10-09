@@ -18,6 +18,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.utils.proxy.ProxySettings;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.ConnectionsManager;
 
@@ -278,8 +279,16 @@ public final class RegionProxyManager {
                 if (TextUtils.isEmpty(ip) || port <= 0) {
                     continue;
                 }
-                // SOCKS5 → no MTProto secret.
-                out.add(new SharedConfig.ProxyInfo(ip, port, o.optString("user"), o.optString("pass"), ""));
+                // SOCKS5 → no MTProto secret. Since 12.10.2 a proxy is described by an immutable
+                // ProxySettings with an explicit type (SOCKS5 / MTPROTO / WEB) instead of loose fields.
+                out.add(new SharedConfig.ProxyInfo(ProxySettings.builder()
+                        .setType(ProxySettings.Type.SOCKS5)
+                        .setAddress(ip)
+                        .setPort(port)
+                        .setUser(o.optString("user"))
+                        .setPassword(o.optString("pass"))
+                        .setSecret("")
+                        .build()));
             }
         } catch (Throwable e) {
             FileLog.e(e);
@@ -304,7 +313,7 @@ public final class RegionProxyManager {
                         && TextUtils.isEmpty(prefs.getString(PREF_APPLIED_ENDPOINT, ""))) {
                     String cur = prefs.getString("proxy_ip", "") + ":" + prefs.getInt("proxy_port", 0);
                     for (SharedConfig.ProxyInfo p : parsed) {
-                        if ((p.address + ":" + p.port).equals(cur)) {
+                        if (endpoint(p).equals(cur)) {
                             prefs.edit().putString(PREF_APPLIED_ENDPOINT, cur).apply();
                             break;
                         }
@@ -356,20 +365,19 @@ public final class RegionProxyManager {
                 SharedConfig.saveConfig();
             }
 
-            prefs.edit()
-                    .putString("proxy_ip", pick.address)
-                    .putInt("proxy_port", pick.port)
-                    .putString("proxy_user", pick.username)
-                    .putString("proxy_pass", pick.password)
-                    .putString("proxy_secret", pick.secret)
-                    .putBoolean("proxy_enabled", true)
+            // Persist through ProxySettings so the keys match what upstream reads back
+            // (ProxySettings.fromSharedPreferences): proxy_ip/port/user/pass/secret plus proxy_type, which
+            // 12.10.2 added. Writing the old keys by hand would leave proxy_type unset.
+            SharedPreferences.Editor editor = prefs.edit();
+            pick.settings.toSharedPreferences(editor);
+            editor.putBoolean("proxy_enabled", true)
                     .putBoolean(PREF_APPLIED, true)
-                    .putString(PREF_APPLIED_ENDPOINT, pick.address + ":" + pick.port)
+                    .putString(PREF_APPLIED_ENDPOINT, endpoint(pick))
                     .apply();
 
-            ConnectionsManager.setProxySettings(true, pick.address, pick.port, pick.username, pick.password, pick.secret);
+            ConnectionsManager.setProxySettings(true, pick.settings);
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
-            FileLog.d("RegionProxyManager: applied " + pick.address + ":" + pick.port + " (pool=" + SharedConfig.proxyList.size() + ")");
+            FileLog.d("RegionProxyManager: applied " + endpoint(pick) + " (pool=" + SharedConfig.proxyList.size() + ")");
             // Arm the dead-pool watchdog: if we're still not connected through this proxy in WATCHDOG_MS,
             // it disables our auto-proxy so the user drops to direct instead of freezing on "Connecting…".
             AndroidUtilities.runOnUIThread(RegionProxyManager::watchdogCheck, WATCHDOG_MS);
@@ -409,7 +417,7 @@ public final class RegionProxyManager {
                     .putBoolean(PREF_APPLIED, false)
                     .remove(PREF_APPLIED_ENDPOINT)
                     .apply();
-            ConnectionsManager.setProxySettings(false, "", 0, "", "", "");
+            ConnectionsManager.setProxySettings(false, null);
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
             FileLog.d("RegionProxyManager: kill switch disabled auto-proxy " + current);
         } catch (Throwable ignore) {
@@ -459,7 +467,7 @@ public final class RegionProxyManager {
                 SharedConfig.proxyRotationEnabled = false;
                 SharedConfig.saveConfig();
             }
-            ConnectionsManager.setProxySettings(false, "", 0, "", "", "");
+            ConnectionsManager.setProxySettings(false, null);
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
             FileLog.d("RegionProxyManager: watchdog — pool dead (state=" + state + "), disabled auto-proxy + backing off " + current);
         } catch (Throwable ignore) {
@@ -467,6 +475,12 @@ public final class RegionProxyManager {
     }
 
     private static String key(SharedConfig.ProxyInfo p) {
-        return p.address + ":" + p.port + ":" + p.username + ":" + p.password + ":" + p.secret;
+        ProxySettings s = p.settings;
+        return s.getAddress() + ":" + s.getPort() + ":" + s.getUser() + ":" + s.getPassword() + ":" + s.getSecret();
+    }
+
+    /** "address:port" — the same shape the kill switch and watchdog read back from proxy_ip/proxy_port. */
+    private static String endpoint(SharedConfig.ProxyInfo p) {
+        return p.settings.getAddress() + ":" + p.settings.getPort();
     }
 }
