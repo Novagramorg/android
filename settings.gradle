@@ -5,3 +5,16 @@ include ':TMessagesProj_AppHockeyApp'
 include ':TMessagesProj_AppStandalone'
 include ':TMessagesProj_AppTests'
 include ':TMessagesProj_AppRustore'
+
+// Novagram: upstream also includes ':jlatexmath' from its lib/jlatexmath submodule here. This repo keeps
+// no submodules and resolves JLatexMath from Maven (ru.noties:jlatexmath-android, transitively via
+// markwon ext-latex); the pinned commit is unchanged since 12.10.1, where that was verified.
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+gradle.ext.androidxMediaModulePrefix = 'TMessagesProj_Modules:media3:media-'
+apply from: file("TMessagesProj_Modules/media/core_settings.gradle")
