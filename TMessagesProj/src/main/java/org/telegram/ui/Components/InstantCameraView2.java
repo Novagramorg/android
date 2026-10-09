@@ -371,7 +371,12 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         activeOutputResolution = SharedSettings.roundVideoOutputResolution.get();
         session = new RoundVideoSession.Builder(getContext(), textureView)
                 .setOutputDirectory(new File(ApplicationLoader.getFilesDirFixed(), "cache"))
-                .setInitialFacing(SharedSettings.roundVideoLastCamera.get())
+                // Novagram: the camera picked in the front/back popup (CameraSituation) wins over the
+                // last-used camera, exactly as in InstantCameraView, so the setting keeps working whichever
+                // recorder is active (this one is on by default in debug builds).
+                .setInitialFacing(org.fenixuz.utils.CameraSituation.INSTANCE.isFront()
+                        ? RoundVideoSession.CameraFacing.FRONT
+                        : RoundVideoSession.CameraFacing.BACK)
                 .setOutputResolution(activeOutputResolution)
                 .setVideoBitrate(SharedSettings.roundVideoVideoBitrate.get())
                 .setCameraResolution(SharedSettings.roundVideoCameraResolution.get())
