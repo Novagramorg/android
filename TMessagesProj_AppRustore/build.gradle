@@ -1,4 +1,8 @@
 apply plugin: 'com.android.application'
+// Novagram: mirrors TMessagesProj_App. Since 12.10.4 the strings of every values-*/strings.xml are
+// compiled by this plugin into localization_<lang>.bin assets plus string_resource_ids.bin, which
+// LocaleController loads at runtime. Without it this build would ship no localization assets.
+apply plugin: 'org.telegram.build-app-plugin'
 
 repositories {
     mavenCentral()
@@ -43,6 +47,14 @@ android {
         coreLibraryDesugaringEnabled true
     }
 
+    androidResources {
+        // emoji.pack is read in place; it must stay uncompressed in the APK
+        noCompress += "pack"
+        // translations travel in the plugin's localization assets, so the duplicate values-* resources
+        // are dropped from the package (upstream's own setting)
+        localeFilters += ["zz"]
+    }
+
     signingConfigs {
         release {
             storeFile file("../TMessagesProj/config/rustore.keystore")
@@ -60,7 +72,7 @@ android {
             minifyEnabled false
             shrinkResources false
             multiDexEnabled true
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro', '../TMessagesProj/proguard-rules-beta.pro'
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
             ndk.debugSymbolLevel = 'FULL'
         }
         release {
@@ -68,9 +80,9 @@ android {
             jniDebuggable false
             signingConfig signingConfigs.release
             minifyEnabled true
-            shrinkResources false
+            shrinkResources true
             multiDexEnabled true
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
             ndk.debugSymbolLevel = 'FULL'
         }
     }
