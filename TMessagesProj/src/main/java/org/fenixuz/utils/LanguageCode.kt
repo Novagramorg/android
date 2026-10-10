@@ -1727,7 +1727,7 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(351, "Copy link", "Havolani nusxalash", "Скопировать ссылку"))
         titlesLanguages.add(TitleLanguages(352, "Send link", "Havolani jo'natish", "Отправить ссылку"))
         titlesLanguages.add(TitleLanguages(353, "Round video", "Dumaloq video", "Видеосообщения"))
-        titlesLanguages.add(TitleLanguages(354, "Record round video messages with the front camera. Turn it off to use the rear camera. You can still flip the camera while recording.", "Dumaloq video xabarlarni old kameradan yozadi. O'chirilsa — orqa kameradan. Yozuv paytida kamerani baribir almashtira olasiz.", "Записывать видеосообщения (кружки) с фронтальной камеры. Выключите — будет задняя. Во время записи камеру всё равно можно переключить."))
+        titlesLanguages.add(TitleLanguages(354, "Round videos start recording from this camera. You can still flip it while recording.", "Dumaloq video shu kameradan yozila boshlaydi. Yozuv paytida kamerani baribir almashtirish mumkin.", "Запись кружков начинается с этой камеры. Во время записи камеру всё равно можно переключить."))
         titlesLanguages.add(TitleLanguages(355, "About", "Ilova haqida", "О приложении"))
         titlesLanguages.add(TitleLanguages(356, "Support", "Yordam", "Поддержка"))
         titlesLanguages.add(TitleLanguages(357, "Contact support", "Yordam xizmati bilan bog'lanish", "Связаться с поддержкой"))
@@ -1792,6 +1792,12 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(405, "In the chat list, tap a round avatar to open that profile instead of the chat. If the avatar has a story ring, the story still opens first.", "Chatlar ro'yxatida dumaloq avatarni bossangiz chat emas, profil ochiladi. Avatarda story halqasi bo'lsa, avval story ochilaveradi.", "В списке чатов нажмите на круглый аватар, чтобы открыть профиль, а не чат. Если у аватара есть кольцо истории, сначала откроется история."))
         titlesLanguages.add(TitleLanguages(406, "Show seconds", "Sekundlarni ko'rsatish", "Показывать секунды"))
         titlesLanguages.add(TitleLanguages(407, "Show clock times as 12:01:45 instead of 12:01, everywhere in the app. In the chat list only today's chats show a clock at all — older ones show a weekday or a date.", "Vaqtlar 12:01 emas, 12:01:45 ko'rinishida chiqadi — ilovaning hamma joyida. Chatlar ro'yxatida faqat bugungi chatlarda soat ko'rinadi, eskilarida hafta kuni yoki sana turadi.", "Показывать время как 12:01:45 вместо 12:01 по всему приложению. В списке чатов часы есть только у сегодняшних — у остальных день недели или дата."))
+        // Round video camera choice row (FenixSettings): row title, the two short row values, and the dialog title.
+        // The dialog options themselves reuse 113 / 114 ("Front camera" / "Rear camera").
+        titlesLanguages.add(TitleLanguages(408, "Camera", "Kamera", "Камера"))
+        titlesLanguages.add(TitleLanguages(409, "Front", "Old", "Фронтальная"))
+        titlesLanguages.add(TitleLanguages(410, "Rear", "Orqa", "Задняя"))
+        titlesLanguages.add(TitleLanguages(411, "Round video camera", "Dumaloq video kamerasi", "Камера для видеосообщений"))
     }
 
     init {

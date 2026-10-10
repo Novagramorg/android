@@ -46,6 +46,7 @@ import android.os.Bundle
 import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.Cells.NotificationsCheckCell
+import org.telegram.ui.Components.AlertsCreator
 import org.telegram.ui.Components.NumberPicker
 import org.telegram.ui.Components.UItem
 import org.telegram.ui.Components.UniversalAdapter
@@ -90,7 +91,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val SECRET_CHAT = 23
     private val CHANGE_COMMON_PASSWORD = 24
     private val GHOST_ACTIONBAR_BTN = 26
-    private val ROUND_CAMERA_FRONT = 27
+    private val ROUND_CAMERA = 27
     private val APK_SHIELD = 28
     private val VOICE_MIC = 29
     private val ADMIN_FOLDERS = 30
@@ -126,7 +127,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         REMINDER_ENABLED to "reminder",
         STRANGER_SHIELD to "protection_from_strangers",
         APK_SHIELD to "block_apk",
-        ROUND_CAMERA_FRONT to "round_video_camera",
+        ROUND_CAMERA to "round_video_camera",
         ADMIN_FOLDERS to "admin_folders",
         AVATAR_PROFILE to "avatar_profile",
         TIME_SECONDS to "time_seconds"
@@ -225,7 +226,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(GHOST_ACTIONBAR_BTN, 342, 343),
         step(SECRET_CHAT, 213, 217),
         step(CONFIRM_STICKER, 190, 386),
-        step(ROUND_CAMERA_FRONT, 353, 354),
+        step(ROUND_CAMERA, 353, 354),
         step(VOICE_MIC, 381, 382),
         step(FOLDER_ICONS, 240, 241),
         step(HIDE_TABS, 260, 261),
@@ -334,12 +335,11 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         items.add(UItem.asShadow(null))
 
         // Round video note camera — a persistent choice (front by default) used every time a round
-        // video is recorded, instead of the old always-ask popup. Title reuses "Front camera" (113).
+        // video is recorded, instead of the old always-ask popup. A choice row + single-choice dialog
+        // rather than a switch, so "off" never has to stand for "rear". ChoiceCell keeps the switch rows'
+        // look (description under the title) and shows the short value (409/410) where they have a switch.
         items.add(UItem.asHeader(LanguageCode.getMyTitles(353)))
-        items.add(
-            UItem.asButtonCheck(ROUND_CAMERA_FRONT, LanguageCode.getMyTitles(113), LanguageCode.getMyTitles(354))
-                .setChecked(CameraSituation.isFront)
-        )
+        items.add(ChoiceCell.Factory.of(ROUND_CAMERA, LanguageCode.getMyTitles(408), LanguageCode.getMyTitles(354), roundCameraLabel()))
         items.add(UItem.asShadow(null))
 
         // Composer voice-input mic. Only offered where it can actually work: on a device with no speech
@@ -430,6 +430,9 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
 
     private fun reminderDelayLabel(): String =
         LanguageCode.getMyTitles(272) + ": " + MessageReminder.getDelayMin() + " " + LanguageCode.getMyTitles(273)
+
+    private fun roundCameraLabel(): String =
+        LanguageCode.getMyTitles(if (CameraSituation.isFront) 409 else 410)
 
     private fun reminderSoundLabel(): String {
         val tone = if (MessageReminder.getSound() == 1) LanguageCode.getMyTitles(276) else LanguageCode.getMyTitles(275)
@@ -524,12 +527,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
                 ConfirmDialogsPref.changeConfirmGifMode()
                 (view as NotificationsCheckCell).setChecked(ConfirmDialogsPref.confirmGif)
             }
-            ROUND_CAMERA_FRONT -> {
-                // ON = front camera, OFF = rear. Persisted in CameraSituation; InstantCameraView reads it
-                // on open. No popup — the saved choice applies to every round video from now on.
-                CameraSituation.isFront = !CameraSituation.isFront
-                (view as NotificationsCheckCell).setChecked(CameraSituation.isFront)
-            }
+            ROUND_CAMERA -> showRoundCameraPicker()
             FOLDER_ICONS -> {
                 FolderIcons.setIconMode(!FolderIcons.isIconMode())
                 (view as NotificationsCheckCell).setChecked(FolderIcons.isIconMode())
@@ -680,6 +678,24 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             }
             .setNegativeButton(LanguageCode.getMyTitles(80), null)
             .show()
+    }
+
+    /**
+     * Front / rear choice for round videos, as Telegram's own radio-list dialog (the current camera is
+     * pre-checked; tapping an option saves and closes). Only the start camera is stored: the flip button
+     * while recording still switches the live camera without touching this preference.
+     */
+    private fun showRoundCameraPicker() {
+        val context = parentActivity ?: return
+        val options = arrayOf(LanguageCode.getMyTitles(113), LanguageCode.getMyTitles(114))
+        val selected = if (CameraSituation.isFront) 0 else 1
+        showDialog(AlertsCreator.createSingleChoiceDialog(context, options, LanguageCode.getMyTitles(411), selected) { _, which ->
+            val front = which == 0
+            if (front != CameraSituation.isFront) {
+                CameraSituation.isFront = front
+                listView.adapter.update(true)
+            }
+        })
     }
 
     private fun showReminderSoundPicker() {

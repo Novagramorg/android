@@ -10,10 +10,10 @@ import org.telegram.messenger.ApplicationLoader
  * so the hot read at InstantCameraView (when the camera opens) is a plain field access — no disk
  * touch per recording. Writes go through the property setter and persist async via apply().
  *
- * It is controlled by a single toggle in FenixSettings; there is no per-recording front/back popup
- * anymore — the saved choice is used every time. The in-recording flip button still switches the
- * live camera, but deliberately does NOT overwrite this preference, so the setting stays the
- * authoritative "start" camera for the next round video.
+ * It is chosen in FenixSettings (a "Camera: Front/Rear" row that opens a single-choice dialog); there
+ * is no per-recording front/back popup anymore — the saved choice is used every time. The
+ * in-recording flip button still switches the live camera, but deliberately does NOT overwrite this
+ * preference, so the setting stays the authoritative "start" camera for the next round video.
  */
 object CameraSituation {
 
