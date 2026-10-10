@@ -225,15 +225,18 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(GHOST_MODE, 32, 245),
         step(GHOST_ACTIONBAR_BTN, 342, 343),
         step(SECRET_CHAT, 213, 217),
+        step(STRANGER_SHIELD, 319, 320),
+        step(APK_SHIELD, 378, 379),
         step(CONFIRM_STICKER, 190, 386),
         step(ROUND_CAMERA, 353, 354),
         step(VOICE_MIC, 381, 382),
         step(FOLDER_ICONS, 240, 241),
         step(HIDE_TABS, 260, 261),
+        step(AVATAR_PROFILE, 404, 405),
+        step(TIME_SECONDS, 406, 407),
         step(AUTO_ACCEPT_JOIN, 263, 264),
-        step(REMINDER_ENABLED, 270, 271),
-        step(STRANGER_SHIELD, 319, 320),
-        step(APK_SHIELD, 378, 379)
+        step(ADMIN_FOLDERS, 391, 392),
+        step(REMINDER_ENABLED, 270, 271)
     )
 
     private fun startTour() {
@@ -319,6 +322,28 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             items.add(UItem.asShadow(null))
         }
 
+        // Security sits right after Privacy and Chat lock: all three are "protect me" settings.
+        items.add(UItem.asHeader(LanguageCode.getMyTitles(318)))
+        items.add(
+            UItem.asButtonCheck(STRANGER_SHIELD, LanguageCode.getMyTitles(319), LanguageCode.getMyTitles(320))
+                .setChecked(StrangerShield.isEnabled(currentAccount))
+        )
+        // A "Stranger chats" inbox — opens a Chats-like screen listing the hidden non-contact chats,
+        // so nothing is lost: you can read and reply from there. Reachable even when the toggle is off.
+        // Badge the entry with the unread count so an important message is never missed unnoticed.
+        val inboxUnread = StrangerShield.countInboxUnread(currentAccount)
+        if (inboxUnread > 0) {
+            items.add(UItem.asButton(STRANGER_INBOX, LanguageCode.getMyTitles(321), inboxUnread.toString()))
+        } else {
+            items.add(UItem.asButton(STRANGER_INBOX, LanguageCode.getMyTitles(321)))
+        }
+        // Block incoming .apk attachments — same section, it is the same "protect me" intent.
+        items.add(
+            UItem.asButtonCheck(APK_SHIELD, LanguageCode.getMyTitles(378), LanguageCode.getMyTitles(379))
+                .setChecked(ApkShield.isEnabled())
+        )
+        items.add(UItem.asShadow(null))
+
         items.add(UItem.asHeader(LanguageCode.getMyTitles(190)))
         items.add(
             UItem.asButtonCheck(CONFIRM_STICKER, LanguageCode.getMyTitles(210), LanguageCode.getMyTitles(191))
@@ -353,7 +378,9 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             items.add(UItem.asShadow(null))
         }
 
-        items.add(UItem.asHeader(LanguageCode.getMyTitles(240)))
+        // Appearance: how the chat list and times look and behave. New look-and-feel toggles go here,
+        // not into a section named after some other feature.
+        items.add(UItem.asHeader(LanguageCode.getMyTitles(412)))
         items.add(
             UItem.asButtonCheck(FOLDER_ICONS, LanguageCode.getMyTitles(240), LanguageCode.getMyTitles(241))
                 .setChecked(FolderIcons.isIconMode())
@@ -369,6 +396,14 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         items.add(
             UItem.asButtonCheck(TIME_SECONDS, LanguageCode.getMyTitles(406), LanguageCode.getMyTitles(407))
                 .setChecked(TimeWithSeconds.isEnabled())
+        )
+        items.add(UItem.asShadow(null))
+
+        // Groups and channels: tools only someone who owns or runs groups/channels needs.
+        items.add(UItem.asHeader(LanguageCode.getMyTitles(262)))
+        items.add(
+            UItem.asButtonCheck(AUTO_ACCEPT_JOIN, LanguageCode.getMyTitles(263), LanguageCode.getMyTitles(264))
+                .setChecked(AutoAcceptJoin.isEnabled())
         )
         // Every one of these operations is a chain of server round-trips, and AdminFolders refuses a second
         // one while the first is running -- that refusal is what stops a quick off-then-on from producing
@@ -388,13 +423,6 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         }
         items.add(UItem.asShadow(null))
 
-        items.add(UItem.asHeader(LanguageCode.getMyTitles(262)))
-        items.add(
-            UItem.asButtonCheck(AUTO_ACCEPT_JOIN, LanguageCode.getMyTitles(263), LanguageCode.getMyTitles(264))
-                .setChecked(AutoAcceptJoin.isEnabled())
-        )
-        items.add(UItem.asShadow(null))
-
         items.add(UItem.asHeader(LanguageCode.getMyTitles(269)))
         items.add(
             UItem.asButtonCheck(REMINDER_ENABLED, LanguageCode.getMyTitles(270), LanguageCode.getMyTitles(271))
@@ -402,27 +430,6 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         )
         items.add(UItem.asButton(REMINDER_DELAY, reminderDelayLabel()))
         items.add(UItem.asButton(REMINDER_SOUND, reminderSoundLabel()))
-        items.add(UItem.asShadow(null))
-
-        items.add(UItem.asHeader(LanguageCode.getMyTitles(318)))
-        items.add(
-            UItem.asButtonCheck(STRANGER_SHIELD, LanguageCode.getMyTitles(319), LanguageCode.getMyTitles(320))
-                .setChecked(StrangerShield.isEnabled(currentAccount))
-        )
-        // A "Stranger chats" inbox — opens a Chats-like screen listing the hidden non-contact chats,
-        // so nothing is lost: you can read and reply from there. Reachable even when the toggle is off.
-        // Badge the entry with the unread count so an important message is never missed unnoticed.
-        val inboxUnread = StrangerShield.countInboxUnread(currentAccount)
-        if (inboxUnread > 0) {
-            items.add(UItem.asButton(STRANGER_INBOX, LanguageCode.getMyTitles(321), inboxUnread.toString()))
-        } else {
-            items.add(UItem.asButton(STRANGER_INBOX, LanguageCode.getMyTitles(321)))
-        }
-        // Block incoming .apk attachments — same Privacy section, it is the same "protect me" intent.
-        items.add(
-            UItem.asButtonCheck(APK_SHIELD, LanguageCode.getMyTitles(378), LanguageCode.getMyTitles(379))
-                .setChecked(ApkShield.isEnabled())
-        )
         items.add(UItem.asShadow(null))
 
         resolveTargetPosition(items)

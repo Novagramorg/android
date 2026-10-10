@@ -1312,7 +1312,7 @@ object LanguageCode {
             TitleLanguages(
                 210,
                 "Sending a sticker",
-                "Sticker yuborish",
+                "Stiker yuborish",
                 "Отправка стикера"
             )
         )
@@ -1632,7 +1632,7 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(259, "1. Open Telegram on your phone\n2. Go to Settings → Devices → Link Device\n3. Point your phone at this screen", "1. Telefoningizda Telegramni oching\n2. Sozlamalar → Qurilmalar → Qurilma ulash\n3. Telefoningizni shu ekranga qarating", "1. Откройте Telegram на телефоне\n2. Настройки → Устройства → Подключить устройство\n3. Наведите телефон на этот экран"))
         titlesLanguages.add(TitleLanguages(260, "Hide folder tabs", "Jild tablarini yashirish", "Скрыть вкладки папок"))
         titlesLanguages.add(TitleLanguages(261, "Hide the folder tabs row in the chat list", "Suhbatlar ro'yxatidagi jild tablari qatorini yashirish", "Скрыть строку вкладок папок в списке чатов"))
-        titlesLanguages.add(TitleLanguages(262, "Channels", "Kanallar", "Каналы"))
+        titlesLanguages.add(TitleLanguages(262, "Groups and channels", "Guruh va kanallar", "Группы и каналы"))
         titlesLanguages.add(TitleLanguages(263, "Auto-accept join requests", "A'zolik so'rovlarini avto-qabul", "Авто-приём заявок на вступление"))
         titlesLanguages.add(TitleLanguages(264, "Automatically approve join requests in channels/groups you manage", "Siz boshqaradigan kanal/guruhlardagi a'zolik so'rovlarini avtomatik tasdiqlash", "Автоматически одобрять заявки в управляемых вами каналах и группах"))
         titlesLanguages.add(TitleLanguages(265, "Log in with bot token", "Bot tokeni bilan kirish", "Войти по токену бота"))
@@ -1775,29 +1775,32 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(390, "Edit history", "Tahrirlar tarixi", "История изменений"))
 
         // Admin/owner folders
-        titlesLanguages.add(TitleLanguages(391, "Admin folders", "Adminlik papkalari", "Папки администратора"))
-        titlesLanguages.add(TitleLanguages(392, "Four folders that gather the groups and channels you own or administer", "Siz egalik qiladigan yoki boshqaradigan guruh va kanallarni to'playdigan to'rtta papka", "Четыре папки, которые собирают группы и каналы, которыми вы владеете или управляете"))
+        titlesLanguages.add(TitleLanguages(391, "Admin folders", "Adminlik jildlari", "Папки администратора"))
+        titlesLanguages.add(TitleLanguages(392, "Four folders that gather the groups and channels you own or administer", "Siz egalik qiladigan yoki boshqaradigan guruh va kanallarni to'playdigan to'rtta jild", "Четыре папки, которые собирают группы и каналы, которыми вы владеете или управляете"))
         titlesLanguages.add(TitleLanguages(393, "My groups", "Guruhlarim", "Мои группы"))
         titlesLanguages.add(TitleLanguages(394, "Admin group", "Admin guruh", "Админ груп"))
         titlesLanguages.add(TitleLanguages(395, "My channels", "Kanallarim", "Мои каналы"))
         titlesLanguages.add(TitleLanguages(396, "Adm channel", "Admin kanal", "Админ канал"))
-        titlesLanguages.add(TitleLanguages(397, "These folders are saved to your Telegram account, so they appear on your other devices too. They are filled once — use Refresh after your rights change.", "Bu papkalar Telegram akkauntingizga saqlanadi, shuning uchun boshqa qurilmalaringizda ham ko'rinadi. Ular bir marta to'ldiriladi — huquqlaringiz o'zgargach Yangilash tugmasini bosing.", "Эти папки сохраняются в вашем аккаунте Telegram, поэтому появятся и на других устройствах. Они заполняются один раз — после изменения прав нажмите Обновить."))
-        titlesLanguages.add(TitleLanguages(398, "Refresh folders", "Papkalarni yangilash", "Обновить папки"))
+        titlesLanguages.add(TitleLanguages(397, "These folders are saved to your Telegram account, so they appear on your other devices too. They are filled once — use Refresh after your rights change.", "Bu jildlar Telegram akkauntingizga saqlanadi, shuning uchun boshqa qurilmalaringizda ham ko'rinadi. Ular bir marta to'ldiriladi — huquqlaringiz o'zgargach Yangilash tugmasini bosing.", "Эти папки сохраняются в вашем аккаунте Telegram, поэтому появятся и на других устройствах. Они заполняются один раз — после изменения прав нажмите Обновить."))
+        titlesLanguages.add(TitleLanguages(398, "Refresh folders", "Jildlarni yangilash", "Обновить папки"))
         titlesLanguages.add(TitleLanguages(399, "Nothing to add — you are not an owner or admin anywhere", "Qo'shadigan narsa yo'q — siz hech qayerda ega yoki admin emassiz", "Нечего добавить — вы нигде не владелец и не администратор"))
-        titlesLanguages.add(TitleLanguages(400, "Not enough folder slots. Telegram allows %1\$d folders and you already have %2\$d.", "Papka o'rni yetmayapti. Telegram %1\$d ta papkaga ruxsat beradi, sizda esa allaqachon %2\$d ta bor.", "Не хватает мест для папок. Telegram разрешает %1\$d папок, а у вас уже %2\$d."))
-        titlesLanguages.add(TitleLanguages(401, "%1\$s holds only the first %2\$d chats — Telegram's limit per folder.", "%1\$s papkasiga faqat birinchi %2\$d ta chat sig'di — Telegram'ning papka uchun cheklovi.", "В папку «%1\$s» вошли только первые %2\$d чатов — это ограничение Telegram."))
-        titlesLanguages.add(TitleLanguages(402, "Remove these folders from your account?", "Bu papkalar akkauntingizdan o'chirilsinmi?", "Удалить эти папки из вашего аккаунта?"))
-        titlesLanguages.add(TitleLanguages(403, "Folders updated", "Papkalar yangilandi", "Папки обновлены"))
+        titlesLanguages.add(TitleLanguages(400, "Not enough folder slots. Telegram allows %1\$d folders and you already have %2\$d.", "Jild o'rni yetmayapti. Telegram %1\$d ta jildga ruxsat beradi, sizda esa allaqachon %2\$d ta bor.", "Не хватает мест для папок. Telegram разрешает %1\$d папок, а у вас уже %2\$d."))
+        titlesLanguages.add(TitleLanguages(401, "%1\$s holds only the first %2\$d chats — Telegram's limit per folder.", "%1\$s jildiga faqat birinchi %2\$d ta suhbat sig'di — Telegram'ning jild uchun cheklovi.", "В папку «%1\$s» вошли только первые %2\$d чатов — это ограничение Telegram."))
+        titlesLanguages.add(TitleLanguages(402, "Remove these folders from your account?", "Bu jildlar akkauntingizdan o'chirilsinmi?", "Удалить эти папки из вашего аккаунта?"))
+        titlesLanguages.add(TitleLanguages(403, "Folders updated", "Jildlar yangilandi", "Папки обновлены"))
         titlesLanguages.add(TitleLanguages(404, "Avatar opens profile", "Avatar profilni ochadi", "Аватар открывает профиль"))
-        titlesLanguages.add(TitleLanguages(405, "In the chat list, tap a round avatar to open that profile instead of the chat. If the avatar has a story ring, the story still opens first.", "Chatlar ro'yxatida dumaloq avatarni bossangiz chat emas, profil ochiladi. Avatarda story halqasi bo'lsa, avval story ochilaveradi.", "В списке чатов нажмите на круглый аватар, чтобы открыть профиль, а не чат. Если у аватара есть кольцо истории, сначала откроется история."))
+        titlesLanguages.add(TitleLanguages(405, "In the chat list, tap a round avatar to open that profile instead of the chat. If the avatar has a story ring, the story still opens first.", "Suhbatlar ro'yxatida dumaloq avatarni bossangiz suhbat emas, profil ochiladi. Avatarda hikoya halqasi bo'lsa, avval hikoya ochilaveradi.", "В списке чатов нажмите на круглый аватар, чтобы открыть профиль, а не чат. Если у аватара есть кольцо истории, сначала откроется история."))
         titlesLanguages.add(TitleLanguages(406, "Show seconds", "Sekundlarni ko'rsatish", "Показывать секунды"))
-        titlesLanguages.add(TitleLanguages(407, "Show clock times as 12:01:45 instead of 12:01, everywhere in the app. In the chat list only today's chats show a clock at all — older ones show a weekday or a date.", "Vaqtlar 12:01 emas, 12:01:45 ko'rinishida chiqadi — ilovaning hamma joyida. Chatlar ro'yxatida faqat bugungi chatlarda soat ko'rinadi, eskilarida hafta kuni yoki sana turadi.", "Показывать время как 12:01:45 вместо 12:01 по всему приложению. В списке чатов часы есть только у сегодняшних — у остальных день недели или дата."))
+        titlesLanguages.add(TitleLanguages(407, "Show clock times as 12:01:45 instead of 12:01, everywhere in the app. In the chat list only today's chats show a clock at all — older ones show a weekday or a date.", "Vaqtlar 12:01 emas, 12:01:45 ko'rinishida chiqadi — ilovaning hamma joyida. Suhbatlar ro'yxatida faqat bugungi suhbatlarda soat ko'rinadi, eskilarida hafta kuni yoki sana turadi.", "Показывать время как 12:01:45 вместо 12:01 по всему приложению. В списке чатов часы есть только у сегодняшних — у остальных день недели или дата."))
         // Round video camera choice row (FenixSettings): row title, the two short row values, and the dialog title.
         // The dialog options themselves reuse 113 / 114 ("Front camera" / "Rear camera").
         titlesLanguages.add(TitleLanguages(408, "Camera", "Kamera", "Камера"))
         titlesLanguages.add(TitleLanguages(409, "Front", "Old", "Фронтальная"))
         titlesLanguages.add(TitleLanguages(410, "Rear", "Orqa", "Задняя"))
         titlesLanguages.add(TitleLanguages(411, "Round video camera", "Dumaloq video kamerasi", "Камера для видеосообщений"))
+
+        // FenixSettings section header for the chat-list / look rows (folder icons, folder tabs, avatar tap, seconds).
+        titlesLanguages.add(TitleLanguages(412, "Appearance", "Ko'rinish", "Оформление"))
     }
 
     init {
