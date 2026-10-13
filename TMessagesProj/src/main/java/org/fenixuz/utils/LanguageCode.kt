@@ -7,6 +7,7 @@ import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.R
 import org.telegram.ui.ActionBar.AlertDialog
+import java.util.Locale
 
 
 object LanguageCode {
@@ -1801,7 +1802,21 @@ object LanguageCode {
 
         // FenixSettings section header for the chat-list / look rows (folder icons, folder tabs, avatar tap, seconds).
         titlesLanguages.add(TitleLanguages(412, "Appearance", "Ko'rinish", "Оформление"))
+
+        // Chat selection-bar title; see messagesSelected(). The Uzbek wording follows Telegram's own Uzbek pack
+        // ("Tanlangan: %d" for StoriesSelected).
+        titlesLanguages.add(TitleLanguages(413, "%d Selected", "Tanlangan: %d", "Выбрано %d"))
     }
+
+    /**
+     * Title of the chat selection bar ("3 Selected"). MessagesSelected arrived with Telegram 12.10 and the Uzbek
+     * cloud language pack has no translation for it yet, so Uzbek users saw English. Only Uzbek is replaced:
+     * every other language keeps Telegram's own string with its plural forms.
+     */
+    @JvmStatic
+    fun messagesSelected(count: Int): String =
+        if (languageCode == "uz") String.format(Locale.US, getMyTitles(413), count)
+        else LocaleController.formatPluralString("MessagesSelected", count)
 
     init {
         languages.add(Language("English", "en-EN"))

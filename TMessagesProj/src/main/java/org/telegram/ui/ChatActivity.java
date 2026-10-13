@@ -19758,7 +19758,7 @@ public class ChatActivity extends BaseFragment implements
                 return;
             }
             if (selectedMessagesCountTextView != null && (selectedMessagesIds[0].size() != 0 || selectedMessagesIds[1].size() != 0)) {
-                selectedMessagesCountTextView.setText(LocaleController.formatPluralString("MessagesSelected", selectedMessagesIds[0].size() + selectedMessagesIds[1].size()), true);
+                selectedMessagesCountTextView.setText(org.fenixuz.utils.LanguageCode.messagesSelected(selectedMessagesIds[0].size() + selectedMessagesIds[1].size()), true);
             }
         } else {
             int size = selectedMessagesIds[0].size() + selectedMessagesIds[1].size();
@@ -32975,7 +32975,7 @@ public class ChatActivity extends BaseFragment implements
         }
 
         if (selectedMessagesCountTextView != null) {
-            selectedMessagesCountTextView.setText(LocaleController.formatPluralString("MessagesSelected", selectedMessagesIds[0].size() + selectedMessagesIds[1].size()), false);
+            selectedMessagesCountTextView.setText(org.fenixuz.utils.LanguageCode.messagesSelected(selectedMessagesIds[0].size() + selectedMessagesIds[1].size()), false);
         }
         updateVisibleRows();
         if (chatActivityEnterView != null) {
