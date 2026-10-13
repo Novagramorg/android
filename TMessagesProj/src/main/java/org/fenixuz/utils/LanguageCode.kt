@@ -1806,6 +1806,10 @@ object LanguageCode {
         // Chat selection-bar title; see messagesSelected(). The Uzbek wording follows Telegram's own Uzbek pack
         // ("Tanlangan: %d" for StoriesSelected).
         titlesLanguages.add(TitleLanguages(413, "%d Selected", "Tanlangan: %d", "Выбрано %d"))
+
+        // Edit history screen (MessageHistory) when nothing was saved for the message.
+        titlesLanguages.add(TitleLanguages(414, "No edit history yet", "Hozircha tahrirlar tarixi yo'q", "Истории изменений пока нет"))
+        titlesLanguages.add(TitleLanguages(415, "Only edits made after this feature was turned on are saved.", "Faqat funksiya yoqilganidan keyingi tahrirlar saqlanadi.", "Сохраняются только правки, сделанные после включения функции."))
     }
 
     /**

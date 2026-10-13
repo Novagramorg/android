@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import org.telegram.messenger.AndroidUtilities
@@ -21,6 +22,7 @@ import org.telegram.ui.Components.CustomPhoneKeyboardView
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.SizeNotifierFrameLayout
 import org.fenixuz.utils.EditMessage
+import org.fenixuz.utils.LanguageCode
 
 class MessageHistory(val msg: MessageObject, var dialogId: Long) : BaseFragment() {
 
@@ -111,8 +113,37 @@ class MessageHistory(val msg: MessageObject, var dialogId: Long) : BaseFragment(
             recyclerView,
             LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT.toFloat())
         )
+        // The menu item shows on every edited message, but only edits seen while edit-save was on are stored,
+        // so an empty list is normal. Say so instead of leaving a blank screen.
+        if (msgHistoryAdapter.itemCount == 0) {
+            frameLayout.addView(
+                emptyView(context),
+                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT.toFloat(), Gravity.CENTER, 32f, 0f, 32f, 0f)
+            )
+        }
 
         return fragmentView
+    }
+
+    private fun emptyView(context: Context): View = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        addView(TextView(context).apply {
+            text = LanguageCode.getMyTitles(414)              // No edit history yet
+            textSize = 17f
+            typeface = AndroidUtilities.bold()
+            gravity = Gravity.CENTER
+            setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2))
+        })
+        addView(TextView(context).apply {
+            text = LanguageCode.getMyTitles(415)              // …why: only edits made after edit-save was turned on are kept
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setLineSpacing(AndroidUtilities.dp(2f).toFloat(), 1f)
+            setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = AndroidUtilities.dp(8f)
+        })
     }
 
     private fun setUpActionBar() {
@@ -152,8 +183,8 @@ class MessageHistory(val msg: MessageObject, var dialogId: Long) : BaseFragment(
 
         if (chat != null) {
             avatarContainer?.setChatAvatar(chat)
-//            avatarContainer?.setTitle(AndroidUtilities.removeDiacritics(chat.title))
-            avatarContainer?.setTitle("Channel")
+            // The chat's own name; this used to be a hard-coded "Channel", even for groups.
+            avatarContainer?.setTitle(AndroidUtilities.removeDiacritics(chat?.title ?: ""))
         } else if (user != null) {
             avatarContainer?.setUserAvatar(user)
             avatarContainer?.setTitle(AndroidUtilities.removeDiacritics(UserObject.getUserName(user)))
