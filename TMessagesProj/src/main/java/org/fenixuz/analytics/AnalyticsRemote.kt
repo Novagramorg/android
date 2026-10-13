@@ -3,10 +3,15 @@ package org.fenixuz.analytics
 import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
+import com.google.firebase.FirebaseApp
+import org.json.JSONArray
+import org.json.JSONObject
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.FileLog
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 /**
  * Novagram analytics — anonymous growth counters on Firebase Firestore. NO Firebase Analytics / GA4
@@ -22,19 +27,23 @@ import org.telegram.messenger.AndroidUtilities
  *                                                            number; 0 (no base) when the field is absent.
  *                                                            (same for accountBaseOffset) — NOTHING is hard-coded.
  *
- * Clean rewrite of pro's AnalyticsRemote, fixing its three real flaws:
- *  1. Pro hit Firestore.get() on EVERY first-screen show. Here a local SharedPreferences flag short-circuits
- *     after the first successful count, so normal launches do ZERO network work.
- *  2. Pro's install de-dup was a non-atomic get-then-set — two fast launches could both see "absent" and
- *     double-count. Here it is a single Firestore transaction: the doc is read and the counter incremented
- *     atomically, so a device is counted exactly once.
- *  3. Pro incremented with .update(), which THROWS if the counter doc doesn't exist yet (so the very first
- *     increment silently failed unless the doc was pre-created by hand). Here every increment is a
- *     set(increment, merge), which auto-creates the doc.
+ * Talks to Firestore's REST API over plain HTTPS, not through the Firestore SDK. The SDK's gRPC channel
+ * (firebase-firestore 24.0.0 → gRPC 1.41) never connects on a network whose IPv6 route to
+ * firestore.googleapis.com is dead: it starts on the IPv6 address and the SDK resets the channel every 15 s,
+ * before gRPC ever falls back to IPv4. Seen on the office Wi-Fi in 2026-10: the screen showed "0 users" and no
+ * install or login was counted from that network. HttpURLConnection tries the resolved addresses one after
+ * another, so with a short connect timeout a dead IPv6 route costs a few seconds and IPv4 answers. Newer SDKs
+ * need minSdk 23/24, so upgrading was not an option. Same database, same security rules, no server of our own.
+ *
+ * Kept from the rewrite of pro's AnalyticsRemote:
+ *  1. A local SharedPreferences flag short-circuits after the first successful install count, so normal
+ *     launches do ZERO network work.
+ *  2. Install de-dup is atomic: one commit creates uniqueInstallUsers/{androidId} with an exists=false
+ *     precondition AND increments the counter. If the device doc already exists the whole commit is rejected
+ *     (409), so a device is counted exactly once, even after a cache wipe.
+ *  3. Increments are upserts (empty update mask + increment transform), which auto-create a missing doc.
  */
 object AnalyticsRemote {
-
-    private val db: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
 
     private const val PREF = "db"
     private const val KEY_INSTALL_COUNTED = "fenix_install_counted"
@@ -43,54 +52,73 @@ object AnalyticsRemote {
     private const val KEY_CACHE_INSTALLS = "fenix_cache_installs"
     private const val KEY_CACHE_ACCOUNTS = "fenix_cache_accounts"
 
+    private const val INSTALLS = "uniqueInstallUsersCount/usersCount"
+    private const val ACCOUNTS = "users/usersCount"
+    private const val CONFIG = "config/display"
+
+    // Per address: on a dead IPv6 route the connect times out after this long and the next address (IPv4) is
+    // tried. Long enough for a slow mobile network, short enough that the fallback lands in seconds.
+    private const val CONNECT_TIMEOUT_MS = 4_000
+    private const val READ_TIMEOUT_MS = 10_000
+
+    // One background thread: calls come from the main thread (login) and the requests are few. Sequential
+    // requests also reuse the pooled connection, so only the first one pays for the IPv6 fallback.
+    private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "novagram-analytics") }
+
+    /** Runs [block] on [io]. An exception escaping an executor thread would crash the app; analytics never may. */
+    private fun background(block: () -> Unit) = io.execute {
+        try {
+            block()
+        } catch (e: Throwable) {
+            FileLog.e(e)
+        }
+    }
+
+    /**
+     * The project's documents root, from google-services.json; null if Firebase isn't initialised. Not cached:
+     * a lazy property would remember a null from a too-early call for the rest of the process.
+     */
+    private fun documents(): String? = try {
+        FirebaseApp.getInstance().options.projectId?.let { "projects/$it/databases/(default)/documents" }
+    } catch (e: Throwable) {
+        null
+    }
+
     /**
      * Count this device once, ever. Cheap: a local flag means after the first success we never touch the
      * network again — even across app updates. If the device's cache is wiped, the flag is lost but the
-     * Android-ID transaction still recognises the device, so it is NOT counted twice. Safe to call from a
-     * background thread (Firestore manages its own threads).
+     * Android-ID precondition still recognises the device, so it is NOT counted twice.
      */
     @JvmStatic
     fun addInstallIfFirstTime(context: Context) {
-        val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+        val prefs = prefs(context)
         if (prefs.getBoolean(KEY_INSTALL_COUNTED, false)) return  // already counted — no network
 
         val deviceId = deviceId(context)
         if (deviceId.isNullOrBlank()) return
+        val root = documents() ?: return
 
-        val installRef = db.collection("uniqueInstallUsers").document(deviceId)
-        val counterRef = db.collection("uniqueInstallUsersCount").document("usersCount")
-
-        db.runTransaction<Boolean> { tx ->
-            if (!tx.get(installRef).exists()) {
-                tx.set(installRef, mapOf("created_at" to FieldValue.serverTimestamp()))
-                tx.set(counterRef, mapOf("allUsers" to FieldValue.increment(1)), SetOptions.merge())
+        background {
+            val createDevice = JSONObject()
+                .put("update", JSONObject().put("name", "$root/uniqueInstallUsers/$deviceId"))
+                .put("currentDocument", JSONObject().put("exists", false))
+                .put("updateTransforms", JSONArray().put(
+                    JSONObject().put("fieldPath", "created_at").put("setToServerValue", "REQUEST_TIME")))
+            val code = commit(root, createDevice, increment("$root/$INSTALLS"))
+            // 200 = counted now; 409 = this device was counted before. Anything else (offline, 5xx) leaves the
+            // flag unset so the next launch retries — no double-count risk thanks to the precondition.
+            if (code == 200 || code == 409) {
+                prefs.edit().putBoolean(KEY_INSTALL_COUNTED, true).apply()
             }
-            true
-        }.addOnSuccessListener {
-            prefs.edit().putBoolean(KEY_INSTALL_COUNTED, true).apply()
         }
-        // On failure we leave the flag unset so the next launch retries — no double-count risk thanks to the
-        // Android-ID transaction.
     }
 
     /** Every successful account login = +1 to the total-accounts counter (not de-duplicated, by design). */
     @JvmStatic
     fun addAccount() {
-        db.collection("users").document("usersCount")
-            .set(mapOf("allUsers" to FieldValue.increment(1)), SetOptions.merge())
+        val root = documents() ?: return
+        background { commit(root, increment("$root/$ACCOUNTS")) }
     }
-
-    // All four reads return null when the doc/field is missing OR the network read fails — so callers can
-    // tell "no data yet" apart from a real zero. Nothing is hard-coded; every number comes from Firestore.
-    fun getInstallCount(cb: (Long?) -> Unit) = read("uniqueInstallUsersCount", "usersCount", "allUsers", cb)
-
-    fun getAccountCount(cb: (Long?) -> Unit) = read("users", "usersCount", "allUsers", cb)
-
-    /** Optional base for the install count; comes ONLY from config/display.installBaseOffset (treated as 0 if absent). */
-    fun getInstallBaseOffset(cb: (Long?) -> Unit) = read("config", "display", "installBaseOffset", cb)
-
-    /** Optional base for the account count; comes ONLY from config/display.accountBaseOffset (treated as 0 if absent). */
-    fun getAccountBaseOffset(cb: (Long?) -> Unit) = read("config", "display", "accountBaseOffset", cb)
 
     // ---- Instant-display layer ---------------------------------------------------------------------
     // The screen shows these cached numbers the moment it opens (zero network), then quietly corrects
@@ -98,7 +126,7 @@ object AnalyticsRemote {
     //
     // Null means "never read successfully on this install". It must stay distinct from 0: the screen shows a
     // dash for null. Showing 0 instead told users "Novagram has 0 users" whenever the first read had not
-    // landed yet, e.g. on a network where this old gRPC stack cannot reach Firestore at all.
+    // landed yet.
 
     /** Last shown install total, or null before the first successful Firebase read. */
     @JvmStatic
@@ -114,60 +142,106 @@ object AnalyticsRemote {
     }
 
     /**
-     * Live install figure = base offset + real unique installs. The two reads fire in PARALLEL (not
-     * chained) to halve latency, and the combined result is cached for an instant next open. Calls back with
-     * null only when the read failed and nothing was ever cached.
+     * Live install figure = base offset + real unique installs, cached for an instant next open. Calls back on
+     * the UI thread, with the last cached number if the read fails, and with null only when nothing was ever
+     * cached.
      */
     @JvmStatic
-    fun getInstallsDisplay(context: Context, cb: (Long?) -> Unit) {
-        var base: Long? = null; var baseDone = false
-        var real: Long? = null; var realDone = false
-        fun emit() {
-            if (!baseDone || !realDone) return          // wait for BOTH reads to come back
-            if (real != null) {                         // live count arrived → base(or 0) + real, then cache it
-                val total = (base ?: 0L) + real!!
-                prefs(context).edit().putLong(KEY_CACHE_INSTALLS, total).apply()
-                cb(total)
-            } else {
-                cb(cachedInstalls(context))             // read failed → keep last known, never wipe to 0
-            }
+    fun getInstallsDisplay(context: Context, cb: (Long?) -> Unit) =
+        display(context, INSTALLS, "installBaseOffset", KEY_CACHE_INSTALLS, cb)
+
+    /** Live account figure = base offset + real account logins. Same cache approach as [getInstallsDisplay]. */
+    @JvmStatic
+    fun getAccountsDisplay(context: Context, cb: (Long?) -> Unit) =
+        display(context, ACCOUNTS, "accountBaseOffset", KEY_CACHE_ACCOUNTS, cb)
+
+    private fun display(context: Context, counter: String, baseField: String, cacheKey: String, cb: (Long?) -> Unit) {
+        val root = documents()
+        if (root == null) {
+            cb(cached(context, cacheKey))
+            return
         }
-        getInstallBaseOffset { base = it; baseDone = true; emit() }
-        getInstallCount { real = it; realDone = true; emit() }
+        background {
+            val live = liveTotal(root, counter, baseField)
+            if (live != null) prefs(context).edit().putLong(cacheKey, live).apply()
+            val shown = live ?: cached(context, cacheKey)  // read failed → keep last known, never wipe to 0
+            AndroidUtilities.runOnUIThread { cb(shown) }
+        }
     }
 
     /**
-     * Live account figure = base offset + real account logins. Same parallel-read + cache approach as
-     * [getInstallsDisplay], so it shows instantly next time and never stalls on the network.
+     * Counter + optional base, or null when either read failed or the counter has no value yet. A failed base
+     * read counts as a failure too: adding 0 for it would cache a number far below the real one.
      */
-    @JvmStatic
-    fun getAccountsDisplay(context: Context, cb: (Long?) -> Unit) {
-        var base: Long? = null; var baseDone = false
-        var real: Long? = null; var realDone = false
-        fun emit() {
-            if (!baseDone || !realDone) return
-            if (real != null) {
-                val total = (base ?: 0L) + real!!
-                prefs(context).edit().putLong(KEY_CACHE_ACCOUNTS, total).apply()
-                cb(total)
-            } else {
-                cb(cachedAccounts(context))
-            }
-        }
-        getAccountBaseOffset { base = it; baseDone = true; emit() }
-        getAccountCount { real = it; realDone = true; emit() }
+    private fun liveTotal(root: String, counter: String, baseField: String): Long? {
+        val real = fields(root, counter)?.long("allUsers") ?: return null
+        val config = fields(root, CONFIG) ?: return null
+        return (config.long(baseField) ?: 0L) + real
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
-    // Returns the Long field, or null when the doc/field is missing or the network read fails.
-    private fun read(col: String, doc: String, field: String, cb: (Long?) -> Unit) {
-        db.collection(col).document(doc).get()
-            .addOnSuccessListener { d ->
-                val v = if (d != null && d.exists()) d.getLong(field) else null
-                AndroidUtilities.runOnUIThread { cb(v) }
+    // ---- Firestore REST ----------------------------------------------------------------------------
+
+    /** An upsert that adds 1 to the doc's allUsers, creating the doc if it is missing. */
+    private fun increment(doc: String): JSONObject = JSONObject()
+        .put("update", JSONObject().put("name", doc))
+        .put("updateMask", JSONObject().put("fieldPaths", JSONArray()))
+        .put("updateTransforms", JSONArray().put(
+            JSONObject().put("fieldPath", "allUsers").put("increment", JSONObject().put("integerValue", "1"))))
+
+    /** Applies the writes atomically; returns the HTTP status, or -1 when the request never completed. */
+    private fun commit(root: String, vararg writes: JSONObject): Int {
+        val body = JSONObject().put("writes", JSONArray().apply { writes.forEach { put(it) } })
+        return request("POST", "https://firestore.googleapis.com/v1/$root:commit", body.toString())?.first ?: -1
+    }
+
+    /** The document's fields, an empty object if it doesn't exist, or null if the request failed. */
+    private fun fields(root: String, doc: String): JSONObject? {
+        val (code, text) = request("GET", "https://firestore.googleapis.com/v1/$root/$doc", null) ?: return null
+        return when (code) {
+            200 -> try {
+                JSONObject(text).optJSONObject("fields") ?: JSONObject()
+            } catch (e: Exception) {
+                null
             }
-            .addOnFailureListener { AndroidUtilities.runOnUIThread { cb(null) } }
+            404 -> JSONObject()
+            else -> null
+        }
+    }
+
+    /** A Firestore number field: integerValue arrives as a string; doubleValue if someone typed 1.0 in the console. */
+    private fun JSONObject.long(field: String): Long? {
+        val v = optJSONObject(field) ?: return null
+        return when {
+            v.has("integerValue") -> v.optString("integerValue").toLongOrNull()
+            v.has("doubleValue") -> v.optDouble("doubleValue").toLong()
+            else -> null
+        }
+    }
+
+    /** Status code and body, or null on a network error. Runs on [io] only (via [background]). */
+    private fun request(method: String, url: String, body: String?): Pair<Int, String>? {
+        var c: HttpURLConnection? = null
+        return try {
+            c = URL(url).openConnection() as HttpURLConnection
+            c.requestMethod = method
+            c.connectTimeout = CONNECT_TIMEOUT_MS
+            c.readTimeout = READ_TIMEOUT_MS
+            c.useCaches = false
+            if (body != null) {
+                c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            }
+            val code = c.responseCode
+            // Reading the body to the end and closing it hands the connection back to the pool for reuse.
+            val stream = if (code in 200..299) c.inputStream else c.errorStream
+            code to (stream?.bufferedReader()?.use { it.readText() } ?: "")
+        } catch (e: IOException) {
+            c?.disconnect()
+            null
+        }
     }
 
     /** Permission-free, stable per app-signing-key (survives reinstall/cache-clear). @SuppressLint only mutes lint. */
