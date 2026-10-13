@@ -29,8 +29,8 @@ import java.util.Locale
  * a small "Bu nima" badge to its right that pops up the explanation.
  *
  * One thing we keep BETTER than pro (pro froze behind a modal spinner): the last-known numbers are cached in
- * [AnalyticsRemote] and animated the MOMENT the screen opens — installs start from the 500K base on a
- * first-ever open, so nothing is blank — then the live values glide in from the background.
+ * [AnalyticsRemote] and animated the MOMENT the screen opens, then the live values glide in from the
+ * background. Until a number is known at all (first open, no network yet) the figure reads "—", never "0".
  * Big numbers are grouped ("500,001") for readability.
  */
 class AnalyticsScreen : BaseFragment() {
@@ -141,7 +141,7 @@ class AnalyticsScreen : BaseFragment() {
      */
     private fun addMetric(context: Context, parent: LinearLayout, label: String, explanation: String, accent: Int): Counter {
         val number = TextView(context).apply {
-            text = "0"
+            text = NO_NUMBER
             setTextColor(accent)
             textSize = 42f
             typeface = AndroidUtilities.bold()
@@ -216,13 +216,13 @@ class AnalyticsScreen : BaseFragment() {
         BottomSheet.Builder(context, false).setCustomView(container).show()
     }
 
-    /** Show instantly from cache (or the 500K/250K base on first open), then glide to the live numbers. */
+    /** Show instantly from cache, then glide to the live numbers. A null (nothing known yet) leaves the dash. */
     private fun loadData(context: Context) {
-        installs?.to(AnalyticsRemote.cachedInstallsOrBase(context))
-        accounts?.to(AnalyticsRemote.cachedAccountsOrBase(context))
+        AnalyticsRemote.cachedInstalls(context)?.let { installs?.to(it) }
+        AnalyticsRemote.cachedAccounts(context)?.let { accounts?.to(it) }
 
-        AnalyticsRemote.getInstallsDisplay(context) { fresh -> installs?.to(fresh) }
-        AnalyticsRemote.getAccountsDisplay(context) { fresh -> accounts?.to(fresh) }
+        AnalyticsRemote.getInstallsDisplay(context) { fresh -> fresh?.let { installs?.to(it) } }
+        AnalyticsRemote.getAccountsDisplay(context) { fresh -> fresh?.let { accounts?.to(it) } }
     }
 
     override fun hasForceLightStatusBar(): Boolean = false
@@ -250,6 +250,9 @@ class AnalyticsScreen : BaseFragment() {
         }
     }
 }
+
+/** Shown until a number is known; a "0" there would read as "Novagram has no users". */
+private const val NO_NUMBER = "—"
 
 private fun dp(value: Int): Int = AndroidUtilities.dp(value.toFloat())
 

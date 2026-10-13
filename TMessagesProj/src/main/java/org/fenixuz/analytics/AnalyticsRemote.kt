@@ -94,24 +94,32 @@ object AnalyticsRemote {
 
     // ---- Instant-display layer ---------------------------------------------------------------------
     // The screen shows these cached numbers the moment it opens (zero network), then quietly corrects
-    // them once the live values arrive — so the user never stares at an empty/placeholder figure.
+    // them once the live values arrive.
+    //
+    // Null means "never read successfully on this install". It must stay distinct from 0: the screen shows a
+    // dash for null. Showing 0 instead told users "Novagram has 0 users" whenever the first read had not
+    // landed yet, e.g. on a network where this old gRPC stack cannot reach Firestore at all.
 
-    /** Last shown install total, or 0 before the first successful Firebase read. No fake base. */
+    /** Last shown install total, or null before the first successful Firebase read. */
     @JvmStatic
-    fun cachedInstallsOrBase(context: Context): Long =
-        prefs(context).getLong(KEY_CACHE_INSTALLS, 0L)
+    fun cachedInstalls(context: Context): Long? = cached(context, KEY_CACHE_INSTALLS)
 
-    /** Last shown account total, or 0 before the first successful Firebase read. No fake base. */
+    /** Last shown account total, or null before the first successful Firebase read. */
     @JvmStatic
-    fun cachedAccountsOrBase(context: Context): Long =
-        prefs(context).getLong(KEY_CACHE_ACCOUNTS, 0L)
+    fun cachedAccounts(context: Context): Long? = cached(context, KEY_CACHE_ACCOUNTS)
+
+    private fun cached(context: Context, key: String): Long? {
+        val p = prefs(context)
+        return if (p.contains(key)) p.getLong(key, 0L) else null
+    }
 
     /**
      * Live install figure = base offset + real unique installs. The two reads fire in PARALLEL (not
-     * chained) to halve latency, and the combined result is cached for an instant next open.
+     * chained) to halve latency, and the combined result is cached for an instant next open. Calls back with
+     * null only when the read failed and nothing was ever cached.
      */
     @JvmStatic
-    fun getInstallsDisplay(context: Context, cb: (Long) -> Unit) {
+    fun getInstallsDisplay(context: Context, cb: (Long?) -> Unit) {
         var base: Long? = null; var baseDone = false
         var real: Long? = null; var realDone = false
         fun emit() {
@@ -121,7 +129,7 @@ object AnalyticsRemote {
                 prefs(context).edit().putLong(KEY_CACHE_INSTALLS, total).apply()
                 cb(total)
             } else {
-                cb(cachedInstallsOrBase(context))       // read failed → keep last known, never wipe to 0
+                cb(cachedInstalls(context))             // read failed → keep last known, never wipe to 0
             }
         }
         getInstallBaseOffset { base = it; baseDone = true; emit() }
@@ -133,7 +141,7 @@ object AnalyticsRemote {
      * [getInstallsDisplay], so it shows instantly next time and never stalls on the network.
      */
     @JvmStatic
-    fun getAccountsDisplay(context: Context, cb: (Long) -> Unit) {
+    fun getAccountsDisplay(context: Context, cb: (Long?) -> Unit) {
         var base: Long? = null; var baseDone = false
         var real: Long? = null; var realDone = false
         fun emit() {
@@ -143,7 +151,7 @@ object AnalyticsRemote {
                 prefs(context).edit().putLong(KEY_CACHE_ACCOUNTS, total).apply()
                 cb(total)
             } else {
-                cb(cachedAccountsOrBase(context))
+                cb(cachedAccounts(context))
             }
         }
         getAccountBaseOffset { base = it; baseDone = true; emit() }
