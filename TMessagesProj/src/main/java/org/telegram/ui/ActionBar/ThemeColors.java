@@ -149,6 +149,9 @@ public class ThemeColors {
         defaultColors[key_fastScrollActive] = TELEGRAM_COLOR;
         defaultColors[key_fastScrollInactive] = 0xffc9cdd1;
         defaultColors[key_fastScrollText] = 0xffffffff;
+        defaultColors[key_wallet_comment] = 0xfff5f5f5;
+        defaultColors[key_wallet_out_commentBorder] = 0xffd9d9d9;
+        defaultColors[key_wallet_inputCurrency] = 0xff219949;
 
         defaultColors[key_avatar_text] = 0xffffffff;
 
@@ -946,6 +949,9 @@ public class ThemeColors {
         colorKeysMap.put(key_listSelector, "listSelectorSDK21");
         colorKeysMap.put(key_windowBackgroundWhiteInputField, "windowBackgroundWhiteInputField");
         colorKeysMap.put(key_windowBackgroundWhiteInputFieldActivated, "windowBackgroundWhiteInputFieldActivated");
+        colorKeysMap.put(key_wallet_comment, "wallet_comment");
+        colorKeysMap.put(key_wallet_out_commentBorder, "wallet_out_commentBorder");
+        colorKeysMap.put(key_wallet_inputCurrency, "wallet_inputCurrency");
         colorKeysMap.put(key_windowBackgroundWhiteGrayIcon, "windowBackgroundWhiteGrayIcon");
         colorKeysMap.put(key_windowBackgroundWhiteBlueText, "windowBackgroundWhiteBlueText");
         colorKeysMap.put(key_windowBackgroundWhiteBlueText2, "windowBackgroundWhiteBlueText2");

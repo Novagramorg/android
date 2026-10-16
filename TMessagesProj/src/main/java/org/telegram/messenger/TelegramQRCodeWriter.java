@@ -26,6 +26,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Region;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 
 import com.google.zxing.EncodeHintType;
@@ -54,6 +55,11 @@ public final class TelegramQRCodeWriter {
   private int sideQuadSize;
 
   private int imageSize;
+  private Drawable centerDrawable;
+
+  public void setCenterDrawable(Drawable drawable) {
+    centerDrawable = drawable;
+  }
 
   public Bitmap encode(String contents, int width, int height, Map<EncodeHintType, ?> hints, Bitmap bitmap) throws WriterException {
     return encode(contents, width, height, hints, bitmap, 1.0f, 0xffffffff, 0xff000000);
@@ -185,14 +191,19 @@ public final class TelegramQRCodeWriter {
       }
     }
 
-    // Novagram: our own logo in the middle of the QR. Upstream's is an SVG raw resource; ours is a
-    // plain drawable, so it is decoded and scaled to the block-aligned imageSize instead. Recycle the
-    // source only when a scaled copy was actually made, or the copy would be recycled twice.
-    Bitmap iconSrc = BitmapFactory.decodeResource(ApplicationLoader.applicationContext.getResources(), R.drawable.qr_logo_novagram);
-    Bitmap icon = (iconSrc.getWidth() == imageSize && iconSrc.getHeight() == imageSize) ? iconSrc : Bitmap.createScaledBitmap(iconSrc, imageSize, imageSize, true);
-    canvas.drawBitmap(icon, imageX, imageX, null);
-    if (icon != iconSrc) icon.recycle();
-    iconSrc.recycle();
+    if (centerDrawable != null) {
+      centerDrawable.setBounds(imageX, imageX, imageX + imageSize, imageX + imageSize);
+      centerDrawable.draw(canvas);
+    } else {
+      // Novagram: our own logo in the middle of the QR. Upstream's is an SVG raw resource; ours is a
+      // plain drawable, so it is decoded and scaled to the block-aligned imageSize instead. Recycle the
+      // source only when a scaled copy was actually made, or the copy would be recycled twice.
+      Bitmap iconSrc = BitmapFactory.decodeResource(ApplicationLoader.applicationContext.getResources(), R.drawable.qr_logo_novagram);
+      Bitmap icon = (iconSrc.getWidth() == imageSize && iconSrc.getHeight() == imageSize) ? iconSrc : Bitmap.createScaledBitmap(iconSrc, imageSize, imageSize, true);
+      canvas.drawBitmap(icon, imageX, imageX, null);
+      if (icon != iconSrc) icon.recycle();
+      iconSrc.recycle();
+    }
 
     canvas.setBitmap(null);
 
