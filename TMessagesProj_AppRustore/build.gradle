@@ -32,8 +32,6 @@ android {
 
     defaultConfig.applicationId = "org.messenger_pro.messenger"
 
-    sourceSets.main.jniLibs.srcDirs = ['../TMessagesProj/jni/']
-
     lintOptions {
         disable 'MissingTranslation'
         disable 'ExtraTranslation'
@@ -61,6 +59,12 @@ android {
             storePassword getRustoreProp("RUSTORE_STORE_PASSWORD")
             keyAlias getRustoreProp("RUSTORE_KEY_ALIAS")
             keyPassword getRustoreProp("RUSTORE_KEY_PASSWORD")
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 
@@ -132,7 +136,7 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 21
+        minSdkVersion 23
         targetSdkVersion 36
         versionName getRustoreVersionName()
         ndkVersion "27.2.12479018"
