@@ -1,9 +1,9 @@
 # Vendored: tlottie
 
-Upstream Telegram for Android (DrKLO/Telegram 12.10.6, f2908b141) pins this as a git submodule:
+Upstream Telegram for Android (DrKLO/Telegram 13.0.2, f32ffeec7) pins this as a git submodule:
 
 - source: https://github.com/dkaraush/tlottie.git
-- commit: 92df98dc209bc39b1e567ec74a8c86a0af5239de
+- commit: 31f1b542f88e7b4be9a01e749920d857535fc715
 
 This repository keeps no submodules, so the needed part is vendored here as plain files and a clone
 builds with no extra fetch. Only include/tlottie.h is needed: the Rust library is linked from the prebuilt jni/prebuild/lib/<abi>/libtlottie.a.
