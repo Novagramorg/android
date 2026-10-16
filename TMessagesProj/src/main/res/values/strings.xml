@@ -3910,7 +3910,7 @@
     <string name="SendGameToText">Do you want to share this game to **%1$s**?</string>
     <string name="SendContactToText">Do you want to send this contact to **%1$s**?</string>
     <string name="AreYouSureLogout">Are you sure you want to log out?\n\nThis will cancel all your Secret Chats.\n\nYou can use Novagram on all your devices at once and use several accounts in the same app.</string>
-    <string name="AreYouSureLogoutGrams">Are you sure you want to log out?\n\nThis will cancel all your Secret Chats and **delete wallet backups holding %s**. Without their recovery phrases, you\'ll lose access to these funds.\n\nYou can use Telegram on all your devices at once and use several accounts in the same app.</string>
+    <string name="AreYouSureLogoutGrams">Are you sure you want to log out?\n\nThis will cancel all your Secret Chats and **delete wallet backups holding %s**. Without their recovery phrases, you\'ll lose access to these funds.\n\nYou can use Novagram on all your devices at once and use several accounts in the same app.</string>
     <string name="DeleteFewChatsTitle">Delete %1$s</string>
     <string name="ClearFewChatsTitle">Clear %1$s</string>
     <string name="ClearCacheFewChatsTitle">Empty cache for %1$s</string>
@@ -11326,7 +11326,7 @@
     <string name="WalletSendGrams">Send Grams</string>
     <string name="WalletInsufficientFunds">Insufficient Funds.</string>
     <string name="WalletTitle">Wallet</string>
-    <string name="WalletAuthorizeTransactionPasscode">Enter your current Telegram passcode to authorize transaction.</string>
+    <string name="WalletAuthorizeTransactionPasscode">Enter your current Novagram passcode to authorize transaction.</string>
     <string name="WalletConfirmWithFingerprint">Confirm with Fingerprint</string>
     <string name="WalletConfirmWithPasscode">Confirm with Passcode</string>
     <string name="WalletLock">Lock Wallet</string>
@@ -11390,7 +11390,7 @@
     <string name="WalletFirstGramsSendInfo">Transfer Grams to anyone.\nTap 📎 → Money in chats.</string>
     <string name="WalletTrade">Trade</string>
     <string name="WalletFirstGramsTradeInfo">Convert Grams to cash or crypto on exchanges.</string>
-    <string name="WalletFirstGramsStoreInfo">Keep your Grams in Telegram\n(💬 → ⋮ → Wallet) or other wallets.</string>
+    <string name="WalletFirstGramsStoreInfo">Keep your Grams in Novagram\n(💬 → ⋮ → Wallet) or other wallets.</string>
     <string name="WalletStore">Store</string>
     <string name="WalletSell">Sell</string>
     <string name="WalletOptionalComment">Optional comment</string>
@@ -11416,7 +11416,7 @@
     <string name="WalletSecretPhrase">Secret Phrase</string>
     <string name="WalletImport">Import Wallet</string>
     <string name="WalletEnterSecretPhrase">Enter your wallet\'s Secret Phrase\nto continue. **Why?**</string>
-    <string name="WalletEnterSecretPhraseInfo">Since you disabled backups for your wallet, you have to manually enter your Secret Phrase in every new Telegram session.</string>
+    <string name="WalletEnterSecretPhraseInfo">Since you disabled backups for your wallet, you have to manually enter your Secret Phrase in every new Novagram session.</string>
     <string name="WalletImportButton">Import</string>
     <string name="WalletInvalidRecoveryPhrase">Invalid Recovery Phrase</string>
     <string name="WalletInvalidRecoveryPhraseInfo">Check the word order.\n\nOnly a recovery phrase created in Telegram can be imported here.</string>
@@ -11558,11 +11558,11 @@
     <string name="NotificationWalletTonConnectRequest">You have a TON Connect request</string>
     <string name="NotificationWalletTonConnectRequestDapp">You have a TON Connect request from %1$s</string>
 
-    <string name="CreateManagedBotUsernameSuffixesInfo">Must end in \'bot\' – or %1$s with **Telegram Premium**.</string>
+    <string name="CreateManagedBotUsernameSuffixesInfo">Must end in \'bot\' – or %1$s with **Novagram Premium**.</string>
     <string name="CreateManagedBotUsernameSuffixesOr">%1$s or %2$s</string>
     <string name="CreateManagedBotUsernameSuffixesComma">%1$s, %2$s</string>
-    <string name="CreateManagedBotUsernamePremiumRequired">Usernames ending in \'%1$s\' require Telegram Premium. **Subscribe ›**</string>
-    <string name="CreateManagedBotUsernamePremiumRequiredGeneric">This username requires Telegram Premium. **Subscribe ›**</string>
+    <string name="CreateManagedBotUsernamePremiumRequired">Usernames ending in \'%1$s\' require Novagram Premium. **Subscribe ›**</string>
+    <string name="CreateManagedBotUsernamePremiumRequiredGeneric">This username requires Novagram Premium. **Subscribe ›**</string>
     <string name="CreateManagedBotUsernameOwnerLimit">You can only have %1$d usernames ending in %2$s across all your bots.</string>
     <string name="CreateManagedBotUsernameBotLimit">This bot already has a Premium username. Remove it before adding another.</string>
     <string name="CreateManagedBotUsernameSuffixMissing">The username must end in %1$s.</string>
