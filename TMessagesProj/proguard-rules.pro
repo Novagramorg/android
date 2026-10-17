@@ -69,6 +69,13 @@
 -keep class org.fenixuz.utils.** { *; }
 -keep class org.telegram.tgnet.** { *; }
 
+# Novagram: models saved as Gson JSON in SharedPreferences must keep their field names, or data written by
+# an earlier release reads back empty after an update (a lost secret-folder passcode locks the user out).
+# 1.2.4 shipped these with their real names; the 13.0 build renamed them to a/b/c. Anything stored this
+# way outside org.fenixuz.utils (kept above) needs a line here.
+-keep class org.fenixuz.ui.secret_chat.SecretPasswordModule { *; }
+-keep class org.fenixuz.ui.message_history.MessageHistoryModule { *; }
+
 # JLatexMath: macro/atom classes are loaded reflectively by Class.forName
 -keep class org.scilab.forge.jlatexmath.** { *; }
 -keep class ru.noties.jlatexmath.** { *; }
