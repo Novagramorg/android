@@ -1389,6 +1389,8 @@ class SecretLockScreen(
 
         subtitleView = TextView(context)
         subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14f)
+        // Novagram: centered like the title — the Uzbek text wraps to two lines and the second line hugged the left edge
+        subtitleView.gravity = Gravity.CENTER_HORIZONTAL
         subtitleView.setTextColor(-0x1)
         subtitleView.text = LocaleController.getString(R.string.EnterPINorFingerprint)
         numbersTitleContainer.addView(subtitleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT.toFloat(), Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0f, 40f, 0f, 0f))
