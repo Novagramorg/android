@@ -2,56 +2,63 @@ package org.fenixuz.ads
 
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
-import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.ConnectionsManager
+import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
 import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
 import java.util.Locale
 
 /**
- * Orchestrates the sponsored-channel search ad: debounced lookup, stale-response guarding, channel
- * resolve, and click reporting. Everything here runs on the UI thread (the search adapter calls in on
- * the UI thread; the retrofit callbacks and the resolveUsername callback hop back via runOnUIThread),
- * so the mutable state below needs no locking.
+ * Orchestrates the sponsored search result (ads API v2, slot SEARCH): debounced lookup, stale-response
+ * guarding, resolving the promoted channel/bot, and its events — view when the row is shown, click when it
+ * is tapped, action when the user then joins the channel. Everything here runs on the UI thread (the search
+ * adapter calls in on it; Retrofit and the resolveUsername callback hop back to it), so the mutable state
+ * below needs no locking.
  *
- * No long-lived scope, no Context/View retained: the only state is the last shown ad (a tiny DTO) plus
- * a monotonic [generation] used to drop results from a superseded query. Every new query cancels the
- * previous debounce + in-flight call, so callbacks are bounded by a single request's lifetime.
+ * No long-lived scope, no Context/View retained: the only state is the ad on screen plus a monotonic
+ * [generation] used to drop results from a superseded query. Every new query cancels the previous debounce
+ * + in-flight call, so callbacks are bounded by a single request's lifetime.
  */
 object AdsManager {
 
+    // Advertiser phrases are 4–32 characters and must match the whole query, so anything outside that
+    // range can never get an ad — don't ask.
     private const val MIN_QUERY_LEN = 4
-    private const val DEBOUNCE_MS = 300L
+    private const val MAX_QUERY_LEN = 32
+    private const val DEBOUNCE_MS = 500L
 
-    /** The ad currently shown in search, kept so a tap can be attributed to its order. */
-    private var currentResult: AdSearchResult? = null
+    // Tokens die 1 h after they are issued; an action later than this would be rejected anyway.
+    private const val ACTION_WINDOW_MS = 55 * 60 * 1000L
 
-    /**
-     * The REAL Telegram channel id we actually resolved and displayed (positive form). We attribute clicks
-     * to this — not to the advertiser-typed [AdSearchResult.channelId], which may be wrong/stale and is only
-     * used as a hint. 0 when no ad is shown.
-     */
-    private var currentChannelId: Long = 0L
+    /** The search ad currently on screen and the dialog id it resolved to. */
+    private var current: AdsServed? = null
+    private var currentDialogId = 0L
+    private var currentAccount = -1
+
+    /** The ad last tapped; joining that channel afterwards is reported as its action. */
+    private var clicked: AdsServed? = null
+    private var clickedDialogId = 0L
+    private var clickedAccount = -1
 
     /** Bumped on every new query / cancel; a callback whose captured value differs is stale and ignored. */
     private var generation = 0
 
-    private var pendingCall: Call<AdSearchResult>? = null
+    private var pendingCall: Call<AdsServeResponse>? = null
     private var debounceRunnable: Runnable? = null
 
     /**
-     * Requests the ad for [query]. [onResult] is invoked on the UI thread with the sponsored channel id
-     * (positive chat id) and the ad's platform ("TELEGRAM"/"NOVAGRAM", null when unknown) when there is one
-     * to show, or (null, null) (no ad / too-short query / error). It may be called synchronously (short
-     * query) or after the debounce + network round-trip.
+     * Requests the search ad for [query] on [account]. [onResult] is invoked on the UI thread with the promoted
+     * peer (TLRPC.Chat for a channel, TLRPC.User for a bot) when there is one to show, or null (no ad, query
+     * out of range, error). It may be called synchronously (short query, cached answer) or after the debounce
+     * + network round-trip.
      */
-    fun requestAd(query: String?, onResult: (Long?, String?) -> Unit) {
+    fun requestSearchAd(account: Int, query: String?, onResult: (TLObject?) -> Unit) {
         cancel()
-        // No backend URL configured (ADS_BASE_URL absent from local.properties) → ads disabled, never call out.
-        if (!AdsRetrofitClient.enabled || query == null || query.length < MIN_QUERY_LEN) {
-            onResult(null, null)
+        current = null
+        currentDialogId = 0L
+        val normalized = normalizeQuery(query)
+        if (!AdsRetrofitClient.enabled || normalized.length < MIN_QUERY_LEN || normalized.length > MAX_QUERY_LEN) {
+            onResult(null)
             return
         }
         val gen = generation
@@ -59,52 +66,24 @@ object AdsManager {
             // We're executing now: release our reference to this runnable (and, through it, the caller's
             // callback) so the static manager never retains a stale adapter after the request is kicked off.
             debounceRunnable = null
-            val account = UserConfig.selectedAccount
-            val viewerId = UserConfig.getInstance(account).clientUserId
-            if (viewerId == 0L) {
-                onResult(null, null)
-                return@Runnable
+            val context = mapOf<String, Any>("query" to query!!.trim())
+            pendingCall = AdsServe.serve(account, AdsServe.SEARCH, context, normalized) { served ->
+                if (gen != generation) return@serve
+                pendingCall = null
+                if (served == null) {
+                    onResult(null)
+                    return@serve
+                }
+                resolvePromoted(account, served.ad.promoted) { peer ->
+                    if (gen != generation) return@resolvePromoted
+                    if (peer != null) {
+                        current = served
+                        currentAccount = account
+                        currentDialogId = if (peer is TLRPC.Chat) -peer.id else (peer as TLRPC.User).id
+                    }
+                    onResult(peer)
+                }
             }
-            val call = AdsRetrofitClient.service.searchAd(AdSearchRequest(query, viewerId.toString()))
-            pendingCall = call
-            call.enqueue(object : Callback<AdSearchResult> {
-                override fun onResponse(call: Call<AdSearchResult>, response: Response<AdSearchResult>) {
-                    if (gen != generation) return
-                    pendingCall = null
-                    // 404 = "no ad for this query" (not an error); body is null → show nothing.
-                    val body = if (response.isSuccessful) response.body() else null
-                    // channel_id is an advertiser-typed hint (may be wrong). channel_name is the @username we
-                    // actually resolve the channel by, since a public channel can only be opened via username.
-                    val rawId = body?.channelId?.toLongOrNull()
-                    val hintId = if (rawId != null) normalizeChannelId(rawId) else 0L
-                    if (body == null) {
-                        currentResult = null
-                        currentChannelId = 0L
-                        onResult(null, null)
-                        return
-                    }
-                    resolveChannel(account, hintId, body.channelName) { resolvedId ->
-                        if (gen != generation) return@resolveChannel
-                        if (resolvedId != 0L) {
-                            currentResult = body
-                            currentChannelId = resolvedId
-                            onResult(resolvedId, body.platform)
-                        } else {
-                            currentResult = null
-                            currentChannelId = 0L
-                            onResult(null, null)
-                        }
-                    }
-                }
-
-                override fun onFailure(call: Call<AdSearchResult>, t: Throwable) {
-                    if (gen != generation) return
-                    pendingCall = null
-                    currentResult = null
-                    currentChannelId = 0L
-                    onResult(null, null)
-                }
-            })
         }
         debounceRunnable = runnable
         AndroidUtilities.runOnUIThread(runnable, DEBOUNCE_MS)
@@ -119,81 +98,101 @@ object AdsManager {
         pendingCall = null
     }
 
-    /** Reports a click when the user opens the currently shown sponsored channel. UI thread. */
-    /**
-     * The API returns channel_id as a string that may be the positive channel id, the old -id dialog
-     * form, or the -100… bot-API form (e.g. "-1001699035352"). MessagesController.getChat() wants the
-     * positive channel id, so normalise all three to that.
-     */
-    private fun normalizeChannelId(raw: Long): Long {
-        if (raw >= 0) return raw
-        val abs = -raw
-        return if (abs in 1_000_000_000_000L..1_999_999_999_999L) abs - 1_000_000_000_000L else abs
+    /** The ad row was bound on screen. The first call per token bills the view; repeats are ignored. */
+    fun onSearchAdShown() {
+        current?.let { AdsEvents.add(it, AdsEvents.VIEW) }
     }
 
-    fun clickAd(dialogId: Long) {
-        val result = currentResult ?: return
-        // Attribute to the channel we actually resolved and showed, not the advertiser-typed channel_id.
-        val channelId = currentChannelId
-        if (channelId == 0L) {
-            return
-        }
-        if (dialogId != channelId && -dialogId != channelId) {
-            return
-        }
-        val orderId = result.orderId ?: return
-        val account = UserConfig.selectedAccount
-        val viewerId = UserConfig.getInstance(account).clientUserId
-        if (viewerId == 0L) {
-            return
-        }
-        AdsRetrofitClient.service.clickAd(AdClickRequest(orderId, viewerId.toString()))
-            .enqueue(object : Callback<Void> {
-                override fun onResponse(call: Call<Void>, response: Response<Void>) {}
-                override fun onFailure(call: Call<Void>, t: Throwable) {}
-            })
+    /** The ad row was tapped (the caller opens the chat itself). */
+    fun onSearchAdClicked() {
+        val served = current ?: return
+        AdsEvents.add(served, AdsEvents.CLICK, urgent = true)
+        clicked = served
+        clickedDialogId = currentDialogId
+        clickedAccount = currentAccount
     }
 
     /**
-     * Resolves the ad channel and returns its REAL positive channel id via [cb] (0 = could not resolve).
-     *
-     * A public channel can only be opened by its @username, so [username] (the ad's channel_name) is the
-     * source of truth here; [hintId] is the advertiser-typed channel_id used only as a fast-path when that
-     * channel already happens to be in the model. We deliberately do NOT require the resolved channel's id
-     * to equal [hintId] — advertisers type that id by hand and it is frequently wrong, which used to drop
-     * the ad even after a perfectly good username resolve.
+     * The current user joined channel [chatId] on [account] (MessagesController.addUserToChat). If that is the
+     * channel of the ad just tapped, report the action — once, and only within the token's lifetime.
      */
-    private fun resolveChannel(account: Int, hintId: Long, username: String?, cb: (Long) -> Unit) {
+    fun onChannelJoined(account: Int, chatId: Long) {
+        val served = clicked ?: return
+        if (account != clickedAccount || clickedDialogId != -chatId) return
+        clicked = null
+        if (System.currentTimeMillis() - served.receivedAt > ACTION_WINDOW_MS) return
+        AdsEvents.add(served, AdsEvents.ACTION, urgent = true)
+    }
+
+    // Mirrors the backend's own normalisation closely enough for the length check and the cache key:
+    // trim, lower case, one space between words, every apostrophe look-alike → '.
+    private fun normalizeQuery(query: String?): String {
+        if (query == null) return ""
+        val sb = StringBuilder(query.length)
+        var space = false
+        for (c in query.trim().lowercase(Locale.ROOT)) {
+            if (c.isWhitespace()) {
+                space = true
+                continue
+            }
+            if (space && sb.isNotEmpty()) sb.append(' ')
+            space = false
+            sb.append(if (c == 'ʻ' || c == 'ʼ' || c == '’' || c == '‘' || c == '`' || c == '´') '\'' else c)
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Finds the promoted channel/bot and returns it via [cb] (null = could not resolve). A public peer can
+     * only be opened by its @username (that is where its access hash comes from), so the username is the
+     * source of truth. telegram_id is the backend's Bot-API channel id, used only as a fast path when that
+     * channel is already loaded.
+     */
+    private fun resolvePromoted(account: Int, promoted: AdPromoted?, cb: (TLObject?) -> Unit) {
+        val username = promoted?.username?.trim()?.removePrefix("@")?.lowercase(Locale.ROOT)
         val mc = MessagesController.getInstance(account)
-        if (hintId != 0L && mc.getChat(hintId) != null) {
-            cb(hintId)
-            return
+        val hintId = promoted?.telegramId?.let { botApiToChannelId(it) } ?: 0L
+        if (hintId != 0L) {
+            val chat = mc.getChat(hintId)
+            if (chat != null) {
+                cb(chat)
+                return
+            }
         }
         if (username.isNullOrEmpty()) {
-            cb(0L)
+            cb(null)
+            return
+        }
+        val known = mc.getUserOrChat(username)
+        if (known is TLRPC.Chat || known is TLRPC.User && known.bot) {
+            cb(known)
             return
         }
         val req = TLRPC.TL_contacts_resolveUsername()
-        req.username = username.lowercase(Locale.getDefault()).trim()
+        req.username = username
         ConnectionsManager.getInstance(account).sendRequest(req) { response, error ->
             AndroidUtilities.runOnUIThread {
                 if (error != null || response !is TLRPC.TL_contacts_resolvedPeer) {
-                    cb(0L)
+                    cb(null)
                     return@runOnUIThread
                 }
                 mc.putUsers(response.users, false)
                 mc.putChats(response.chats, false)
-                // Prefer the channel the server pointed the username at; fall back to the first channel in
-                // the response. Only channels can be shown as an ad row (a user/bot username → no ad).
-                var resolvedId = 0L
                 val peer = response.peer
-                if (peer != null && peer.channel_id != 0L) {
-                    resolvedId = peer.channel_id
-                } else if (response.chats.isNotEmpty()) {
-                    resolvedId = response.chats[0].id
+                val result: TLObject? = when {
+                    peer != null && peer.channel_id != 0L -> mc.getChat(peer.channel_id)
+                    // Only a bot can be advertised as a user; a plain user's username gets no ad row.
+                    peer != null && peer.user_id != 0L -> mc.getUser(peer.user_id)?.takeIf { it.bot }
+                    else -> null
                 }
-                cb(if (resolvedId != 0L && mc.getChat(resolvedId) != null) resolvedId else 0L)
+                cb(result)
             }
         }
+    }
+
+    // -1001234567890 (Bot API) → 1234567890. Other forms are not channel ids from this backend.
+    private fun botApiToChannelId(id: Long): Long {
+        val abs = -id
+        return if (abs in 1_000_000_000_000L..1_999_999_999_999L) abs - 1_000_000_000_000L else 0L
     }
 }

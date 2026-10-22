@@ -139,15 +139,15 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     private String sponsoredQuery;
     private int sponsoredReqId;
     private int lastForumReqId;
-    // Novagram: our own sponsored channel (ads backend), shown as a single row at the very top of the
-    // search results. Rendered exactly like a normal chat result; kept entirely separate from Telegram's
-    // native sponsoredPeers so both can appear. See org.fenixuz.ads.AdsManager.
-    private TLRPC.Chat adChat;
+    // Novagram: our own sponsored channel/bot (ads backend), shown as a single row at the very top of the
+    // search results. Rendered like a normal chat result (TLRPC.Chat or a bot's TLRPC.User). Telegram's own
+    // ad goes first: ours is only a fallback for a query Telegram had no ad for. See org.fenixuz.ads.AdsManager.
+    private TLObject adPeer;
     private String adQuery;
-    // Platform of the currently shown ad ("TELEGRAM"/"NOVAGRAM", null = unknown → treated as NOVAGRAM).
-    private String adPlatform;
-    // Label drawn in the ad pill on our sponsored row when the ad is NOVAGRAM-platform. A TELEGRAM-platform
-    // ad instead reuses Telegram's own native ad label so it is indistinguishable from a real sponsored row.
+    // True once Telegram's getSponsoredPeers returned an ad for the current query. Ours then stays hidden for
+    // that query even if the user hides Telegram's ad, so the row count never jumps under removeAd's math.
+    private boolean telegramAdForQuery;
+    // Label drawn in the ad pill on our sponsored row, so it is never mistaken for Telegram's own ad.
     private static final String AD_LABEL = "ad by Novagram";
     public DialogsSearchAdapterDelegate delegate;
     private int needMessagesSearch;
@@ -1155,6 +1155,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         if (!TextUtils.equals(sponsoredQuery, query)) {
             sponsoredQuery = query;
             sponsoredPeers.clear();
+            telegramAdForQuery = false;
             if (sponsoredReqId != 0) {
                 ConnectionsManager.getInstance(currentAccount).cancelRequest(sponsoredReqId, true);
                 sponsoredReqId = 0;
@@ -1176,26 +1177,29 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                         MessagesController.getInstance(currentAccount).putUsers(r.users, true);
                         MessagesController.getInstance(currentAccount).putChats(r.chats, true);
                         sponsoredPeers.addAll(r.peers);
+                        telegramAdForQuery = !r.peers.isEmpty();
+                        notifyDataSetChanged();
+                    }
+                    // Novagram: our ad row waits for this answer (showAd), so it may appear only now.
+                    if (adPeer != null) {
                         notifyDataSetChanged();
                     }
                 }));
             }
         }
-        // Novagram: look up our sponsored channel (ads backend) for this query — mirrors the sponsoredQuery
+        // Novagram: look up our sponsored channel/bot (ads backend) for this query — mirrors the sponsoredQuery
         // flow above but shows a single row at the very top of results. Main search only; AdsManager
         // debounces + drops stale responses internally, so calling per keystroke is cheap.
         if (dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT && !TextUtils.equals(adQuery, query)) {
             final String adQ = query;
             adQuery = adQ;
-            adChat = null;
-            adPlatform = null;
-            org.fenixuz.ads.AdsManager.INSTANCE.requestAd(adQ, (channelId, platform) -> {
+            adPeer = null;
+            org.fenixuz.ads.AdsManager.INSTANCE.requestSearchAd(currentAccount, adQ, peer -> {
                 AndroidUtilities.runOnUIThread(() -> {
                     if (!TextUtils.equals(adQuery, adQ)) {
                         return;
                     }
-                    adChat = channelId != null ? MessagesController.getInstance(currentAccount).getChat(channelId) : null;
-                    adPlatform = adChat != null ? platform : null;
+                    adPeer = peer;
                     notifyDataSetChanged();
                 });
                 return kotlin.Unit.INSTANCE;
@@ -1403,34 +1407,21 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     // Novagram: the sponsored ad row is shown only in the main dialog search (not pickers), while
-    // actively searching (not the recent screen or hashtag mode), and only once its channel resolved.
+    // actively searching (not the recent screen or hashtag mode), only once its peer resolved, and only
+    // after Telegram's own getSponsoredPeers answered without an ad for this query (Telegram's ad first).
     // Every position walk below adds the exact same "if (showAd()) { if (i == 0) <ad>; i--; }" shim at
     // its head, so the row occupies adapter position 0 and shifts everything else by one consistently.
+    // Organic results are deliberately not deduped: an advertiser's own name surfaces its channel
+    // organically too, and a sponsored row on top of an organic one is normal ad behaviour.
     private boolean showAd() {
-        return adChat != null && searchWas && searchResultHashtags.isEmpty()
+        return adPeer != null && searchWas && searchResultHashtags.isEmpty()
                 && dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT
-                && !adAlreadyShownElsewhere();
+                && sponsoredReqId == 0 && !telegramAdForQuery;
     }
 
-    // Novagram: only suppress our ad row when Telegram is ALREADY showing the same channel as one of its
-    // OWN native sponsored peers — so we never stack two ad rows for one channel. We intentionally do NOT
-    // dedup against organic results: an advertiser tags with their own name (e.g. "kunuz"), which makes
-    // Telegram's global search surface that channel organically; suppressing on that hid the ad for its
-    // most important keywords. A sponsored slot at the top alongside an organic row below is expected ad
-    // behaviour (the row carries the "ads by Novagram" label), so we keep the ad visible.
-    private boolean adAlreadyShownElsewhere() {
-        final TLRPC.Chat ad = adChat;
-        if (ad == null) {
-            return false;
-        }
-        final long id = ad.id;
-        for (int i = 0; i < sponsoredPeers.size(); i++) {
-            TLRPC.TL_sponsoredPeer sp = sponsoredPeers.get(i);
-            if (sp != null && sp.peer != null && DialogObject.getPeerDialogId(sp.peer) == -id) {
-                return true;
-            }
-        }
-        return false;
+    // Novagram: true for our sponsored row, so the click handler can report the ad click.
+    public boolean isAdPosition(int position) {
+        return position == 0 && showAd();
     }
 
     @Override
@@ -1512,7 +1503,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     public Object getItem(int i) {
         if (showAd()) {
             if (i == 0) {
-                return adChat;
+                return adPeer;
             }
             i--;
         }
@@ -2036,10 +2027,11 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                 cell.allowBotOpenButton(isRecent, this::openBotApp);
                 cell.setOnSponsoredOptionsClick(this::openSponsoredOptions);
                 cell.setAd(obj instanceof TLRPC.TL_sponsoredPeer ? (TLRPC.TL_sponsoredPeer) obj : null);
-                // Novagram: a TELEGRAM-platform ad is disguised as a native Telegram sponsored result; a
-                // NOVAGRAM ad (or unknown platform) carries our own "ads by Novagram" label.
-                final boolean telegramStyleAd = isOurAd && "TELEGRAM".equalsIgnoreCase(adPlatform);
-                cell.setCustomAd(isOurAd && !telegramStyleAd ? AD_LABEL : null, telegramStyleAd);
+                cell.setCustomAd(isOurAd ? AD_LABEL : null, false);
+                if (isOurAd) {
+                    // Novagram: the row is on screen — that is the (billed) view. Only the first bind per ad counts.
+                    org.fenixuz.ads.AdsManager.INSTANCE.onSearchAdShown();
+                }
                 cell.setData(user != null ? user : chat, encryptedChat, name, username, true, savedMessages);
                 cell.setChecked(delegate.isSelected(cell.getDialogId()), oldDialogId == cell.getDialogId());
                 break;

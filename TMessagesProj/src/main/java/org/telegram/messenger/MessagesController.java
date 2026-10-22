@@ -15824,6 +15824,10 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
             }
             processUpdates(updates, false);
+            if (isChannel && inputUser instanceof TLRPC.TL_inputUserSelf) {
+                // Novagram: joining right after tapping our search ad is that ad's "action" (AdsManager matches the channel).
+                AndroidUtilities.runOnUIThread(() -> org.fenixuz.ads.AdsManager.INSTANCE.onChannelJoined(currentAccount, chatId));
+            }
             if (invitedUsers != null && !invitedUsers.missing_invitees.isEmpty()) {
                 AndroidUtilities.runOnUIThread(() -> {
                     putUsers(updates.users, false);

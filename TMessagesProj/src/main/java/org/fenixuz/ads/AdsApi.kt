@@ -1,59 +1,113 @@
 package org.fenixuz.ads
 
 import androidx.annotation.Keep
-import com.google.gson.GsonBuilder
+import com.google.gson.annotations.SerializedName
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import org.telegram.messenger.BuildConfig
 import retrofit2.Call
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.converter.scalars.ScalarsConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
+import java.net.Inet4Address
+import java.util.concurrent.TimeUnit
 
 /**
- * Novagram: minimal client for the ads backend's "search_ads" — a sponsored channel shown at the top of the
- * dialog search results. Only the two anonymous search_ads endpoints are used (no auth / no JWT /
- * no registration); chat_ads and the advertiser dashboard are intentionally out of scope.
+ * Novagram: client for the ads backend's serving API v2 (contract: the backend team's NOVAGRAM_ADS_API_UZ.md,
+ * 2026-10-21). One endpoint picks the ad for a slot ([AdsApiService.serve], free), one takes view/click/
+ * action/video_open in batches ([AdsApiService.events], a `view` is what bills the advertiser).
  *
- * The ad is matched server-side by the search query ([AdSearchRequest.tag]); [AdSearchRequest.viewerId]
- * is only for view/click counting and frequency capping. We send the real Telegram user id so the same
- * person is recognised consistently across our Android and iOS clients (both send the same id). This
- * means the search query + user id are disclosed to the ads backend — must be declared in the Play Data
- * Safety form / privacy policy.
+ * Every model is @Keep with explicit @SerializedName: they are Gson-mapped, and the event queue is also
+ * persisted as JSON, so R8 must not rename a single field (see the Gson keep rule in proguard-rules.pro).
+ * Response fields are all nullable: Gson fills them reflectively, so a missing field must not become a
+ * "non-null" Kotlin value that is secretly null.
  */
 
-// Field types match the live ads-backend OpenAPI schema (v2.0.0): viewer_id and channel_id are STRINGS,
-// order_id is a uuid string. We send the Telegram user id as its decimal string and parse channel_id
-// back to a long for MessagesController.
 @Keep
-data class AdSearchRequest(
-    val tag: String,
-    @com.google.gson.annotations.SerializedName("viewer_id") val viewerId: String
+data class AdsServeRequest(
+    @SerializedName("placement") val placement: String,
+    @SerializedName("user_id") val userId: Long,
+    @SerializedName("context") val context: Map<String, Any>,
+    // Null fields are left out of the JSON (Gson's default); the backend rejects an empty phone_country
+    // with 400, so "unknown" must be absent, never "".
+    @SerializedName("phone_country") val phoneCountry: String?,
+    @SerializedName("lang") val lang: String?,
+    @SerializedName("platform") val platform: String,
+    @SerializedName("app_version") val appVersion: String?
 )
 
 @Keep
-data class AdSearchResult(
-    @com.google.gson.annotations.SerializedName("channel_id") val channelId: String? = null,
-    @com.google.gson.annotations.SerializedName("channel_name") val channelName: String? = null,
-    @com.google.gson.annotations.SerializedName("order_id") val orderId: String? = null,
-    // "TELEGRAM" or "NOVAGRAM" (AdPlatformEnum). A TELEGRAM ad is disguised as a native Telegram sponsored
-    // result; a NOVAGRAM ad carries our own "ads by Novagram" label. Null/unknown → treated as NOVAGRAM.
-    @com.google.gson.annotations.SerializedName("platform") val platform: String? = null
+data class AdsServeResponse(
+    @SerializedName("ads") val ads: List<ServedAd>? = null,
+    @SerializedName("ttl_seconds") val ttlSeconds: Int? = null,
+    // VIDEO slot only, and missing when the backend is degraded.
+    @SerializedName("start_delay") val startDelay: Int? = null,
+    @SerializedName("between_delay") val betweenDelay: Int? = null
 )
 
 @Keep
-data class AdClickRequest(
-    @com.google.gson.annotations.SerializedName("order_id") val orderId: String,
-    @com.google.gson.annotations.SerializedName("viewer_id") val viewerId: String
+data class ServedAd(
+    // Signed impression token (~104 chars, lives 1 h, bound to the user_id it was served to). Opaque.
+    @SerializedName("random_id") val randomId: String? = null,
+    // The ad FORMAT (SEARCH, CHANNEL_MESSAGE, USERS_CHANNEL_MESSAGE, ...). Draw by slot, not by this.
+    @SerializedName("placement") val placement: String? = null,
+    @SerializedName("text") val text: String? = null,
+    @SerializedName("url") val url: String? = null,
+    @SerializedName("promoted") val promoted: AdPromoted? = null,
+    @SerializedName("button_type") val buttonType: String? = null,
+    @SerializedName("media") val media: AdMedia? = null,
+    @SerializedName("other_info") val otherInfo: String? = null,
+    @SerializedName("label") val label: String? = null,
+    @SerializedName("min_display_duration") val minDisplayDuration: Int? = null,
+    @SerializedName("max_display_duration") val maxDisplayDuration: Int? = null
+)
+
+@Keep
+data class AdPromoted(
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+    // Bot-API form (-100…) for channels; always null for bots.
+    @SerializedName("telegram_id") val telegramId: Long? = null,
+    // "CHANNEL" or "BOT".
+    @SerializedName("type") val type: String? = null
+)
+
+@Keep
+data class AdMedia(
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("url") val url: String? = null,
+    @SerializedName("width") val width: Int? = null,
+    @SerializedName("height") val height: Int? = null,
+    @SerializedName("duration") val duration: String? = null
+)
+
+@Keep
+data class AdsEventsRequest(
+    @SerializedName("user_id") val userId: Long,
+    @SerializedName("events") val events: List<AdsEventItem>
+)
+
+@Keep
+data class AdsEventItem(
+    @SerializedName("random_id") val randomId: String,
+    @SerializedName("type") val type: String
+)
+
+@Keep
+data class AdsEventsResponse(
+    @SerializedName("accepted") val accepted: Int? = null,
+    @SerializedName("rejected") val rejected: Int? = null
 )
 
 interface AdsApiService {
-    @POST("api/search_ads/order/search/")
-    fun searchAd(@Body body: AdSearchRequest): Call<AdSearchResult>
+    // The trailing slash is mandatory: without it the request lands on another service and fails.
+    @POST("api/ads/serve/")
+    fun serve(@Body body: AdsServeRequest): Call<AdsServeResponse>
 
-    @POST("api/search_ads/order/click/")
-    fun clickAd(@Body body: AdClickRequest): Call<Void>
+    @POST("api/ads/events/")
+    fun events(@Body body: AdsEventsRequest): Call<AdsEventsResponse>
 }
 
 object AdsRetrofitClient {
@@ -63,26 +117,41 @@ object AdsRetrofitClient {
     private val BASE_URL: String = BuildConfig.ADS_BASE_URL
     private val API_KEY: String = BuildConfig.ADS_API_KEY
 
-    // Both must be present: the search_ads endpoints reject requests without X-API-Key (HTTP 401) since
-    // backend v2.1.0, so without a key the feature would only hammer the backend with 401s — disable it instead.
+    // Both must be present: every v2 endpoint answers 403 without X-API-Key, so without a key the feature
+    // would only hammer the backend — disable it instead.
     val enabled: Boolean get() = BASE_URL.isNotBlank() && API_KEY.isNotBlank()
 
-    val service: AdsApiService by lazy {
-        // Attach X-API-Key to every request. This Retrofit only ever talks to the ads backend, so a blanket
-        // interceptor is safe and also covers any future ads endpoints without per-method annotations.
-        val client = OkHttpClient.Builder()
+    private val baseClient: OkHttpClient by lazy {
+        // X-API-Key on every request. Redirects are off so the key can never follow a redirect to another
+        // host — the backend has no legitimate redirects (an http→https one would drop the POST body anyway).
+        OkHttpClient.Builder()
             .addInterceptor { chain ->
-                val request = chain.request().newBuilder()
-                    .header("X-API-Key", API_KEY)
-                    .build()
-                chain.proceed(request)
+                chain.proceed(chain.request().newBuilder().header("X-API-Key", API_KEY).build())
             }
+            // IPv4 addresses first. On networks with a broken IPv6 path (verified on the office Wi-Fi, same as
+            // the Firestore case in AnalyticsRemote) OkHttp 3 tries the IPv6 address first, stalls, and the 5 s
+            // serve budget runs out before it ever falls back — so no ad was ever shown there.
+            .dns { hostname -> Dns.SYSTEM.lookup(hostname).sortedBy { if (it is Inet4Address) 0 else 1 } }
+            .followRedirects(false)
+            .followSslRedirects(false)
             .build()
-        Retrofit.Builder()
+    }
+
+    // serve: 3 s connect / 5 s total — an ad that arrives late is better not shown at all.
+    // events: 10 s. Both share baseClient's connection pool (newBuilder), so keep-alive is reused.
+    val serveService: AdsApiService by lazy {
+        create(baseClient.newBuilder().connectTimeout(3, TimeUnit.SECONDS).callTimeout(5, TimeUnit.SECONDS).build())
+    }
+
+    val eventsService: AdsApiService by lazy {
+        create(baseClient.newBuilder().connectTimeout(10, TimeUnit.SECONDS).callTimeout(10, TimeUnit.SECONDS).build())
+    }
+
+    private fun create(client: OkHttpClient): AdsApiService {
+        return Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(client)
-            .addConverterFactory(ScalarsConverterFactory.create())
-            .addConverterFactory(GsonConverterFactory.create(GsonBuilder().setLenient().create()))
+            .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(AdsApiService::class.java)
     }

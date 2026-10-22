@@ -6742,6 +6742,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         pipActivityHandler.onPause();
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.stopAllHeavyOperations, 4096);
         ApplicationLoader.mainInterfacePaused = true;
+        // Novagram: send queued ad events before the app may be killed in the background.
+        org.fenixuz.ads.AdsEvents.INSTANCE.onAppPaused();
         int account = currentAccount;
         Utilities.stageQueue.postRunnable(() -> {
             ApplicationLoader.mainInterfacePausedStageQueue = true;
@@ -6990,6 +6992,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 4096);
         MediaController.getInstance().setFeedbackView(feedbackView = actionBarLayout.getView(), true);
         ApplicationLoader.mainInterfacePaused = false;
+        // Novagram: resend ad events left on disk by an earlier session or a failed send.
+        org.fenixuz.ads.AdsEvents.INSTANCE.onAppResumed();
         MessagesController.getInstance(currentAccount).sortDialogs(null);
         showLanguageAlert(false);
         Utilities.stageQueue.postRunnable(() -> {

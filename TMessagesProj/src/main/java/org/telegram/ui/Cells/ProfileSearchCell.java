@@ -1240,7 +1240,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             if (hit || adBounce.isPressed())
                 return true;
         } else if (customAdNative || customAdLabel != null) {
-            // Novagram: our own ad pill (both TELEGRAM- and NOVAGRAM-platform). It is pressable (bounce
+            // Novagram: our own ad pill ("ad by Novagram"). It is pressable (bounce
             // feedback) exactly like Telegram's native "Ad" pill, but there is no sponsored-options menu yet —
             // so a tap on the pill is consumed with no action, while a tap on the rest of the row still opens
             // the channel.

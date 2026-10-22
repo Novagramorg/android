@@ -8125,6 +8125,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else if (searchViewPager != null && adapter == searchViewPager.dialogsSearchAdapter) {
             Object obj = searchViewPager.dialogsSearchAdapter.getItem(position);
             isGlobalSearch = searchViewPager.dialogsSearchAdapter.isGlobalSearch(position);
+            if (searchViewPager.dialogsSearchAdapter.isAdPosition(position)) {
+                // Novagram: our sponsored row (a channel or a bot) was tapped — report the ad click.
+                org.fenixuz.ads.AdsManager.INSTANCE.onSearchAdClicked();
+            }
             if (obj instanceof TLRPC.User) {
                 dialogId = ((TLRPC.User) obj).id;
                 if (!onlySelect) {
@@ -8133,8 +8137,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             } else if (obj instanceof TLRPC.Chat) {
                 dialogId = -((TLRPC.Chat) obj).id;
-                // Novagram: report a click if this is our sponsored channel (self-guards on the ad's id).
-                org.fenixuz.ads.AdsManager.INSTANCE.clickAd(dialogId);
                 if (!onlySelect) {
                     searchDialogId = dialogId;
                     searchObject = (TLRPC.Chat) obj;
