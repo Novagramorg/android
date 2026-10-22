@@ -2,6 +2,7 @@ package org.fenixuz.ads
 
 import androidx.annotation.Keep
 import com.google.gson.annotations.SerializedName
+import okhttp3.ConnectionPool
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import org.telegram.messenger.BuildConfig
@@ -101,6 +102,14 @@ data class AdsEventsResponse(
     @SerializedName("rejected") val rejected: Int? = null
 )
 
+@Keep
+data class AdsReportRequest(
+    @SerializedName("user_id") val userId: Long,
+    @SerializedName("random_id") val randomId: String,
+    // spam, violence, pornography, illegal, misleading, other
+    @SerializedName("reason") val reason: String
+)
+
 interface AdsApiService {
     // The trailing slash is mandatory: without it the request lands on another service and fails.
     @POST("api/ads/serve/")
@@ -108,6 +117,10 @@ interface AdsApiService {
 
     @POST("api/ads/events/")
     fun events(@Body body: AdsEventsRequest): Call<AdsEventsResponse>
+
+    // 201 = reported, 200 = this viewer already reported this ad; the body is not needed.
+    @POST("api/ads/report/")
+    fun report(@Body body: AdsReportRequest): Call<Void>
 }
 
 object AdsRetrofitClient {
@@ -132,6 +145,12 @@ object AdsRetrofitClient {
             // the Firestore case in AnalyticsRemote) OkHttp 3 tries the IPv6 address first, stalls, and the 5 s
             // serve budget runs out before it ever falls back — so no ad was ever shown there.
             .dns { hostname -> Dns.SYSTEM.lookup(hostname).sortedBy { if (it is Inet4Address) 0 else 1 } }
+            // The backend speaks HTTP/2, so every call shares one connection, and cancelling a call does not close it.
+            // When a network silently drops an idle connection (seen on the office Wi-Fi after ~4 minutes), every
+            // later call hung on that dead connection until its timeout. Pings find a dead connection within ~20 s
+            // and close it; idle connections are not kept past 30 s.
+            .pingInterval(10, TimeUnit.SECONDS)
+            .connectionPool(ConnectionPool(2, 30, TimeUnit.SECONDS))
             .followRedirects(false)
             .followSslRedirects(false)
             .build()

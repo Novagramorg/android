@@ -21751,6 +21751,11 @@ public class MessagesController extends BaseController implements NotificationCe
         info.loading = true;
         sponsoredMessages.put(dialogId, info);
         SponsoredMessagesInfo infoFinal = info;
+        // Novagram: a Premium user who switched Telegram's ads off still sees ours, so only Telegram's request is skipped.
+        if (getUserConfig().isPremium() && isSponsoredDisabled()) {
+            loadNovagramSponsoredMessages(dialogId, infoFinal);
+            return null;
+        }
         TLRPC.TL_messages_getSponsoredMessages req = new TLRPC.TL_messages_getSponsoredMessages();
         req.peer = getInputPeer(dialogId);
         getConnectionsManager().sendRequest(req, (response, error) -> {
@@ -21825,7 +21830,8 @@ public class MessagesController extends BaseController implements NotificationCe
             }
             AndroidUtilities.runOnUIThread(() -> {
                 if (result == null) {
-                    sponsoredMessages.remove(dialogId);
+                    // Novagram: Telegram has no ad here, so ours may take the slot (it removes the entry when it has none either).
+                    loadNovagramSponsoredMessages(dialogId, infoFinal);
                 } else {
                     infoFinal.loadTime = SystemClock.elapsedRealtime();
                     infoFinal.loading = false;
@@ -21836,6 +21842,25 @@ public class MessagesController extends BaseController implements NotificationCe
             });
         });
         return null;
+    }
+
+    // Novagram: fills [info] with our own ad (org.fenixuz.ads.AdsChannel) exactly as Telegram's answer would, so
+    // ChatActivity shows it through the usual didLoadSponsoredMessages path and keeps it for the same 5 minutes.
+    private void loadNovagramSponsoredMessages(long dialogId, SponsoredMessagesInfo info) {
+        org.fenixuz.ads.AdsChannel.loadFallback(currentAccount, dialogId, messages -> {
+            if (sponsoredMessages.get(dialogId) != info) {
+                return;
+            }
+            if (messages == null) {
+                sponsoredMessages.remove(dialogId);
+                return;
+            }
+            info.loadTime = SystemClock.elapsedRealtime();
+            info.loading = false;
+            info.messages = messages;
+            info.posts_between = null;
+            getNotificationCenter().postNotificationName(NotificationCenter.didLoadSponsoredMessages, dialogId, messages);
+        });
     }
 
     public void clearSendAsPeers() {

@@ -1,6 +1,7 @@
 package org.fenixuz.ads
 
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.ChatObject
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLObject
@@ -35,9 +36,10 @@ object AdsManager {
     private var currentDialogId = 0L
     private var currentAccount = -1
 
-    /** The ad last tapped; joining that channel afterwards is reported as its action. */
+    /** The ad last tapped (search or channel slot); joining that channel afterwards is reported as its action. */
     private var clicked: AdsServed? = null
     private var clickedDialogId = 0L
+    private var clickedUsername: String? = null
     private var clickedAccount = -1
 
     /** Bumped on every new query / cancel; a callback whose captured value differs is stale and ignored. */
@@ -107,9 +109,19 @@ object AdsManager {
     fun onSearchAdClicked() {
         val served = current ?: return
         AdsEvents.add(served, AdsEvents.CLICK, urgent = true)
+        rememberClick(currentAccount, served, currentDialogId)
+    }
+
+    /**
+     * Remembers a tapped ad so that joining its channel next counts as the ad's action. [dialogId] is the promoted
+     * peer when already known (0 otherwise); the promoted username is matched as well, since a channel ad may name
+     * a channel this client has never loaded.
+     */
+    fun rememberClick(account: Int, served: AdsServed, dialogId: Long) {
         clicked = served
-        clickedDialogId = currentDialogId
-        clickedAccount = currentAccount
+        clickedDialogId = dialogId
+        clickedUsername = served.ad.promoted?.username?.trim()?.removePrefix("@")?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() }
+        clickedAccount = account
     }
 
     /**
@@ -118,7 +130,13 @@ object AdsManager {
      */
     fun onChannelJoined(account: Int, chatId: Long) {
         val served = clicked ?: return
-        if (account != clickedAccount || clickedDialogId != -chatId) return
+        if (account != clickedAccount) return
+        val sameId = clickedDialogId != 0L && clickedDialogId == -chatId
+        val sameUsername = clickedUsername != null &&
+            MessagesController.getInstance(account).getChat(chatId)?.let { chat ->
+                ChatObject.getPublicUsername(chat)?.lowercase(Locale.ROOT) == clickedUsername
+            } == true
+        if (!sameId && !sameUsername) return
         clicked = null
         if (System.currentTimeMillis() - served.receivedAt > ACTION_WINDOW_MS) return
         AdsEvents.add(served, AdsEvents.ACTION, urgent = true)
@@ -191,7 +209,7 @@ object AdsManager {
     }
 
     // -1001234567890 (Bot API) → 1234567890. Other forms are not channel ids from this backend.
-    private fun botApiToChannelId(id: Long): Long {
+    internal fun botApiToChannelId(id: Long): Long {
         val abs = -id
         return if (abs in 1_000_000_000_000L..1_999_999_999_999L) abs - 1_000_000_000_000L else 0L
     }

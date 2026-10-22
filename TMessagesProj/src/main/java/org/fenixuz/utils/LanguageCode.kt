@@ -1810,6 +1810,18 @@ object LanguageCode {
         // Edit history screen (MessageHistory) when nothing was saved for the message.
         titlesLanguages.add(TitleLanguages(414, "No edit history yet", "Hozircha tahrirlar tarixi yo'q", "Истории изменений пока нет"))
         titlesLanguages.add(TitleLanguages(415, "Only edits made after this feature was turned on are saved.", "Faqat funksiya yoqilganidan keyingi tahrirlar saqlanadi.", "Сохраняются только правки, сделанные после включения функции."))
+
+        // Our own sponsored message in channels (org.fenixuz.ads.AdsChannel): its button and the report dialog.
+        titlesLanguages.add(TitleLanguages(416, "View channel", "Kanalni ko'rish", "Перейти в канал"))
+        titlesLanguages.add(TitleLanguages(417, "Open bot", "Botni ochish", "Открыть бота"))
+        titlesLanguages.add(TitleLanguages(418, "Report ad", "Reklamaga shikoyat", "Пожаловаться на рекламу"))
+        titlesLanguages.add(TitleLanguages(419, "Spam", "Spam", "Спам"))
+        titlesLanguages.add(TitleLanguages(420, "Violence", "Zo'ravonlik", "Насилие"))
+        titlesLanguages.add(TitleLanguages(421, "Pornography", "Pornografiya", "Порнография"))
+        titlesLanguages.add(TitleLanguages(422, "Illegal goods or services", "Noqonuniy tovar yoki xizmat", "Незаконные товары или услуги"))
+        titlesLanguages.add(TitleLanguages(423, "Misleading", "Aldov yoki chalg'ituvchi", "Обман или введение в заблуждение"))
+        titlesLanguages.add(TitleLanguages(424, "Other", "Boshqa", "Другое"))
+        titlesLanguages.add(TitleLanguages(425, "Thank you, your report has been sent.", "Rahmat, shikoyatingiz yuborildi.", "Спасибо, жалоба отправлена."))
     }
 
     /**

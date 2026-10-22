@@ -28,6 +28,7 @@ class AdsServed(val ad: ServedAd, val userId: Long, val receivedAt: Long)
 object AdsServe {
 
     const val SEARCH = "SEARCH"
+    const val CHANNEL_MESSAGE = "CHANNEL_MESSAGE"
 
     private const val DEFAULT_TTL_SECONDS = 300
     private const val FAILURE_TTL_SECONDS = 60

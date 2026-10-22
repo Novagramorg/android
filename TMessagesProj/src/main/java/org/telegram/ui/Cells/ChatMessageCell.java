@@ -3960,7 +3960,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     }
 
     private boolean checkTitleLabelMotion(MotionEvent event) {
-        if (!currentMessageObject.isSponsored() || !currentMessageObject.sponsoredCanReport) {
+        // Novagram: our own ad has no "what's this?" label — Telegram's sheet behind it describes Telegram's ads.
+        if (!currentMessageObject.isSponsored() || !currentMessageObject.sponsoredCanReport || currentMessageObject.novagramAd != null) {
             return false;
         }
 
@@ -7826,6 +7827,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     String type;
                     final int smallImageSide = dp(48), smallSideMargin = dp(10);
                     CharSequence overrideDescrption = null;
+                    // Novagram: our own ad's 16:9 photo (an https web document), sized like a game/invoice preview below.
+                    boolean novagramAdMedia = false;
                     if (messageObject.isSponsored()) {
                         if (messageObject.sponsoredCanReport) {
                             site_name = getString(R.string.SponsoredMessageAd);
@@ -7857,6 +7860,24 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             }
                             smallImage = false;
                             isSmallImage = false;
+                        }
+                        if (messageObject.novagramAd != null) {
+                            // Novagram: our own ad. Its own label and no "what's this?" (Telegram's sheet behind it
+                            // describes Telegram's ads: revenue share, Premium). Its images are https URLs from our
+                            // backend, drawn through the no-proxy web-document path: the photo as the big media, else
+                            // the promoted channel's avatar as the small image beside the text.
+                            site_name = org.fenixuz.ads.AdsChannel.AD_LABEL;
+                            titleLabel = null;
+                            webDocument = org.fenixuz.ads.AdsChannel.mediaFile(messageObject);
+                            if (webDocument != null) {
+                                novagramAdMedia = true;
+                                smallImage = false;
+                                isSmallImage = false;
+                            } else {
+                                webDocument = org.fenixuz.ads.AdsChannel.avatarFile(messageObject);
+                                smallImage = true;
+                                isSmallImage = webDocument != null;
+                            }
                         }
                         linkPreviewAbove = false;
                     } else if (drawInstantViewType == 19) {
@@ -8560,7 +8581,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                                 width = height = maxPhotoWidth;
                                 photoImage.setInvalidateAll(true);
                             } else {
-                                if (hasGamePreview || hasInvoicePreview) {
+                                if (hasGamePreview || hasInvoicePreview || novagramAdMedia) {
                                     if (hasInvoicePreview) {
                                         width = 640;
                                         height = 360;
