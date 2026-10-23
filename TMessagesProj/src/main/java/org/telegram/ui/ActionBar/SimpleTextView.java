@@ -1331,7 +1331,11 @@ public class SimpleTextView extends View implements Drawable.Callback {
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (rightDrawableOnClickListener != null && rightDrawable != null) {
-            AndroidUtilities.rectTmp.set(rightDrawableX - dp(16), rightDrawableY - dp(16), rightDrawableX + dp(16), rightDrawableY + dp(16));
+            // Novagram: the whole drawable is the target, not just 32dp around its centre — a wide pill (our video ad's
+            // "ad by Novagram ⋮") otherwise opened the ad itself when its ⋮ end was tapped. Small drawables are unchanged.
+            final int halfWidth = Math.max(dp(16), rightDrawable.getBounds().width() / 2);
+            final int halfHeight = Math.max(dp(16), rightDrawable.getBounds().height() / 2);
+            AndroidUtilities.rectTmp.set(rightDrawableX - halfWidth, rightDrawableY - halfHeight, rightDrawableX + halfWidth, rightDrawableY + halfHeight);
             if (event.getAction() == MotionEvent.ACTION_DOWN && AndroidUtilities.rectTmp.contains((int) event.getX(), (int) event.getY())) {
                 maybeClick = true;
                 touchDownX = event.getX();
