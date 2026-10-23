@@ -1811,7 +1811,7 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(414, "No edit history yet", "Hozircha tahrirlar tarixi yo'q", "Истории изменений пока нет"))
         titlesLanguages.add(TitleLanguages(415, "Only edits made after this feature was turned on are saved.", "Faqat funksiya yoqilganidan keyingi tahrirlar saqlanadi.", "Сохраняются только правки, сделанные после включения функции."))
 
-        // Our own sponsored message in channels (org.fenixuz.ads.AdsChannel): its button and the report dialog.
+        // Our own sponsored message in channels (org.fenixuz.ads.AdsSponsored): its button and the report dialog.
         titlesLanguages.add(TitleLanguages(416, "View channel", "Kanalni ko'rish", "Перейти в канал"))
         titlesLanguages.add(TitleLanguages(417, "Open bot", "Botni ochish", "Открыть бота"))
         titlesLanguages.add(TitleLanguages(418, "Report ad", "Reklamaga shikoyat", "Пожаловаться на рекламу"))

@@ -279,7 +279,7 @@ public class MessageObject {
     public TLRPC.MessageMedia sponsoredMedia;
     public boolean sponsoredCanReport;
     // Novagram: set when this sponsored message is our own ad (ads backend) rather than Telegram's. Its view,
-    // click and report then go to our backend; see org.fenixuz.ads.AdsChannel.
+    // click and report then go to our backend; see org.fenixuz.ads.AdsSponsored.
     public org.fenixuz.ads.AdsServed novagramAd;
 
     public boolean replyTextEllipsized;

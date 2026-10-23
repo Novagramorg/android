@@ -31,7 +31,7 @@ import java.util.Locale
  *
  * UI thread only, like the rest of the package.
  */
-object AdsChannel {
+object AdsSponsored {
 
     // Drawn where Telegram's own sponsored message says "Ad", so ours is never mistaken for Telegram's.
     const val AD_LABEL = "ad by Novagram"

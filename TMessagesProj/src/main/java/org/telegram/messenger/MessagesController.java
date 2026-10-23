@@ -21844,10 +21844,10 @@ public class MessagesController extends BaseController implements NotificationCe
         return null;
     }
 
-    // Novagram: fills [info] with our own ad (org.fenixuz.ads.AdsChannel) exactly as Telegram's answer would, so
+    // Novagram: fills [info] with our own ad (org.fenixuz.ads.AdsSponsored) exactly as Telegram's answer would, so
     // ChatActivity shows it through the usual didLoadSponsoredMessages path and keeps it for the same 5 minutes.
     private void loadNovagramSponsoredMessages(long dialogId, SponsoredMessagesInfo info) {
-        org.fenixuz.ads.AdsChannel.loadFallback(currentAccount, dialogId, messages -> {
+        org.fenixuz.ads.AdsSponsored.loadFallback(currentAccount, dialogId, messages -> {
             if (sponsoredMessages.get(dialogId) != info) {
                 return;
             }

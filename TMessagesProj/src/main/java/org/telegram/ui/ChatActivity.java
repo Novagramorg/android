@@ -16424,7 +16424,7 @@ public class ChatActivity extends BaseFragment implements
                     // Novagram: our ad bills on its view, and the backend counts one only once the whole text is on
                     // screen — so ours waits until the whole bubble is above the input panel. (Telegram's check above
                     // keeps a 41dp margin for the top edge; for the last item in the list that margin would never clear.)
-                    if (isVisible && (!org.fenixuz.ads.AdsChannel.isOurs(messageObject) || messageObject.viewsReloaded
+                    if (isVisible && (!org.fenixuz.ads.AdsSponsored.isOurs(messageObject) || messageObject.viewsReloaded
                             || rTop + messageCell.getBackgroundDrawableBottom() <= visibleBottom + dp(9 + 32))) {
                         markSponsoredAsRead(messageObject);
                     }
@@ -34896,10 +34896,10 @@ public class ChatActivity extends BaseFragment implements
                 break;
             }
             case OPTION_REPORT_AD: {
-                if (org.fenixuz.ads.AdsChannel.isOurs(selectedObject)) {
+                if (org.fenixuz.ads.AdsSponsored.isOurs(selectedObject)) {
                     // Novagram: our ad's report goes to our backend; the reported ad leaves the chat right away.
                     final MessageObject reported = selectedObject;
-                    org.fenixuz.ads.AdsChannel.showReport(ChatActivity.this, reported, () -> {
+                    org.fenixuz.ads.AdsSponsored.showReport(ChatActivity.this, reported, () -> {
                         removeFromSponsored(reported);
                         removeMessageWithThanos(reported);
                     });
@@ -37201,8 +37201,8 @@ public class ChatActivity extends BaseFragment implements
             return;
         }
         // Novagram: our own ad's click goes to our backend; Telegram never issued this id.
-        if (org.fenixuz.ads.AdsChannel.isOurs(messageObject)) {
-            org.fenixuz.ads.AdsChannel.onClicked(currentAccount, messageObject);
+        if (org.fenixuz.ads.AdsSponsored.isOurs(messageObject)) {
+            org.fenixuz.ads.AdsSponsored.onClicked(currentAccount, messageObject);
             return;
         }
         TLRPC.TL_messages_clickSponsoredMessage req = new TLRPC.TL_messages_clickSponsoredMessage();
@@ -37437,8 +37437,8 @@ public class ChatActivity extends BaseFragment implements
         object.viewsReloaded = true;
         // Novagram: our own ad's view goes to our backend (it is what bills the advertiser), ghost mode or not —
         // ghost mode hides the user from Telegram, and Telegram never sees this ad.
-        if (org.fenixuz.ads.AdsChannel.isOurs(object)) {
-            org.fenixuz.ads.AdsChannel.onViewed(object);
+        if (org.fenixuz.ads.AdsSponsored.isOurs(object)) {
+            org.fenixuz.ads.AdsSponsored.onViewed(object);
         } else if (!org.fenixuz.utils.GhostVariable.INSTANCE.getGhostMode()) {
             // Ghost mode: don't report the ad impression to the server ("seen" stays unsent).
             // Local bookkeeping below is unchanged so the ad still renders normally.
@@ -40261,9 +40261,9 @@ public class ChatActivity extends BaseFragment implements
         @Override
         public void didPressSponsoredClose(ChatMessageCell cell) {
             selectedObject = cell.getMessageObject();
-            if (org.fenixuz.ads.AdsChannel.isOurs(selectedObject)) {
+            if (org.fenixuz.ads.AdsSponsored.isOurs(selectedObject)) {
                 // Novagram: closing our ad just hides it here; offering Telegram Premium for that would be misleading.
-                org.fenixuz.ads.AdsChannel.hide(selectedObject);
+                org.fenixuz.ads.AdsSponsored.hide(selectedObject);
                 removeFromSponsored(selectedObject);
                 removeMessageWithThanos(selectedObject);
                 return;
@@ -46508,7 +46508,7 @@ public class ChatActivity extends BaseFragment implements
             icons.add(R.drawable.msg_block2);
         }
 
-        if (org.fenixuz.ads.AdsChannel.isOurs(message)) {
+        if (org.fenixuz.ads.AdsSponsored.isOurs(message)) {
             // Novagram: our own ad — only a report (to our backend). Telegram's revenue-sharing info and its Premium
             // "remove ads" are about Telegram's ads, not this one. Our own string: Telegram's Uzbek pack lacks ReportAd.
             items.add(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(418));

@@ -7866,15 +7866,15 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             // describes Telegram's ads: revenue share, Premium). Its images are https URLs from our
                             // backend, drawn through the no-proxy web-document path: the photo as the big media, else
                             // the promoted channel's avatar as the small image beside the text.
-                            site_name = org.fenixuz.ads.AdsChannel.AD_LABEL;
+                            site_name = org.fenixuz.ads.AdsSponsored.AD_LABEL;
                             titleLabel = null;
-                            webDocument = org.fenixuz.ads.AdsChannel.mediaFile(messageObject);
+                            webDocument = org.fenixuz.ads.AdsSponsored.mediaFile(messageObject);
                             if (webDocument != null) {
                                 novagramAdMedia = true;
                                 smallImage = false;
                                 isSmallImage = false;
                             } else {
-                                webDocument = org.fenixuz.ads.AdsChannel.avatarFile(messageObject);
+                                webDocument = org.fenixuz.ads.AdsSponsored.avatarFile(messageObject);
                                 smallImage = true;
                                 isSmallImage = webDocument != null;
                             }
