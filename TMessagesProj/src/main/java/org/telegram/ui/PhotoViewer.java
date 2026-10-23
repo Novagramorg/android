@@ -10290,6 +10290,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             return;
         }
         if (ads != null) {
+            // Novagram: our video ad is asked for only once a video of the channel really plays, with that video's id
+            // (the ads backend's rule); see VideoAds.onVideoPlaying.
+            if (playWhenReady && playbackState == ExoPlayer.STATE_READY && currentMessageObject != null && currentMessageObject.isVideo()) {
+                ads.onVideoPlaying(currentMessageObject.getId());
+            }
             ads.setWaitingPaused(!playWhenReady || playbackState != ExoPlayer.STATE_READY);
         }
         if (photoViewerWebView != null && photoViewerWebView.isControllable() && !playWhenReady) {

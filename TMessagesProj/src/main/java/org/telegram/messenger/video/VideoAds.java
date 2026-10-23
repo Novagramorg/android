@@ -43,6 +43,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
+import org.telegram.messenger.WebFile;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
@@ -116,6 +117,8 @@ public class VideoAds {
         final ArrayList<TLRPC.TL_sponsoredMessage> ads = new ArrayList<>();
         long loadTime;
         boolean loaded;
+        // Novagram: Telegram had no ad here and the channel takes ours (org.fenixuz.ads.AdsVideo).
+        boolean novagram;
 
         VideoAdsCache(int msgId) {
             this.msgId = msgId;
@@ -184,6 +187,7 @@ public static VideoAds make(
             between_delay = cache.betweenDelay;
             ads.addAll(cache.ads);
             loaded = true;
+            novagram = cache.novagram;
             schedule();
         } else {
             load();
@@ -196,6 +200,11 @@ public static VideoAds make(
         if (loading || loaded) return;
 
         if (UserConfig.getInstance(currentAccount).isPremium() && MessagesController.getInstance(currentAccount).isSponsoredDisabled()) {
+            // Novagram: that switch turns off Telegram's ads only; ours may still show.
+            cache.loadTime = System.currentTimeMillis();
+            cache.loaded = true;
+            loaded = true;
+            useNovagram();
             return;
         }
 
@@ -227,13 +236,77 @@ public static VideoAds make(
             loaded = true;
             loading = false;
 
+            if (ads.isEmpty()) {
+                // Novagram: Telegram has no video ad for this channel, so ours may take the slot.
+                useNovagram();
+            }
             schedule();
         }));
     }
 
+    // ---- Novagram: our own video ad (org.fenixuz.ads.AdsVideo) where Telegram has none ----
+    // The ads backend answers one ad at a time, is asked only once a video of the channel really plays (with that
+    // video's id), and wants the next banner asked for anew after between_delay; the rest is Telegram's logic above.
+
+    private boolean novagram;
+    private boolean novagramRequested;
+    private boolean novagramLoading;
+    private boolean novagramStopped;
+    private int novagramMsgId;
+    private retrofit2.Call<?> novagramCall;
+    private final Runnable novagramNextRunnable = () -> loadNovagram(true);
+
+    private void useNovagram() {
+        novagram = cache.novagram = org.fenixuz.ads.AdsVideo.canServe(currentAccount, dialogId);
+        loadNovagram(false);
+    }
+
+    /** PhotoViewer: video [msgId] of this dialog is playing now. */
+    public void onVideoPlaying(int msgId) {
+        if (msgId <= 0) return;
+        novagramMsgId = msgId;
+        loadNovagram(false);
+    }
+
+    private void loadNovagram(boolean next) {
+        if (!novagram || novagramStopped || novagramLoading || novagramMsgId <= 0 || !next && novagramRequested) return;
+        novagramRequested = true;
+        novagramLoading = true;
+        novagramCall = org.fenixuz.ads.AdsVideo.load(currentAccount, dialogId, novagramMsgId, next, ad -> {
+            novagramLoading = false;
+            novagramCall = null;
+            if (novagramStopped) return;
+            if (ad != null) {
+                start_delay = ad.getStartDelay();
+                between_delay = ad.getBetweenDelay();
+                ads.add(ad);
+            } else if (next) {
+                // No ad this time: the next try comes after another between_delay of playing time.
+                lastTime = System.currentTimeMillis();
+                if (waitingPaused) {
+                    waitingTimeSince = lastTime;
+                }
+            }
+            // While paused, setWaitingPaused(false) schedules it.
+            if (bulletin == null && !waitingPaused) {
+                schedule();
+            }
+        });
+    }
+
     private void schedule() {
         AndroidUtilities.cancelRunOnUIThread(showRunnable);
-        if (!loaded || ads.isEmpty()) return;
+        AndroidUtilities.cancelRunOnUIThread(novagramNextRunnable);
+        if (!loaded) return;
+        if (ads.isEmpty()) {
+            // Novagram: once our ad has been shown, the next one is asked for after between_delay of playing time,
+            // the way Telegram moves on to the next ad of its list.
+            if (novagram && !first && !waitingPaused) {
+                final long timePassed = System.currentTimeMillis() - lastTime;
+                AndroidUtilities.runOnUIThread(novagramNextRunnable, Math.max(0, between_delay * 1000L - timePassed));
+            }
+            return;
+        }
         final int delay = first ? start_delay : between_delay;
         final long timePassed = System.currentTimeMillis() - lastTime;
         AndroidUtilities.runOnUIThread(showRunnable, Math.max(0, delay * 1000L - timePassed));
@@ -245,6 +318,7 @@ public static VideoAds make(
         if (waitingPaused == paused) return;
         waitingPaused = paused;
         AndroidUtilities.cancelRunOnUIThread(showRunnable);
+        AndroidUtilities.cancelRunOnUIThread(novagramNextRunnable);
         if (paused) {
             waitingTimeSince = System.currentTimeMillis();
         } else {
@@ -287,11 +361,20 @@ public static VideoAds make(
             }
         };
 
+        // Novagram: our own ad (org.fenixuz.ads.AdsVideo) — our label, the advertiser's avatar, a report-only menu.
+        final boolean novagramAd = org.fenixuz.ads.AdsVideo.isOurs(ad);
         layout.titleTextView.setText(ad.title);
-        layout.titleTextView.setRightDrawable(new AdOptionsDrawable(bulletinFactory.getContext(), Theme.getColor(Theme.key_featuredStickers_addButton, bulletinFactory.getResourcesProvider())));
+        layout.titleTextView.setRightDrawable(new AdOptionsDrawable(bulletinFactory.getContext(), Theme.getColor(Theme.key_featuredStickers_addButton, bulletinFactory.getResourcesProvider()),
+            novagramAd ? org.fenixuz.ads.AdsSponsored.AD_LABEL : LocaleController.getString(R.string.SponsoredMessageAd)));
         layout.subtitleTextView.setText(ad.message);
         boolean hasMedia = false;
-        if (ad.media != null) {
+        if (novagramAd) {
+            final WebFile avatar = org.fenixuz.ads.AdsVideo.avatarFile(ad);
+            if (avatar != null) {
+                layout.imageView.setImage(ImageLocation.getForWebFile(avatar), "48_48", (Drawable) null, null);
+                hasMedia = true;
+            }
+        } else if (ad.media != null) {
             if (ad.media.document != null) {
                 TLRPC.PhotoSize thumbSize = FileLoader.getClosestPhotoSizeWithSize(ad.media.document.thumbs, 48);
                 layout.imageView.setImage(
@@ -330,7 +413,7 @@ public static VideoAds make(
                 if (bulletin != null) {
                     bulletin.hide();
                 }
-            } else {
+            } else if (!novagramAd) { // Novagram: ours just can't be closed before min_display_duration, Premium or not.
                 if (UserConfig.getInstance(currentAccount).isPremium()) {
                     if (bulletin != null) {
                         bulletin.hide();
@@ -424,7 +507,37 @@ public static VideoAds make(
             o.setDrawScrim(false);
             o.setDismissWithButtons(false);
 
-            if (ad.sponsor_info != null || ad.additional_info != null || ad.url != null && !ad.url.startsWith("https://" + MessagesController.getInstance(currentAccount).linkPrefix)) {
+            if (novagramAd) {
+                // Novagram: our ad's menu only reports it, to our backend, with the backend's reasons in a swipeback;
+                // Telegram's items below (sponsor info, revenue sharing, Premium to hide) are about Telegram's ads.
+                ItemOptions reasons = o.makeSwipeback();
+
+                ActionBarMenuSubItem backCell = new ActionBarMenuSubItem(context, true, false, resourcesProvider1);
+                backCell.setItemHeight(44);
+                backCell.setTextAndIcon(getString(R.string.Back), R.drawable.msg_arrow_back);
+                backCell.getTextView().setPadding(LocaleController.isRTL ? 0 : AndroidUtilities.dp(40), 0, LocaleController.isRTL ? AndroidUtilities.dp(40) : 0, 0);
+                backCell.setOnClickListener(v1 -> o.closeSwipeback());
+                reasons.addView(backCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+                reasons.addView(new ActionBarPopupWindow.GapView(context, resourcesProvider1), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
+
+                final CharSequence[] titles = org.fenixuz.ads.AdsVideo.reportReasonTitles();
+                for (int i = 0; i < titles.length; ++i) {
+                    final int reason = i;
+                    reasons.add(titles[i], () -> {
+                        o.dismiss();
+                        org.fenixuz.ads.AdsVideo.report(ad, reason);
+                        if (bulletin != null && bulletin == thisBulletin) {
+                            bulletin.setCanHide(true);
+                            bulletin.hide();
+                        }
+                        bulletinFactory
+                            .createAdReportedBulletin(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(425))
+                            .show();
+                    });
+                }
+                o.add(R.drawable.msg_block2, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(418), () -> o.openSwipeback(reasons));
+            }
+            if (!novagramAd && (ad.sponsor_info != null || ad.additional_info != null || ad.url != null && !ad.url.startsWith("https://" + MessagesController.getInstance(currentAccount).linkPrefix))) {
                 ItemOptions info = o.makeSwipeback();
 
                 ActionBarMenuSubItem backCell = new ActionBarMenuSubItem(context, true, false, resourcesProvider1);
@@ -504,7 +617,7 @@ public static VideoAds make(
                 }
                 o.add(R.drawable.msg_channel, getString(R.string.SponsoredMessageSponsorReportable), () -> o.openSwipeback(info));
             }
-            if (!UserConfig.getInstance(currentAccount).isPremium() && !MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && !ad.can_report) {
+            if (!novagramAd && !UserConfig.getInstance(currentAccount).isPremium() && !MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && !ad.can_report) {
                 o.add(R.drawable.msg_block2, getString(R.string.HideAd), () -> {
                     if (UserConfig.getInstance(currentAccount).isPremium()) {
                         o.dismiss();
@@ -595,6 +708,14 @@ public static VideoAds make(
             requestId = 0;
             loading = false;
         }
+        // Novagram: a stopped instance is never reused, so our request and next-banner timer end with it.
+        novagramStopped = true;
+        if (novagramCall != null) {
+            novagramCall.cancel();
+            novagramCall = null;
+        }
+        novagramLoading = false;
+        AndroidUtilities.cancelRunOnUIThread(novagramNextRunnable);
         AndroidUtilities.cancelRunOnUIThread(showRunnable);
         setWaitingPaused(true);
     }
@@ -603,11 +724,17 @@ public static VideoAds make(
 
         public final int color;
         public final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        public final Text text = new Text(LocaleController.getString(R.string.SponsoredMessageAd), 11, AndroidUtilities.bold());
+        public final Text text;
         public final Drawable icon;
 
         public AdOptionsDrawable(Context context, int color) {
+            this(context, color, LocaleController.getString(R.string.SponsoredMessageAd));
+        }
+
+        // Novagram: our ad's pill names whose ad it is.
+        public AdOptionsDrawable(Context context, int color, CharSequence label) {
             this.color = color;
+            this.text = new Text(label, 11, AndroidUtilities.bold());
             icon = context.getResources().getDrawable(R.drawable.ic_ab_other).mutate();
             icon.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
         }
@@ -871,6 +998,11 @@ public static VideoAds make(
 
     public void logSponsoredShown(TLRPC.TL_sponsoredMessage ad) {
         if (ad == null) return;
+        // Novagram: our ad's view goes to our backend (it is what bills the advertiser); Telegram never issued it.
+        if (org.fenixuz.ads.AdsVideo.isOurs(ad)) {
+            org.fenixuz.ads.AdsVideo.onShown(ad);
+            return;
+        }
         final TLRPC.TL_messages_viewSponsoredMessage req = new TLRPC.TL_messages_viewSponsoredMessage();
         req.random_id = ad.random_id;
         // Ghost mode: don't report the video-ad impression to the server.
@@ -881,6 +1013,10 @@ public static VideoAds make(
 
     public void logSponsoredClicked(TLRPC.TL_sponsoredMessage ad) {
         if (ad == null) return;
+        if (org.fenixuz.ads.AdsVideo.isOurs(ad)) {
+            org.fenixuz.ads.AdsVideo.onClicked(currentAccount, ad);
+            return;
+        }
         final TLRPC.TL_messages_clickSponsoredMessage req = new TLRPC.TL_messages_clickSponsoredMessage();
         req.random_id = ad.random_id;
         req.media = false;

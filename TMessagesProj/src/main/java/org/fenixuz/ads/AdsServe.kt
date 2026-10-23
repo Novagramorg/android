@@ -12,15 +12,22 @@ import retrofit2.Response
 
 /**
  * One served ad plus when it was received (wall clock), which bounds how long its events are still worth
- * sending: the token dies 1 h after it was issued.
+ * sending: the token dies 1 h after it was issued. [startDelay] / [betweenDelay] are the VIDEO slot's timers
+ * from the same answer (null elsewhere, and when the backend is degraded).
  */
-class AdsServed(val ad: ServedAd, val userId: Long, val receivedAt: Long)
+class AdsServed(
+    val ad: ServedAd,
+    val userId: Long,
+    val receivedAt: Long,
+    val startDelay: Int? = null,
+    val betweenDelay: Int? = null
+)
 
 /**
  * Novagram: the slot-independent half of ad serving — builds the request (user id + targeting hints), caches
  * every answer for the backend's `ttl_seconds` (empty answers too, so a slot without an ad is not asked
- * again for 5 minutes) and maps failures to the backend's retry rules. Slot code (search, channel messages and
- * bot panels now; video later) only supplies the placement + context and draws the result.
+ * again for 5 minutes) and maps failures to the backend's retry rules. Slot code (search, channel messages, bot
+ * panels and video banners) only supplies the placement + context and draws the result.
  *
  * UI thread only: callers are on it, and Retrofit delivers callbacks on the main thread on Android, so the
  * state below needs no locking.
@@ -30,6 +37,7 @@ object AdsServe {
     const val SEARCH = "SEARCH"
     const val CHANNEL_MESSAGE = "CHANNEL_MESSAGE"
     const val BOT = "BOT"
+    const val VIDEO = "VIDEO"
 
     private const val DEFAULT_TTL_SECONDS = 300
     private const val FAILURE_TTL_SECONDS = 60
@@ -49,9 +57,18 @@ object AdsServe {
     /**
      * Asks for the ad in [placement] for [account]. [cb] gets the ad, or null for "no ad" (none matched,
      * error, ads disabled). A cached answer is delivered synchronously and null is returned; otherwise the
-     * returned call can be cancelled by the caller (its callback then never fires).
+     * returned call can be cancelled by the caller (its callback then never fires). [refresh] skips a cached
+     * answer (the answer it gets is cached as usual): the video slot's next banner, which the backend wants
+     * asked for anew even within ttl_seconds.
      */
-    fun serve(account: Int, placement: String, context: Map<String, Any>, contextKey: String, cb: (AdsServed?) -> Unit): Call<AdsServeResponse>? {
+    fun serve(
+        account: Int,
+        placement: String,
+        context: Map<String, Any>,
+        contextKey: String,
+        refresh: Boolean = false,
+        cb: (AdsServed?) -> Unit
+    ): Call<AdsServeResponse>? {
         val userId = UserConfig.getInstance(account).clientUserId
         if (!AdsRetrofitClient.enabled || keyRejected || userId == 0L) {
             cb(null)
@@ -61,7 +78,7 @@ object AdsServe {
         val now = SystemClock.elapsedRealtime()
         val cached = cache[key]
         if (cached != null) {
-            if (cached.expiresAt > now) {
+            if (cached.expiresAt > now && !refresh) {
                 cb(cached.served)
                 return null
             }
@@ -86,7 +103,7 @@ object AdsServe {
                     val body = response.body()
                     val ad = body?.ads?.firstOrNull { !it.randomId.isNullOrEmpty() }
                     // Wall clock, not elapsedRealtime: the event queue outlives reboots and drops by this age.
-                    val served = if (ad != null) AdsServed(ad, userId, System.currentTimeMillis()) else null
+                    val served = if (ad != null) AdsServed(ad, userId, System.currentTimeMillis(), body?.startDelay, body?.betweenDelay) else null
                     val ttl = (body?.ttlSeconds ?: DEFAULT_TTL_SECONDS).coerceIn(10, 3600)
                     cache[key] = Entry(served, at + ttl * 1000L)
                     FileLog.d("Novagram ads: serve $placement -> ${if (served != null) "@" + served.ad.promoted?.username else "no ad"}, ttl $ttl")
