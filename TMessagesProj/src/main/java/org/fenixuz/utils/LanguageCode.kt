@@ -1822,6 +1822,8 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(423, "Misleading", "Aldov yoki chalg'ituvchi", "Обман или введение в заблуждение"))
         titlesLanguages.add(TitleLanguages(424, "Other", "Boshqa", "Другое"))
         titlesLanguages.add(TitleLanguages(425, "Thank you, your report has been sent.", "Rahmat, shikoyatingiz yuborildi.", "Спасибо, жалоба отправлена."))
+        // The small button on our ad's panel in a bot chat (BotAdView), where Telegram's own ad says "what's this?".
+        titlesLanguages.add(TitleLanguages(426, "Report", "Shikoyat", "Пожаловаться"))
     }
 
     /**

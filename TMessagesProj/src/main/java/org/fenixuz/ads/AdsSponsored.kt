@@ -8,6 +8,7 @@ import org.telegram.messenger.ChatObject
 import org.telegram.messenger.FileLog
 import org.telegram.messenger.MessageObject
 import org.telegram.messenger.MessagesController
+import org.telegram.messenger.UserObject
 import org.telegram.messenger.Utilities
 import org.telegram.messenger.WebFile
 import org.telegram.tgnet.ConnectionsManager
@@ -21,13 +22,14 @@ import retrofit2.Response
 import java.util.Locale
 
 /**
- * Novagram: our sponsored message in channels (ads API v2, slot CHANNEL_MESSAGE).
+ * Novagram: our sponsored message in channels and bot chats (ads API v2, slots CHANNEL_MESSAGE and BOT).
  *
  * It rides on Telegram's own sponsored-message machinery: when MessagesController.getSponsoredMessages finds no
- * Telegram ad for a channel, [loadFallback] builds our ad as the same kind of MessageObject, so ChatActivity
- * places and draws it like Telegram's (bubble after the last post, title, text, button). The MessageObject is
- * tagged with [MessageObject.novagramAd]; ChatActivity sends that one's view, click and report here instead of
- * to Telegram, and ChatMessageCell draws its https images through the no-proxy web-document path.
+ * Telegram ad for a channel or a bot, [loadFallback] builds our ad as the same kind of MessageObject, so
+ * ChatActivity places and draws it like Telegram's (in a channel a bubble after the last post with title, text and
+ * button; in a bot chat the panel at the top, BotAdView). The MessageObject is tagged with
+ * [MessageObject.novagramAd]; ChatActivity sends that one's view, click and report here instead of to Telegram,
+ * and its https images go through the no-proxy web-document path.
  *
  * UI thread only, like the rest of the package.
  */
@@ -57,18 +59,36 @@ object AdsSponsored {
 
     /**
      * Telegram had no ad for [dialogId] (or a Premium user switched Telegram's ads off): ask our backend. [callback]
-     * gets the ad as a one-item list ready for SponsoredMessagesInfo, or null — synchronously when the channel does
-     * not qualify or the answer is cached, otherwise after the request.
+     * gets the ad as a one-item list ready for SponsoredMessagesInfo, or null — synchronously when the channel or bot
+     * does not qualify or the answer is cached, otherwise after the request.
      */
     @JvmStatic
     fun loadFallback(account: Int, dialogId: Long, callback: Utilities.Callback<ArrayList<MessageObject>?>) {
-        val chat = eligibleChannel(account, dialogId)
-        if (chat == null) {
-            callback.run(null)
-            return
+        val placement: String
+        val context: Map<String, Any>
+        val contextKey: String
+        if (dialogId > 0) {
+            val username = adBotUsername(account, dialogId)
+            if (username == null) {
+                callback.run(null)
+                return
+            }
+            placement = AdsServe.BOT
+            context = mapOf("bot_username" to username)
+            // The backend matches bot usernames case-insensitively, so the cache does too.
+            contextKey = username.lowercase(Locale.ROOT)
+        } else {
+            val chat = eligibleChannel(account, dialogId)
+            if (chat == null) {
+                callback.run(null)
+                return
+            }
+            val botApiId = -(1_000_000_000_000L + chat.id)
+            placement = AdsServe.CHANNEL_MESSAGE
+            context = mapOf("channel_id" to botApiId)
+            contextKey = botApiId.toString()
         }
-        val botApiId = -(1_000_000_000_000L + chat.id)
-        AdsServe.serve(account, AdsServe.CHANNEL_MESSAGE, mapOf<String, Any>("channel_id" to botApiId), botApiId.toString()) { served ->
+        AdsServe.serve(account, placement, context, contextKey) { served ->
             val ad = served?.ad
             if (served == null || ad == null || ad.url.isNullOrEmpty() || hidden.contains(hideKey(ad))) {
                 callback.run(null)
@@ -131,7 +151,10 @@ object AdsSponsored {
         return webFile(media.url, media.width ?: 1280, media.height ?: 720)
     }
 
-    /** The promoted channel's avatar, drawn as the small image beside the text when the ad has no media. */
+    /**
+     * The promoted channel's avatar: the small image beside the text of a channel ad without media, and the image on
+     * the right of the bot panel. Null when the advertiser did not choose to show it.
+     */
     @JvmStatic
     fun avatarFile(messageObject: MessageObject): WebFile? {
         return webFile(messageObject.novagramAd?.ad?.promoted?.avatarUrl, 160, 160)
@@ -159,6 +182,13 @@ object AdsSponsored {
         if (BuildConfig.DEBUG_VERSION && chat.id == TEST_CHANNEL_ID) return chat
         val subscribers = maxOf(chat.participants_count, controller.getChatFull(chat.id)?.participants_count ?: 0)
         return if (subscribers >= MIN_SUBSCRIBERS) chat else null
+    }
+
+    // The backend asks for an ad by the bot's username (it has no bot ids), so a bot without one gets none.
+    private fun adBotUsername(account: Int, dialogId: Long): String? {
+        val user = MessagesController.getInstance(account).getUser(dialogId) ?: return null
+        if (!user.bot) return null
+        return UserObject.getPublicUsername(user)?.takeIf { it.isNotEmpty() }
     }
 
     private fun buildMessageObject(account: Int, dialogId: Long, served: AdsServed): MessageObject {

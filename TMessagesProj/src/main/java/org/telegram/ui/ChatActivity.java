@@ -25538,7 +25538,8 @@ public class ChatActivity extends BaseFragment implements
         if (message == botSponsoredMessage) {
             botSponsoredMessage = null;
             updateTopPanel(true);
-            return;
+            // Novagram: no return — the bot's ad also leaves the 5-minute cache below, or reopening the bot within
+            // those minutes would bring a closed or reported ad back.
         }
         MessagesController.SponsoredMessagesInfo sponsoredMessagesInfo = getMessagesController().getSponsoredMessages(dialog_id);
         // Novagram: an entry that is still loading has no list yet — and with our ads fallback (up to 5 s) that window
@@ -29742,6 +29743,13 @@ public class ChatActivity extends BaseFragment implements
                 markSponsoredAsRead(botSponsoredMessage);
                 botAdView.set(this, botSponsoredMessage, () -> {
                     if (botSponsoredMessage == null) return;
+                    // Novagram: our ad's pill is "Report" (to our backend). Telegram's sheet below is about Telegram's
+                    // ads — revenue sharing, Premium to remove them — none of which is true of ours.
+                    if (org.fenixuz.ads.AdsSponsored.isOurs(botSponsoredMessage)) {
+                        MessageObject reported = botSponsoredMessage;
+                        org.fenixuz.ads.AdsSponsored.showReport(ChatActivity.this, reported, () -> removeFromSponsored(reported));
+                        return;
+                    }
                     RevenueSharingAdsInfoBottomSheet[] sheet = new RevenueSharingAdsInfoBottomSheet[1];
                     sheet[0] = RevenueSharingAdsInfoBottomSheet.showAlert(getContext(), ChatActivity.this, true, resourceProvider, o -> {
                         if (botSponsoredMessage == null) return;
@@ -29852,6 +29860,12 @@ public class ChatActivity extends BaseFragment implements
                         o.setGravity(Gravity.RIGHT).show();
                     });
                 }, () -> {
+                    // Novagram: closing our ad is local and free (the backend has no "hide"); for Telegram's it is Premium.
+                    if (org.fenixuz.ads.AdsSponsored.isOurs(botSponsoredMessage)) {
+                        org.fenixuz.ads.AdsSponsored.hide(botSponsoredMessage);
+                        removeFromSponsored(botSponsoredMessage);
+                        return;
+                    }
                     if (getUserConfig().isPremium()) {
                         botSponsoredMessage = null;
                         updateTopPanel(true);

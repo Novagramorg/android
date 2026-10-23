@@ -5,6 +5,7 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import android.content.Context;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.text.Layout;
 import android.text.SpannableStringBuilder;
@@ -30,6 +31,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.WebFile;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
@@ -130,8 +132,25 @@ public class BotAdView extends FrameLayout {
         text = Emoji.replaceEmoji(text, textView.getPaint().getFontMetricsInt(), false);
         final String url = messageObject.sponsoredUrl;
 
+        // Novagram: our own ad (org.fenixuz.ads.AdsSponsored). Its label says whose ad it is, its pill reports it
+        // (Telegram's "what's this?" sheet explains Telegram's ads, not ours) and its X stays next to the avatar:
+        // closing ours is local and free, not a Premium feature that Telegram moves into a menu.
+        final boolean novagramAd = org.fenixuz.ads.AdsSponsored.isOurs(messageObject);
+        final String adLabel = novagramAd ? org.fenixuz.ads.AdsSponsored.AD_LABEL : LocaleController.getString(R.string.SponsoredMessageAd);
+        removeView.setText(novagramAd ? org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(426) : LocaleController.getString(R.string.BotAdWhat));
+
         boolean hasMedia;
-        if (messageObject.sponsoredMedia != null) {
+        if (novagramAd) {
+            WebFile avatar = org.fenixuz.ads.AdsSponsored.avatarFile(messageObject);
+            if (avatar != null) {
+                imageView.setImage(ImageLocation.getForWebFile(avatar), "48_48", (Drawable) null, null);
+                imageView.setVisibility(View.VISIBLE);
+            } else {
+                imageView.setVisibility(View.GONE);
+            }
+            closeView.setVisibility(View.VISIBLE);
+            hasMedia = avatar != null;
+        } else if (messageObject.sponsoredMedia != null) {
             imageView.setVisibility(View.VISIBLE);
             closeView.setVisibility(View.GONE);
             if (messageObject.sponsoredMedia.document != null) {
@@ -168,12 +187,12 @@ public class BotAdView extends FrameLayout {
             hasMedia = false;
         }
 
-        SpannableStringBuilder title = new SpannableStringBuilder(LocaleController.getString(R.string.SponsoredMessageAd));
+        SpannableStringBuilder title = new SpannableStringBuilder(adLabel);
         title.setSpan(new ForegroundColorSpan(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)), 0, title.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         title.append("  ");
         title.append(channel);
-        if (titleView.getPaint().measureText(title.toString()) > AndroidUtilities.displaySize.x - dp(16 + 16 + 6.33f + 6.33f) - removeView.getPaint().measureText(removeView.getText().toString()) - dp(32) - dp(hasMedia ? 10 + 48 : 0)) {
-            title = new SpannableStringBuilder(LocaleController.getString(R.string.SponsoredMessageAd));
+        if (titleView.getPaint().measureText(title.toString()) > AndroidUtilities.displaySize.x - dp(16 + 16 + 6.33f + 6.33f) - removeView.getPaint().measureText(removeView.getText().toString()) - dp(32) - dp(hasMedia ? 10 + 48 : 0) - dp(novagramAd && hasMedia ? 10 : 0)) {
+            title = new SpannableStringBuilder(adLabel);
             title.setSpan(new ForegroundColorSpan(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)), 0, title.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             channelTitleView.setVisibility(View.VISIBLE);
             channelTitleView.setText(channel);

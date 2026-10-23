@@ -19,8 +19,8 @@ class AdsServed(val ad: ServedAd, val userId: Long, val receivedAt: Long)
 /**
  * Novagram: the slot-independent half of ad serving — builds the request (user id + targeting hints), caches
  * every answer for the backend's `ttl_seconds` (empty answers too, so a slot without an ad is not asked
- * again for 5 minutes) and maps failures to the backend's retry rules. Slot code (search now; channel, bot,
- * video later) only supplies the placement + context and draws the result.
+ * again for 5 minutes) and maps failures to the backend's retry rules. Slot code (search, channel messages and
+ * bot panels now; video later) only supplies the placement + context and draws the result.
  *
  * UI thread only: callers are on it, and Retrofit delivers callbacks on the main thread on Android, so the
  * state below needs no locking.
@@ -29,6 +29,7 @@ object AdsServe {
 
     const val SEARCH = "SEARCH"
     const val CHANNEL_MESSAGE = "CHANNEL_MESSAGE"
+    const val BOT = "BOT"
 
     private const val DEFAULT_TTL_SECONDS = 300
     private const val FAILURE_TTL_SECONDS = 60
