@@ -110,16 +110,17 @@ data class AdsReportRequest(
     @SerializedName("reason") val reason: String
 )
 
+// The paths come from local.properties (ADS_PATH_*) like the base URL and the key, so the public repo names no
+// endpoint. Each keeps its trailing slash: without it the request lands on another service and fails.
 interface AdsApiService {
-    // The trailing slash is mandatory: without it the request lands on another service and fails.
-    @POST("api/ads/serve/")
+    @POST(BuildConfig.ADS_PATH_SERVE)
     fun serve(@Body body: AdsServeRequest): Call<AdsServeResponse>
 
-    @POST("api/ads/events/")
+    @POST(BuildConfig.ADS_PATH_EVENTS)
     fun events(@Body body: AdsEventsRequest): Call<AdsEventsResponse>
 
     // 201 = reported, 200 = this viewer already reported this ad; the body is not needed.
-    @POST("api/ads/report/")
+    @POST(BuildConfig.ADS_PATH_REPORT)
     fun report(@Body body: AdsReportRequest): Call<Void>
 }
 
@@ -130,9 +131,14 @@ object AdsRetrofitClient {
     private val BASE_URL: String = BuildConfig.ADS_BASE_URL
     private val API_KEY: String = BuildConfig.ADS_API_KEY
 
-    // Both must be present: every v2 endpoint answers 403 without X-API-Key, so without a key the feature
-    // would only hammer the backend — disable it instead.
-    val enabled: Boolean get() = BASE_URL.isNotBlank() && API_KEY.isNotBlank()
+    // All must be present: every endpoint answers 403 without X-API-Key, so without a key the feature would only
+    // hammer the backend; and Retrofit throws on a method whose path is empty — disable the feature instead.
+    val enabled: Boolean get() = BASE_URL.isNotBlank() && API_KEY.isNotBlank() && PATHS_SET
+
+    private val PATHS_SET: Boolean = listOf(
+        BuildConfig.ADS_PATH_SERVE, BuildConfig.ADS_PATH_EVENTS, BuildConfig.ADS_PATH_REPORT,
+        BuildConfig.ADS_PATH_BANNERS_ACTIVE, BuildConfig.ADS_PATH_BANNERS_DISMISS, BuildConfig.ADS_PATH_BANNERS_CLICK
+    ).all { it.isNotBlank() }
 
     private val baseClient: OkHttpClient by lazy {
         // X-API-Key on every request. Redirects are off so the key can never follow a redirect to another

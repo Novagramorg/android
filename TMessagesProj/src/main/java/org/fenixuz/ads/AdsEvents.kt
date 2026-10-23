@@ -14,7 +14,7 @@ import retrofit2.Callback
 import retrofit2.Response
 
 /**
- * Novagram: the ad event queue (view / click / action / video_open → POST /api/ads/events/).
+ * Novagram: the ad event queue (view / click / action / video_open → the backend's events endpoint).
  *
  * Events are batched (up to 50 per request, one user id per request, order kept so a click always precedes
  * its action) and persisted, so a view that bills the advertiser survives the app being killed or offline.

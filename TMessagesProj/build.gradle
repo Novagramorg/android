@@ -171,8 +171,16 @@ android {
         // Novagram: ads backend base URL — kept out of the public repo (read from local.properties).
         // Empty when unset → the ads feature disables itself gracefully (see org.fenixuz.ads.AdsRetrofitClient).
         buildConfigField "String", "ADS_BASE_URL", "\"" + (getProps("ADS_BASE_URL") ?: "") + "\""
-        // Server API key sent as the X-API-Key header — the search_ads endpoints require it since backend v2.1.0.
+        // Server API key sent as the X-API-Key header; every ads endpoint requires it.
         buildConfigField "String", "ADS_API_KEY", "\"" + (getProps("ADS_API_KEY") ?: "") + "\""
+        // Novagram: the ads endpoint paths (relative to ADS_BASE_URL, each with its trailing slash) — also kept out of
+        // the public repo. Any one missing → the ads feature disables itself like a missing URL or key.
+        buildConfigField "String", "ADS_PATH_SERVE", "\"" + (getProps("ADS_PATH_SERVE") ?: "") + "\""
+        buildConfigField "String", "ADS_PATH_EVENTS", "\"" + (getProps("ADS_PATH_EVENTS") ?: "") + "\""
+        buildConfigField "String", "ADS_PATH_REPORT", "\"" + (getProps("ADS_PATH_REPORT") ?: "") + "\""
+        buildConfigField "String", "ADS_PATH_BANNERS_ACTIVE", "\"" + (getProps("ADS_PATH_BANNERS_ACTIVE") ?: "") + "\""
+        buildConfigField "String", "ADS_PATH_BANNERS_DISMISS", "\"" + (getProps("ADS_PATH_BANNERS_DISMISS") ?: "") + "\""
+        buildConfigField "String", "ADS_PATH_BANNERS_CLICK", "\"" + (getProps("ADS_PATH_BANNERS_CLICK") ?: "") + "\""
 
         externalNativeBuild {
             cmake {
