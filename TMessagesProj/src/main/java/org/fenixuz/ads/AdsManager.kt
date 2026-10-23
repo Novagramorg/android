@@ -3,6 +3,7 @@ package org.fenixuz.ads
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ChatObject
 import org.telegram.messenger.MessagesController
+import org.telegram.messenger.UserObject
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
@@ -12,7 +13,8 @@ import java.util.Locale
 /**
  * Orchestrates the sponsored search result (ads API v2, slot SEARCH): debounced lookup, stale-response
  * guarding, resolving the promoted channel/bot, and its events — view when the row is shown, click when it
- * is tapped, action when the user then joins the channel. Everything here runs on the UI thread (the search
+ * is tapped, action when the user then joins the channel or starts the bot (that part also serves the channel
+ * and bot slots, see [rememberClick]). Everything here runs on the UI thread (the search
  * adapter calls in on it; Retrofit and the resolveUsername callback hop back to it), so the mutable state
  * below needs no locking.
  *
@@ -36,7 +38,10 @@ object AdsManager {
     private var currentDialogId = 0L
     private var currentAccount = -1
 
-    /** The ad last tapped (search or channel slot); joining that channel afterwards is reported as its action. */
+    /**
+     * The ad last tapped (search, channel or bot slot); joining its channel or starting its bot afterwards is reported
+     * as its action.
+     */
     private var clicked: AdsServed? = null
     private var clickedDialogId = 0L
     private var clickedUsername: String? = null
@@ -113,9 +118,9 @@ object AdsManager {
     }
 
     /**
-     * Remembers a tapped ad so that joining its channel next counts as the ad's action. [dialogId] is the promoted
-     * peer when already known (0 otherwise); the promoted username is matched as well, since a channel ad may name
-     * a channel this client has never loaded.
+     * Remembers a tapped ad so that joining its channel or starting its bot next counts as the ad's action. [dialogId]
+     * is the promoted peer when already known (0 otherwise); the promoted username is matched as well, since an ad may
+     * name a channel this client has never loaded, and a bot's id never comes from the backend.
      */
     fun rememberClick(account: Int, served: AdsServed, dialogId: Long) {
         clicked = served
@@ -129,14 +134,31 @@ object AdsManager {
      * channel of the ad just tapped, report the action — once, and only within the token's lifetime.
      */
     fun onChannelJoined(account: Int, chatId: Long) {
-        val served = clicked ?: return
-        if (account != clickedAccount) return
+        if (clicked == null || account != clickedAccount) return
         val sameId = clickedDialogId != 0L && clickedDialogId == -chatId
         val sameUsername = clickedUsername != null &&
             MessagesController.getInstance(account).getChat(chatId)?.let { chat ->
                 ChatObject.getPublicUsername(chat)?.lowercase(Locale.ROOT) == clickedUsername
             } == true
-        if (!sameId && !sameUsername) return
+        if (sameId || sameUsername) sendAction()
+    }
+
+    /**
+     * The current user pressed Start (or Restart, for a blocked bot) in [bot]'s chat on [account]. If that is the bot
+     * of the ad just tapped, report the action, like a join for a channel. Only that button counts: a bot the user
+     * already started has none, and the backend wants no action from someone who was already "subscribed".
+     */
+    fun onBotStarted(account: Int, bot: TLRPC.User?) {
+        if (clicked == null || account != clickedAccount || bot == null || !bot.bot) return
+        val sameId = clickedDialogId != 0L && clickedDialogId == bot.id
+        // Any of the bot's usernames: the backend never sends a bot's numeric id, only the one it was booked with.
+        val sameUsername = clickedUsername != null && UserObject.hasPublicUsername(bot, clickedUsername)
+        if (sameId || sameUsername) sendAction()
+    }
+
+    // The remembered click's action: at most once, and only while its token still lives.
+    private fun sendAction() {
+        val served = clicked ?: return
         clicked = null
         if (System.currentTimeMillis() - served.receivedAt > ACTION_WINDOW_MS) return
         AdsEvents.add(served, AdsEvents.ACTION, urgent = true)

@@ -8804,6 +8804,8 @@ public class ChatActivity extends BaseFragment implements
                     String botUserLast = botUser;
                     botUser = null;
                     getMessagesController().unblockPeer(currentUser.id, () -> {
+                        // Novagram: restarting the bot of an ad just tapped is that ad's action.
+                        org.fenixuz.ads.AdsManager.INSTANCE.onBotStarted(currentAccount, currentUser);
                         if (botUserLast != null && botUserLast.length() != 0) {
                             getMessagesController().sendBotStart(currentUser, botUserLast);
                         } else {
@@ -8821,6 +8823,8 @@ public class ChatActivity extends BaseFragment implements
             } else if (UserObject.isReplyUser(currentUser)) {
                 toggleMute(true);
             } else if (currentUser != null && currentUser.bot && botUser != null) {
+                // Novagram: starting the bot of an ad just tapped is that ad's action.
+                org.fenixuz.ads.AdsManager.INSTANCE.onBotStarted(currentAccount, currentUser);
                 if (botUser.length() != 0) {
                     getMessagesController().sendBotStart(currentUser, botUser);
                 } else {
