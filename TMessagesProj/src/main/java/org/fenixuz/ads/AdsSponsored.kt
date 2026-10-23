@@ -107,7 +107,11 @@ object AdsSponsored {
     /** Any tap that opens the ad (button, title, image, menu link). The caller opens the URL itself. */
     @JvmStatic
     fun onClicked(account: Int, messageObject: MessageObject) {
-        val served = messageObject.novagramAd ?: return
+        messageObject.novagramAd?.let { onClicked(account, it) }
+    }
+
+    /** The click of any slot but search: sent at once, and remembered so a join or bot start after it is the action. */
+    internal fun onClicked(account: Int, served: AdsServed) {
         AdsEvents.add(served, AdsEvents.CLICK, urgent = true)
         val channelId = served.ad.promoted?.telegramId?.let { AdsManager.botApiToChannelId(it) } ?: 0L
         AdsManager.rememberClick(account, served, if (channelId != 0L) -channelId else 0L)
@@ -127,20 +131,29 @@ object AdsSponsored {
     fun showReport(fragment: BaseFragment, messageObject: MessageObject, onReported: Runnable) {
         val served = messageObject.novagramAd ?: return
         val context = fragment.parentActivity ?: return
-        val titles = arrayOf<CharSequence>(
-            LanguageCode.getMyTitles(419), LanguageCode.getMyTitles(420), LanguageCode.getMyTitles(421),
-            LanguageCode.getMyTitles(422), LanguageCode.getMyTitles(423), LanguageCode.getMyTitles(424)
-        )
         val builder = AlertDialog.Builder(context, fragment.resourceProvider)
         builder.setTitle(LanguageCode.getMyTitles(418))
-        builder.setItems(titles) { _, which ->
-            sendReport(served, REPORT_REASONS[which], retry = true)
-            hidden.add(hideKey(served.ad))
+        builder.setItems(reportReasonTitles()) { _, which ->
+            report(served, which)
             onReported.run()
             BulletinFactory.of(fragment).createAdReportedBulletin(LanguageCode.getMyTitles(425)).show()
         }
         fragment.showDialog(builder.create())
     }
+
+    /** The report reasons as the user reads them, in the order [report] takes them. */
+    internal fun reportReasonTitles(): Array<CharSequence> = arrayOf(
+        LanguageCode.getMyTitles(419), LanguageCode.getMyTitles(420), LanguageCode.getMyTitles(421),
+        LanguageCode.getMyTitles(422), LanguageCode.getMyTitles(423), LanguageCode.getMyTitles(424)
+    )
+
+    /** Reports [served] for reason [reasonIndex] of [reportReasonTitles] and hides that ad for the rest of the session. */
+    internal fun report(served: AdsServed, reasonIndex: Int) {
+        sendReport(served, REPORT_REASONS[reasonIndex], retry = true)
+        hidden.add(hideKey(served.ad))
+    }
+
+    internal fun isHidden(ad: ServedAd): Boolean = hidden.contains(hideKey(ad))
 
     /** Our ad's media as a no-proxy web file (plain https download), or null when it has none we can draw. */
     @JvmStatic
@@ -160,7 +173,7 @@ object AdsSponsored {
         return webFile(messageObject.novagramAd?.ad?.promoted?.avatarUrl, 160, 160)
     }
 
-    private fun webFile(url: String?, width: Int, height: Int): WebFile? {
+    internal fun webFile(url: String?, width: Int, height: Int): WebFile? {
         // https only: the image loader would happily fetch http, but the backend promises https and anything else
         // is not something we want the app to load.
         if (url.isNullOrEmpty() || !url.startsWith("https://")) return null
@@ -174,7 +187,8 @@ object AdsSponsored {
         return WebFile.createWithWebDocument(document)
     }
 
-    private fun eligibleChannel(account: Int, dialogId: Long): TLRPC.Chat? {
+    // Also the rule for the video slot (AdsVideo): the backend leaves it to the app, as Telegram does.
+    internal fun eligibleChannel(account: Int, dialogId: Long): TLRPC.Chat? {
         if (dialogId >= 0) return null
         val controller = MessagesController.getInstance(account)
         val chat = controller.getChat(-dialogId) ?: return null
