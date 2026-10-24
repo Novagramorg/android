@@ -203,6 +203,12 @@ android {
             buildConfigField "boolean", "DEBUG_PRIVATE_VERSION", "true"
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "int", "VERSION_NUM", "0"
+            // Novagram: debug builds use the ads TEST server when local.properties names one (both ADS_TEST_BASE_URL
+            // and ADS_TEST_API_KEY — a test URL with the production key would only be refused), so testing never
+            // touches real campaigns. Every other build type, release included, keeps the production server.
+            def adsTest = getProps("ADS_TEST_BASE_URL") && getProps("ADS_TEST_API_KEY")
+            buildConfigField "String", "ADS_BASE_URL", "\"" + ((adsTest ? getProps("ADS_TEST_BASE_URL") : getProps("ADS_BASE_URL")) ?: "") + "\""
+            buildConfigField "String", "ADS_API_KEY", "\"" + ((adsTest ? getProps("ADS_TEST_API_KEY") : getProps("ADS_API_KEY")) ?: "") + "\""
         }
 
         HA_private {
