@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit
 /**
  * Novagram: client for the ads backend's serving API v2 (contract: the backend team's NOVAGRAM_ADS_API_UZ.md,
  * 2026-10-21). One endpoint picks the ad for a slot ([AdsApiService.serve], free), one takes view/click/
- * action/video_open in batches ([AdsApiService.events], a `view` is what bills the advertiser).
+ * action/video_open in batches ([AdsApiService.events], a `view` is what bills the advertiser); the system
+ * banners above the chat list have their own three ([AdsApiService.bannersActive] and the rest).
  *
  * Every model is @Keep with explicit @SerializedName: they are Gson-mapped, and the event queue is also
  * persisted as JSON, so R8 must not rename a single field (see the Gson keep rule in proguard-rules.pro).
@@ -110,6 +111,40 @@ data class AdsReportRequest(
     @SerializedName("reason") val reason: String
 )
 
+// ---- system banners: admin announcements, not ads ----
+
+@Keep
+data class BannerViewerRequest(
+    // The Telegram user id as a decimal string, never hashed — the backend's decision, so a dismissed banner stays
+    // dismissed across reinstalls and devices. Must never change form, or dismissed banners come back.
+    @SerializedName("viewer_id") val viewerId: String
+)
+
+@Keep
+data class BannerDismissRequest(
+    @SerializedName("announcement_id") val announcementId: String,
+    @SerializedName("viewer_id") val viewerId: String
+)
+
+@Keep
+data class BannerClickRequest(
+    @SerializedName("announcement_id") val announcementId: String
+)
+
+@Keep
+data class SystemBanner(
+    // UUID; sent back as announcement_id.
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("text") val text: String? = null,
+    // https://…, tg://… or "" (not clickable).
+    @SerializedName("link") val link: String? = null,
+    // false: no X (important notice).
+    @SerializedName("dismissible") val dismissible: Boolean? = null,
+    // ISO-8601 with offset (fractional seconds possible), or null for no end.
+    @SerializedName("ends_at") val endsAt: String? = null
+)
+
 // The paths come from local.properties (ADS_PATH_*) like the base URL and the key, so the public repo names no
 // endpoint. Each keeps its trailing slash: without it the request lands on another service and fails.
 interface AdsApiService {
@@ -122,6 +157,17 @@ interface AdsApiService {
     // 201 = reported, 200 = this viewer already reported this ad; the body is not needed.
     @POST(BuildConfig.ADS_PATH_REPORT)
     fun report(@Body body: AdsReportRequest): Call<Void>
+
+    // A bare JSON array, most important first. An array type rather than a List keeps the method's generic
+    // signature to Call<T> alone, like every other method here.
+    @POST(BuildConfig.ADS_PATH_BANNERS_ACTIVE)
+    fun bannersActive(@Body body: BannerViewerRequest): Call<Array<SystemBanner>>
+
+    @POST(BuildConfig.ADS_PATH_BANNERS_DISMISS)
+    fun bannerDismiss(@Body body: BannerDismissRequest): Call<Void>
+
+    @POST(BuildConfig.ADS_PATH_BANNERS_CLICK)
+    fun bannerClick(@Body body: BannerClickRequest): Call<Void>
 }
 
 object AdsRetrofitClient {

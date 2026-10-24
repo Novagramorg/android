@@ -385,6 +385,9 @@ public class NotificationCenter {
     // have finished warming up in the background. An open chat uses it to re-render cells that were bound
     // during the cold-cache window, so a saved "deleted" mark that was briefly missing reappears.
     public static final int novagramHistoryWarmedUp = totalEvents++;
+    // Novagram: the system banners for this account changed (loaded, failed, or one's ends_at passed); the chat list
+    // redraws its hint cell. See org.fenixuz.ads.AdsBanners.
+    public static final int novagramBannersUpdated = totalEvents++;
     public static final int guardBotDecisionResult = totalEvents++;
     public static final int webBrowserSettingsUpdate = totalEvents++;
     public static final int communityPendingRequestsUpdate = totalEvents++;

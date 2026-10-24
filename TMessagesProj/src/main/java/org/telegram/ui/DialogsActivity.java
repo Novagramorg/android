@@ -2947,6 +2947,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 .add(NotificationCenter.needDeleteDialog)
                 .add(NotificationCenter.folderBecomeEmpty)
                 .add(NotificationCenter.newSuggestionsAvailable)
+                .add(NotificationCenter.novagramBannersUpdated)
                 .add(NotificationCenter.dialogsUnreadReactionsCounterChanged)
                 .add(NotificationCenter.dialogsUnreadPollVotesCounterChanged)
                 .add(NotificationCenter.forceImportContactsStart)
@@ -6042,6 +6043,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             } catch (Exception e) {}
             dialogsHintCell.clear();
         }
+        // Novagram: the backend's system announcement (org.fenixuz.ads.AdsBanners), main chat list only; asking also
+        // refreshes the list when it is due.
+        final org.fenixuz.ads.AdsBanners.Banner novagramBanner = !isInPreviewMode() && !onlySelect && folderId == 0 && communityId == 0 && initialDialogsType == DIALOGS_TYPE_DEFAULT
+            ? org.fenixuz.ads.AdsBanners.current(currentAccount) : null;
         if (isInPreviewMode()) {
             dialogsHintCellVisible = false;
         } else if (getMessagesController().isFrozen()) {
@@ -6135,6 +6140,32 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 MessagesController.getInstance(currentAccount).removeSuggestion(0, "STARS_SUBSCRIPTION_LOW_BALANCE");
                 updateDialogsHint();
             });
+        } else if (novagramBanner != null) {
+            // Novagram: after Telegram's account notices above, before its promotional hints below. The chevron marks
+            // a banner that opens something; X only when the backend lets this one be closed.
+            dialogsHintCellVisible = true;
+            final String link = novagramBanner.getLink();
+            dialogsHintCell.setText(
+                Emoji.replaceEmoji(novagramBanner.getTitle(), dialogsHintCell.titleView.getPaint().getFontMetricsInt(), false),
+                Emoji.replaceEmoji(novagramBanner.getText(), dialogsHintCell.messageView.getPaint().getFontMetricsInt(), false),
+                link != null,
+                false
+            );
+            if (link != null) {
+                dialogsHintCell.setOnClickListener(v -> {
+                    org.fenixuz.ads.AdsBanners.click(novagramBanner);
+                    Browser.openUrl(getContext(), link);
+                });
+            } else {
+                dialogsHintCell.setOnClickListener(null);
+                dialogsHintCell.setClickable(false);
+            }
+            if (novagramBanner.getDismissible()) {
+                dialogsHintCell.setOnCloseListener(v -> {
+                    org.fenixuz.ads.AdsBanners.dismiss(currentAccount, novagramBanner);
+                    updateDialogsHint();
+                });
+            }
         } else if (folderId == 0 && communityId == 0 && !getMessagesController().premiumPurchaseBlocked() && BirthdayController.getInstance(currentAccount).contains() && !getMessagesController().dismissedSuggestions.contains("BIRTHDAY_CONTACTS_TODAY")) {
             BirthdayController.BirthdayState state = BirthdayController.getInstance(currentAccount).getState();
             ArrayList<TLRPC.User> users = state.today;
@@ -11061,6 +11092,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             showNextSupportedSuggestion();
             updateDialogsHint();
             checkEmailConfig();
+        } else if (id == NotificationCenter.novagramBannersUpdated) {
+            updateDialogsHint();
         } else if (id == NotificationCenter.forceImportContactsStart) {
             if (floatingButton3 != null) {
                 floatingButton3.setProgressVisible(true, true);
