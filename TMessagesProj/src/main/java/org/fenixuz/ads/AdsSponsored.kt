@@ -51,7 +51,7 @@ object AdsSponsored {
     private val REPORT_REASONS = arrayOf("spam", "violence", "pornography", "illegal", "misleading", "other")
 
     // Ads the user reported or closed: hidden until the app restarts (the backend keeps serving them and has no
-    // per-user hide yet), matched by url + text because every serve brings a new token.
+    // per-user hide yet), matched by content ([hideKey]) because every serve brings a new token.
     private val hidden = HashSet<String>()
 
     @JvmStatic
@@ -130,7 +130,12 @@ object AdsSponsored {
      */
     @JvmStatic
     fun showReport(fragment: BaseFragment, messageObject: MessageObject, onReported: Runnable) {
-        val served = messageObject.novagramAd ?: return
+        messageObject.novagramAd?.let { showReport(fragment, it, onReported) }
+    }
+
+    /** The same for an ad without a message (the search slot). */
+    @JvmStatic
+    fun showReport(fragment: BaseFragment, served: AdsServed, onReported: Runnable) {
         val context = fragment.parentActivity ?: return
         val builder = AlertDialog.Builder(context, fragment.resourceProvider)
         builder.setTitle(LanguageCode.getMyTitles(418))
@@ -254,7 +259,10 @@ object AdsSponsored {
         return messageObject
     }
 
-    private fun hideKey(ad: ServedAd) = "${ad.url}|${ad.text}"
+    // A search ad may come with neither url nor text, so the format and the promoted peer are part of the key too —
+    // otherwise reporting one advertiser's search ad would hide every other one.
+    private fun hideKey(ad: ServedAd) =
+        "${ad.placement}|${ad.promoted?.username?.trim()?.removePrefix("@")?.lowercase(Locale.ROOT)}|${ad.url}|${ad.text}"
 
     private fun sendReport(served: AdsServed, reason: String, retry: Boolean) {
         val randomId = served.ad.randomId ?: return

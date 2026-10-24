@@ -191,6 +191,12 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         this.onSponsoredOptionsClick = onOptionsClick;
     }
 
+    // Novagram: our own ad pill's options menu, like Telegram's onSponsoredOptionsClick for its sponsored peers.
+    private Utilities.Callback<ProfileSearchCell> onCustomAdOptionsClick;
+    public void setOnCustomAdOptionsClick(Utilities.Callback<ProfileSearchCell> onOptionsClick) {
+        this.onCustomAdOptionsClick = onOptionsClick;
+    }
+
     public ProfileSearchCell showPremiumBlock(boolean show) {
         showPremiumBlocked = show;
         return this;
@@ -1240,14 +1246,16 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             if (hit || adBounce.isPressed())
                 return true;
         } else if (customAdNative || customAdLabel != null) {
-            // Novagram: our own ad pill ("ad by Novagram"). It is pressable (bounce
-            // feedback) exactly like Telegram's native "Ad" pill, but there is no sponsored-options menu yet —
-            // so a tap on the pill is consumed with no action, while a tap on the rest of the row still opens
-            // the channel.
+            // Novagram: our own ad pill ("ad by Novagram"). It behaves exactly like Telegram's native "Ad" pill:
+            // pressable (bounce feedback), and a tap opens the ad's options menu, while a tap on the rest of the row
+            // still opens the channel.
             final boolean hit = adBounds.contains(event.getX(), event.getY());
             if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
                 adBounce.setPressed(hit);
             } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                if (adBounce.isPressed() && onCustomAdOptionsClick != null) {
+                    onCustomAdOptionsClick.run(this);
+                }
                 adBounce.setPressed(false);
                 return true;
             } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {

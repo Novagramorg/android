@@ -77,7 +77,8 @@ object AdsManager {
             pendingCall = AdsServe.serve(account, AdsServe.SEARCH, context, normalized) { served ->
                 if (gen != generation) return@serve
                 pendingCall = null
-                if (served == null) {
+                // A search ad the user reported stays hidden for the session, like a channel or bot ad.
+                if (served == null || AdsSponsored.isHidden(served.ad)) {
                     onResult(null)
                     return@serve
                 }
@@ -103,6 +104,15 @@ object AdsManager {
         debounceRunnable = null
         pendingCall?.cancel()
         pendingCall = null
+    }
+
+    /** The search ad on screen now (for its options menu), or null. */
+    fun currentSearchAd(): AdsServed? = current
+
+    /** The search ad was reported: it is gone from the results (and hidden for the session by AdsSponsored). */
+    fun onSearchAdReported() {
+        current = null
+        currentDialogId = 0L
     }
 
     /** The ad row was bound on screen. The first call per token bills the view; repeats are ignored. */

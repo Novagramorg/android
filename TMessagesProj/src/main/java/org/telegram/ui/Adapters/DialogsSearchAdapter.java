@@ -2026,6 +2026,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                 }
                 cell.allowBotOpenButton(isRecent, this::openBotApp);
                 cell.setOnSponsoredOptionsClick(this::openSponsoredOptions);
+                cell.setOnCustomAdOptionsClick(isOurAd ? this::openNovagramAdOptions : null);
                 cell.setAd(obj instanceof TLRPC.TL_sponsoredPeer ? (TLRPC.TL_sponsoredPeer) obj : null);
                 cell.setCustomAd(isOurAd ? AD_LABEL : null, false);
                 if (isOurAd) {
@@ -2600,6 +2601,20 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
 
     protected void openSponsoredOptions(ProfileSearchCell cell, TLRPC.TL_sponsoredPeer sponsoredPeer) {
 
+    }
+
+    // Novagram: the options menu of our own ad row (the pill tapped), like openSponsoredOptions for Telegram's.
+    protected void openNovagramAdOptions(ProfileSearchCell cell) {
+
+    }
+
+    // Novagram: our ad row was reported — drop it. The same query is not asked again (adQuery is unchanged), and a
+    // new one gets no row for this ad: AdsManager skips ads hidden for the session.
+    public void removeNovagramAd() {
+        if (adPeer == null) return;
+        adPeer = null;
+        org.fenixuz.ads.AdsManager.INSTANCE.onSearchAdReported();
+        notifyDataSetChanged();
     }
 
     private static class EmptyLayout extends LinearLayout {

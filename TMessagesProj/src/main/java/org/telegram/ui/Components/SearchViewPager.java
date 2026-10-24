@@ -266,6 +266,35 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                     .setDrawScrim(false)
                     .show();
             }
+
+            // Novagram: our own ad row's menu, the same as Telegram's above minus what our ads don't have (About and
+            // Remove ads): the advertiser's info when the ad carries any, and Report.
+            @Override
+            protected void openNovagramAdOptions(ProfileSearchCell cell) {
+                final org.fenixuz.ads.AdsServed served = org.fenixuz.ads.AdsManager.INSTANCE.currentSearchAd();
+                if (served == null) return;
+                AndroidUtilities.hideKeyboard(fragment.getParentActivity().getCurrentFocus());
+                final ItemOptions o = ItemOptions.makeOptions(fragment, cell, true);
+                final String otherInfo = served.getAd().getOtherInfo();
+                if (!TextUtils.isEmpty(otherInfo)) {
+                    final ItemOptions oi = o.makeSwipeback()
+                        .add(R.drawable.ic_ab_back, getString(R.string.Back), () -> o.closeSwipeback())
+                        .addGap();
+                    oi.addText(otherInfo, 13);
+                    o.add(R.drawable.msg_channel, org.fenixuz.utils.LanguageCode.sponsorInfo(true), () -> {
+                        o.openSwipeback(oi);
+                    });
+                }
+                o
+                    .add(R.drawable.msg_block2, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(418), () -> {
+                        org.fenixuz.ads.AdsSponsored.showReport(fragment, served, () -> removeNovagramAd());
+                        o.dismiss();
+                    })
+                    .setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT)
+                    .setOnTopOfScrim()
+                    .setDrawScrim(false)
+                    .show();
+            }
         };
         if (initialDialogsType == DialogsActivity.DIALOGS_TYPE_BOT_REQUEST_PEER) {
             ArrayList<TLRPC.Dialog> dialogs = fragment.getDialogsArray(currentAccount, initialDialogsType, folderId, true);
