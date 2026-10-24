@@ -1824,6 +1824,8 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(425, "Thank you, your report has been sent.", "Rahmat, shikoyatingiz yuborildi.", "Спасибо, жалоба отправлена."))
         // The small button on our ad's panel in a bot chat (BotAdView), where Telegram's own ad says "what's this?".
         titlesLanguages.add(TitleLanguages(426, "Report", "Shikoyat", "Пожаловаться"))
+        // The sponsored-message menus' "Sponsor Info" / "Advertiser Info" item; see sponsorInfo().
+        titlesLanguages.add(TitleLanguages(427, "Sponsor Info", "Reklama beruvchi haqida", "Информация о рекламодателе"))
     }
 
     /**
@@ -1831,6 +1833,16 @@ object LanguageCode {
      * cloud language pack has no translation for it yet, so Uzbek users saw English. Only Uzbek is replaced:
      * every other language keeps Telegram's own string with its plural forms.
      */
+    /**
+     * The "Sponsor Info" item of the sponsored-message menus ("Advertiser Info" when [reportable] is false): the
+     * advertiser's legal details, e.g. our ads' other_info. Telegram's Uzbek cloud pack has neither string, so Uzbek
+     * users saw English; only Uzbek is replaced.
+     */
+    @JvmStatic
+    fun sponsorInfo(reportable: Boolean): String =
+        if (languageCode == "uz") getMyTitles(427)
+        else LocaleController.getString(if (reportable) R.string.SponsoredMessageSponsorReportable else R.string.SponsoredMessageSponsor)
+
     @JvmStatic
     fun messagesSelected(count: Int): String =
         if (languageCode == "uz") String.format(Locale.US, getMyTitles(413), count)

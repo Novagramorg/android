@@ -228,7 +228,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                         }
                         oi.addText(sponsoredPeer.additional_info, 13);
                     }
-                    o.add(R.drawable.msg_channel, getString(R.string.SponsoredMessageSponsorReportable), () -> {
+                    o.add(R.drawable.msg_channel, org.fenixuz.utils.LanguageCode.sponsorInfo(true), () -> {
                         o.openSwipeback(oi);
                     });
                 }

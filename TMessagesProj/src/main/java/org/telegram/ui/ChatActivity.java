@@ -29839,7 +29839,7 @@ public class ChatActivity extends BaseFragment implements
                                 }
                                 info.addView(section, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
                             }
-                            o.add(R.drawable.msg_channel, getString(R.string.SponsoredMessageSponsorReportable), () -> o.openSwipeback(info));
+                            o.add(R.drawable.msg_channel, org.fenixuz.utils.LanguageCode.sponsorInfo(true), () -> o.openSwipeback(info));
                             o.addGap();
                         }
                         o.add(R.drawable.msg_block2, getString(R.string.ReportAd), () -> {
@@ -32357,7 +32357,7 @@ public class ChatActivity extends BaseFragment implements
                         final int foregroundIndex = popupLayout.addViewToSwipeBack(linearLayout);
 
                         ActionBarMenuSubItem cell = new ActionBarMenuSubItem(getParentActivity(), true, true, themeDelegate);
-                        cell.setTextAndIcon(LocaleController.getString(selectedObject.sponsoredCanReport ? R.string.SponsoredMessageSponsorReportable : R.string.SponsoredMessageSponsor), R.drawable.msg_channel);
+                        cell.setTextAndIcon(org.fenixuz.utils.LanguageCode.sponsorInfo(selectedObject.sponsoredCanReport), R.drawable.msg_channel);
                         popupLayout.addView(cell);
                         cell.setOnClickListener(v1 -> {
                             if (contentView == null || getParentActivity() == null) {

@@ -615,7 +615,7 @@ public static VideoAds make(
                     }
                     info.addView(section, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
                 }
-                o.add(R.drawable.msg_channel, getString(R.string.SponsoredMessageSponsorReportable), () -> o.openSwipeback(info));
+                o.add(R.drawable.msg_channel, org.fenixuz.utils.LanguageCode.sponsorInfo(true), () -> o.openSwipeback(info));
             }
             if (!novagramAd && !UserConfig.getInstance(currentAccount).isPremium() && !MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && !ad.can_report) {
                 o.add(R.drawable.msg_block2, getString(R.string.HideAd), () -> {
