@@ -171,11 +171,11 @@ interface AdsApiService {
 }
 
 object AdsRetrofitClient {
-    // Base URL + API key come from BuildConfig (fed by ADS_BASE_URL / ADS_API_KEY in local.properties), so
+    // Base URL + API key come from local.properties (the URL through BuildConfig, the key through [AdsKey]), so
     // neither the ads endpoint nor the key lives in the public source tree. Blank when unset — [enabled] is
     // then false and no request is ever made (Retrofit is never built with a blank baseUrl, which would throw).
     private val BASE_URL: String = BuildConfig.ADS_BASE_URL
-    private val API_KEY: String = BuildConfig.ADS_API_KEY
+    private val API_KEY: String = AdsKey.apiKey()
 
     // All must be present: every endpoint answers 403 without X-API-Key, so without a key the feature would only
     // hammer the backend; and Retrofit throws on a method whose path is empty — disable the feature instead.

@@ -123,6 +123,10 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
 
+// Novagram: a private build file (not in git) may supply the ads API key. When it is present, BuildConfig carries no
+// key; without it, the key comes from BuildConfig as before (src/adsKeyStub).
+def adsPrivateBuild = file('ads-private.gradle')
+
 android {
     compileSdkVersion 36
     buildToolsVersion '36.0.0'
@@ -172,7 +176,7 @@ android {
         // Empty when unset → the ads feature disables itself gracefully (see org.fenixuz.ads.AdsRetrofitClient).
         buildConfigField "String", "ADS_BASE_URL", "\"" + (getProps("ADS_BASE_URL") ?: "") + "\""
         // Server API key sent as the X-API-Key header; every ads endpoint requires it.
-        buildConfigField "String", "ADS_API_KEY", "\"" + (getProps("ADS_API_KEY") ?: "") + "\""
+        buildConfigField "String", "ADS_API_KEY", "\"" + (adsPrivateBuild.exists() ? "" : (getProps("ADS_API_KEY") ?: "")) + "\""
         // Novagram: the ads endpoint paths (relative to ADS_BASE_URL, each with its trailing slash) — also kept out of
         // the public repo. Any one missing → the ads feature disables itself like a missing URL or key.
         buildConfigField "String", "ADS_PATH_SERVE", "\"" + (getProps("ADS_PATH_SERVE") ?: "") + "\""
@@ -208,7 +212,7 @@ android {
             // touches real campaigns. Every other build type, release included, keeps the production server.
             def adsTest = getProps("ADS_TEST_BASE_URL") && getProps("ADS_TEST_API_KEY")
             buildConfigField "String", "ADS_BASE_URL", "\"" + ((adsTest ? getProps("ADS_TEST_BASE_URL") : getProps("ADS_BASE_URL")) ?: "") + "\""
-            buildConfigField "String", "ADS_API_KEY", "\"" + ((adsTest ? getProps("ADS_TEST_API_KEY") : getProps("ADS_API_KEY")) ?: "") + "\""
+            buildConfigField "String", "ADS_API_KEY", "\"" + (adsPrivateBuild.exists() ? "" : ((adsTest ? getProps("ADS_TEST_API_KEY") : getProps("ADS_API_KEY")) ?: "")) + "\""
         }
 
         HA_private {
@@ -278,6 +282,13 @@ android {
     }
 
     namespace 'org.telegram.messenger'
+}
+
+// Novagram: the ads API key's source (see adsPrivateBuild above).
+if (adsPrivateBuild.exists()) {
+    apply from: adsPrivateBuild
+} else {
+    android.sourceSets.main.java.srcDir('src/adsKeyStub/java')
 }
 
 
