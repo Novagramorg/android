@@ -93,7 +93,8 @@ object AdsSponsored {
             if (served == null || ad == null || ad.url.isNullOrEmpty() || hidden.contains(hideKey(ad))) {
                 callback.run(null)
             } else {
-                callback.run(arrayListOf(buildMessageObject(account, dialogId, served)))
+                // A video becomes Telegram's own sponsored media once its file is here (AdsMediaFiles).
+                AdsMediaFiles.prepare(account, ad) { video -> callback.run(arrayListOf(buildMessageObject(account, dialogId, served, video))) }
             }
         }
     }
@@ -155,13 +156,30 @@ object AdsSponsored {
 
     internal fun isHidden(ad: ServedAd): Boolean = hidden.contains(hideKey(ad))
 
-    /** Our ad's media as a no-proxy web file (plain https download), or null when it has none we can draw. */
+    /**
+     * Our ad's photo as a no-proxy web file (plain https download), or null when it has none. A video is not drawn
+     * through here: it becomes the message's sponsoredMedia, Telegram's own path (see [AdsMediaFiles]).
+     */
     @JvmStatic
     fun mediaFile(messageObject: MessageObject): WebFile? {
         val media = messageObject.novagramAd?.ad?.media ?: return null
-        // Only photos for now: a video would need the player, which only plays Telegram documents.
         if (!"PHOTO".equals(media.type, ignoreCase = true)) return null
         return webFile(media.url, media.width ?: 1280, media.height ?: 720)
+    }
+
+    /**
+     * Telegram's click on a sponsored message, translated to our events. A tap on the video in the bubble opens it in
+     * the fullscreen viewer (media, not fullscreen): that is our video_open. Everything else opens the ad's link — a
+     * photo, the button, the title, the video or button inside the viewer — and is our click.
+     */
+    @JvmStatic
+    fun onSponsoredClicked(account: Int, messageObject: MessageObject, media: Boolean, fullscreen: Boolean) {
+        val served = messageObject.novagramAd ?: return
+        if (media && !fullscreen && messageObject.isVideo()) {
+            AdsEvents.add(served, AdsEvents.VIDEO_OPEN, urgent = true)
+        } else {
+            onClicked(account, served)
+        }
     }
 
     /**
@@ -205,17 +223,23 @@ object AdsSponsored {
         return UserObject.getPublicUsername(user)?.takeIf { it.isNotEmpty() }
     }
 
-    private fun buildMessageObject(account: Int, dialogId: Long, served: AdsServed): MessageObject {
+    private fun buildMessageObject(account: Int, dialogId: Long, served: AdsServed, video: TLRPC.MessageMedia?): MessageObject {
         val ad = served.ad
         val promoted = ad.promoted
-        // Built like MessagesController.getSponsoredMessages builds Telegram's: a local message with no sender.
+        // Built like MessagesController.getSponsoredMessages builds Telegram's: a local message with no sender, and
+        // its media (our video, already downloaded) set both on the message and as sponsoredMedia.
         val message = TLRPC.TL_message()
         message.peer_id = MessagesController.getInstance(account).getPeer(dialogId)
         message.flags = message.flags or 256
         message.date = ConnectionsManager.getInstance(account).currentTime
         message.id = MESSAGE_ID
         message.message = ad.text ?: ""
+        if (video != null) {
+            message.flags = message.flags or 512
+        }
+        message.media = video
         val messageObject = MessageObject(account, message, LongSparseArray(), LongSparseArray(), true, true)
+        messageObject.sponsoredMedia = video
         messageObject.sponsoredId = ad.randomId!!.toByteArray(Charsets.UTF_8)
         messageObject.sponsoredTitle = promoted?.title?.takeIf { it.isNotBlank() } ?: promoted?.username?.let { "@$it" } ?: ""
         messageObject.sponsoredUrl = ad.url

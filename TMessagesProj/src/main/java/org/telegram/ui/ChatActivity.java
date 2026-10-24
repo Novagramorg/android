@@ -37218,9 +37218,10 @@ public class ChatActivity extends BaseFragment implements
         if (messageObject == null || !messageObject.isSponsored()) {
             return;
         }
-        // Novagram: our own ad's click goes to our backend; Telegram never issued this id.
+        // Novagram: our own ad's click goes to our backend; Telegram never issued this id. Opening its video in the
+        // fullscreen viewer is its video_open, any tap that opens its link is its click.
         if (org.fenixuz.ads.AdsSponsored.isOurs(messageObject)) {
-            org.fenixuz.ads.AdsSponsored.onClicked(currentAccount, messageObject);
+            org.fenixuz.ads.AdsSponsored.onSponsoredClicked(currentAccount, messageObject, media, fullscreen);
             return;
         }
         TLRPC.TL_messages_clickSponsoredMessage req = new TLRPC.TL_messages_clickSponsoredMessage();

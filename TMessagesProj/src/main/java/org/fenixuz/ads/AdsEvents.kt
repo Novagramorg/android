@@ -28,6 +28,8 @@ object AdsEvents {
     const val VIEW = "view"
     const val CLICK = "click"
     const val ACTION = "action"
+    // The ad's own video was opened with sound (channel ads with VIDEO media only).
+    const val VIDEO_OPEN = "video_open"
 
     private const val PREFS = "novagram_ads"
     private const val KEY_QUEUE = "event_queue"

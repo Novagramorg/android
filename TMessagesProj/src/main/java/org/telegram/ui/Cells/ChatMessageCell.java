@@ -7863,20 +7863,23 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         }
                         if (messageObject.novagramAd != null) {
                             // Novagram: our own ad. Its own label and no "what's this?" (Telegram's sheet behind it
-                            // describes Telegram's ads: revenue share, Premium). Its images are https URLs from our
+                            // describes Telegram's ads: revenue share, Premium). A video is Telegram's own sponsoredMedia
+                            // (AdsMediaFiles), laid out above exactly like Telegram's. Other images are https URLs from our
                             // backend, drawn through the no-proxy web-document path: the photo as the big media, else
                             // the promoted channel's avatar as the small image beside the text.
                             site_name = org.fenixuz.ads.AdsSponsored.AD_LABEL;
                             titleLabel = null;
-                            webDocument = org.fenixuz.ads.AdsSponsored.mediaFile(messageObject);
-                            if (webDocument != null) {
-                                novagramAdMedia = true;
-                                smallImage = false;
-                                isSmallImage = false;
-                            } else {
-                                webDocument = org.fenixuz.ads.AdsSponsored.avatarFile(messageObject);
-                                smallImage = true;
-                                isSmallImage = webDocument != null;
+                            if (messageObject.sponsoredMedia == null) {
+                                webDocument = org.fenixuz.ads.AdsSponsored.mediaFile(messageObject);
+                                if (webDocument != null) {
+                                    novagramAdMedia = true;
+                                    smallImage = false;
+                                    isSmallImage = false;
+                                } else {
+                                    webDocument = org.fenixuz.ads.AdsSponsored.avatarFile(messageObject);
+                                    smallImage = true;
+                                    isSmallImage = webDocument != null;
+                                }
                             }
                         }
                         linkPreviewAbove = false;

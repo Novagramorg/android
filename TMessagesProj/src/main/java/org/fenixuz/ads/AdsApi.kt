@@ -208,6 +208,16 @@ object AdsRetrofitClient {
             .build()
     }
 
+    // For the ads' media files themselves (a HEAD for a video's size). No X-API-Key: media may move to another host,
+    // and the key must never follow it there. Same IPv4-first lookup as baseClient, redirects allowed.
+    val mediaClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .dns { hostname -> Dns.SYSTEM.lookup(hostname).sortedBy { if (it is Inet4Address) 0 else 1 } }
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .callTimeout(4, TimeUnit.SECONDS)
+            .build()
+    }
+
     // serve: 3 s connect / 5 s total — an ad that arrives late is better not shown at all.
     // events: 10 s. Both share baseClient's connection pool (newBuilder), so keep-alive is reused.
     val serveService: AdsApiService by lazy {

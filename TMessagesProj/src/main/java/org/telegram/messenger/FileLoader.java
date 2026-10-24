@@ -839,11 +839,20 @@ public class FileLoader extends BaseController {
             FileLog.e(new RuntimeException("cant get hash from " + document));
             return null;
         }
+        // Novagram: our ad's video (org.fenixuz.ads.AdsMediaFiles) is not a Telegram file and must never be requested from
+        // Telegram's servers. It is served from its local copy (see setPaths below: the operation finds it complete and
+        // finishes without a request), and stays out of the Downloads list. Without the copy nothing is loaded, except
+        // for a stream, whose readers can't take a missing operation.
+        final File novagramAdFile = org.fenixuz.ads.AdsMediaFiles.localFile(document);
+        if (novagramAdFile != null && !novagramAdFile.exists() && stream == null) {
+            return null;
+        }
+
         if (cacheType != 10 && !TextUtils.isEmpty(fileName) && !fileName.contains("" + Integer.MIN_VALUE)) {
             loadOperationPathsUI.put(fileName, new LoadOperationUIObject());
         }
 
-        if (document != null && parentObject instanceof MessageObject && ((MessageObject) parentObject).putInDownloadsStore && !((MessageObject) parentObject).isAnyKindOfSticker()) {
+        if (novagramAdFile == null && document != null && parentObject instanceof MessageObject && ((MessageObject) parentObject).putInDownloadsStore && !((MessageObject) parentObject).isAnyKindOfSticker()) {
             getDownloadController().startDownloadFile(document, (MessageObject) parentObject);
         }
 
@@ -981,6 +990,11 @@ public class FileLoader extends BaseController {
             }
         } else if (cacheType == ImageLoader.CACHE_TYPE_ENCRYPTED) {
             operation.setEncryptFile(true);
+        }
+        if (novagramAdFile != null) {
+            storeDir = novagramAdFile.getParentFile();
+            storeFileName = novagramAdFile.getName();
+            operation.pathSaveData = null;
         }
         operation.setPaths(currentAccount, fileName, loaderQueue, storeDir, tempDir, storeFileName);
         if (cacheType == 10) {

@@ -23376,7 +23376,22 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 }
             });
         }
-        if (currentMessageObject.sponsoredCanReport) {
+        if (org.fenixuz.ads.AdsSponsored.isOurs(currentMessageObject)) {
+            // Novagram: our ad. Telegram's two items here (revenue sharing, Premium to remove ads) describe Telegram's
+            // ads; ours is reported to our backend instead, from the chat behind the viewer.
+            final MessageObject reported = currentMessageObject;
+            o.add(R.drawable.msg_block2, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(418), () -> {
+                o.dismiss();
+                if (parentFragment instanceof ChatActivity) {
+                    final ChatActivity chatActivity = (ChatActivity) parentFragment;
+                    closePhoto(true, false);
+                    org.fenixuz.ads.AdsSponsored.showReport(chatActivity, reported, () -> {
+                        chatActivity.removeFromSponsored(reported);
+                        chatActivity.removeMessageWithThanos(reported);
+                    });
+                }
+            });
+        } else if (currentMessageObject.sponsoredCanReport) {
             o.add(R.drawable.msg_info, getString(R.string.AboutRevenueSharingAds), () -> {
                 RevenueSharingAdsInfoBottomSheet.showAlert(activityContext, parentFragment, false, resourcesProvider);
             });
