@@ -470,7 +470,8 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == BUTTON_ADD_ACCOUNT) {
+        // Novagram: an account row's id is its index in the list, so it can equal BUTTON_ADD_ACCOUNT: check the type too.
+        if (item.id == BUTTON_ADD_ACCOUNT && !item.instanceOf(SettingsActivity.AccountCell.Factory.class)) {
             int freeAccounts = 0;
             Integer availableAccount = null;
             for (int a = UserConfig.MAX_ACCOUNT_COUNT - 1; a >= 0; a--) {
