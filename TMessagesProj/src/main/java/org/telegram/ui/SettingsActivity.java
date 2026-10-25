@@ -222,6 +222,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         getNotificationCenter().addObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().addObserver(this, NotificationCenter.starBalanceUpdated);
         getNotificationCenter().addObserver(this, NotificationCenter.newSuggestionsAvailable);
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.novagramHiddenAccountsChanged);
 
         if (arguments != null) {
             hasMainTabs = arguments.getBoolean("hasMainTabs", false);
@@ -515,6 +516,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         getNotificationCenter().removeObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().removeObserver(this, NotificationCenter.starBalanceUpdated);
         getNotificationCenter().removeObserver(this, NotificationCenter.newSuggestionsAvailable);
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.novagramHiddenAccountsChanged);
     }
 
     @Override
@@ -526,7 +528,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
         } else if (id == NotificationCenter.updateInterfaces) {
             setInfo();
-        } else if (id == NotificationCenter.newSuggestionsAvailable) {
+        } else if (id == NotificationCenter.newSuggestionsAvailable || id == NotificationCenter.novagramHiddenAccountsChanged) {
             if (listView != null) {
                 listView.adapter.update(true);
             }
@@ -637,7 +639,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (UserConfig.getInstance(a).isClientActivated() && currentAccount != a) {
+            // Novagram: hidden accounts have a list of their own (a long press on "Add account").
+            if (UserConfig.getInstance(a).isClientActivated() && currentAccount != a && !org.fenixuz.hidden.HiddenAccounts.isHidden(a)) {
                 accountNumbers.add(a);
             }
         }
@@ -692,8 +695,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             items.add(UItem.asShadow(null));
         }
 
-        // Novagram: an account can be added while at least one slot is still free (MAX_ACCOUNT_COUNT is 100).
-        final boolean canAddAccount = UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT;
+        // Novagram: an account can be added while at least one slot is still free (MAX_ACCOUNT_COUNT is 100). The row also
+        // stays while hidden accounts are on: a long press on it opens their list.
+        final boolean canAddAccount = UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT || org.fenixuz.hidden.HiddenAccounts.hasCode();
         if (accountNumbers.size() > 0 || canAddAccount) {
             items.add(UItem.asHeader(getString(R.string.SettingsAccounts)));
             for (int i = 0; i < accountNumbers.size(); ++i) {
@@ -702,7 +706,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             // Novagram: "Add Account" row — reuses Telegram's own login flow (LoginActivity on the first free slot).
             // Shown only while a slot remains free, so it simply disappears once all accounts are used.
             if (canAddAccount) {
-                items.add(SettingCell.Factory.of(ID_ADD_ACCOUNT, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.outline_add_account, getString(R.string.AddAccount)));
+                items.add(SettingCell.Factory.of(ID_ADD_ACCOUNT, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.outline_add_account, org.fenixuz.utils.LanguageCode.addAccount()));
             }
             items.add(UItem.asShadow(null));
         }
@@ -964,6 +968,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     }
 
     private boolean onLongClick(UItem item, View view, int position, float x, float y) {
+        if (item.id == ID_ADD_ACCOUNT) {
+            // Novagram: a long press on "Add account" opens the hidden accounts, after their code.
+            return org.fenixuz.hidden.HiddenAccounts.askUnlock(this);
+        }
+        if (item.instanceOf(AccountCell.Factory.class)) {
+            // Novagram: a long press on an account hides or shows it.
+            final ItemOptions o = ItemOptions.makeOptions(this, view);
+            org.fenixuz.hidden.HiddenAccounts.addHideOption(o, this, item.intValue);
+            o.setScrimViewBackground(listView.getClipBackground(view)).show();
+            return true;
+        }
         if (item.object instanceof TLRPC.TL_attachMenuBot) {
             TLRPC.TL_attachMenuBot attachMenuBot = (TLRPC.TL_attachMenuBot) item.object;
             BotWebViewSheet.deleteBot(currentAccount, attachMenuBot.bot_id, () -> listView.adapter.update(true));
@@ -1204,6 +1219,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             counterView.setText(LocaleController.formatNumber(counter, ','));
 
             switchView.setChecked(NotificationsController.isAccountNotificationsEnabled(account), false);
+            // Novagram: a hidden account (only listed among the hidden accounts) sends no notifications at all, so its
+            // per-account switch would mean nothing.
+            switchView.setVisibility(org.fenixuz.hidden.HiddenAccounts.isHidden(account) ? View.GONE : View.VISIBLE);
         }
 
         @Override
@@ -1231,6 +1249,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 final UItem item = UItem.ofFactory(AccountCell.Factory.class);
                 item.id = id;
                 item.intValue = account;
+                // Novagram: part of the row's content, so that hiding or showing the account redraws its mark.
+                item.checked = org.fenixuz.hidden.HiddenAccounts.isHidden(account);
                 return item;
             }
 
@@ -1241,7 +1261,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
             @Override
             public boolean contentsEquals(UItem a, UItem b) {
-                return a.intValue == b.intValue;
+                return a.intValue == b.intValue && a.checked == b.checked;
             }
         }
     }

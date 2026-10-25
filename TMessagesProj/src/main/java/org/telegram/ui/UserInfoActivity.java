@@ -58,6 +58,7 @@ import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CircularProgressDrawable;
 import org.telegram.ui.Components.CrossfadeDrawable;
 import org.telegram.ui.Components.IconBackgroundColors;
+import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Premium.LimitReachedBottomSheet;
 import org.telegram.ui.Components.RecyclerListView;
@@ -100,6 +101,7 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
         getNotificationCenter().addObserver(this, NotificationCenter.privacyRulesUpdated);
         getNotificationCenter().addObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().addObserver(this, NotificationCenter.updatedChatbot);
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.novagramHiddenAccountsChanged);
         getContactsController().loadPrivacySettings();
         BusinessChatbotController.getInstance(currentAccount).load(null);
         return super.onFragmentCreate();
@@ -111,6 +113,7 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
         getNotificationCenter().removeObserver(this, NotificationCenter.privacyRulesUpdated);
         getNotificationCenter().removeObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().removeObserver(this, NotificationCenter.updatedChatbot);
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.novagramHiddenAccountsChanged);
         super.onFragmentDestroy();
         if (!wasSaved) {
             processDone(false);
@@ -302,7 +305,8 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
     private void updateAccounts() {
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (UserConfig.getInstance(a).isClientActivated() && currentAccount != a) {
+            // Novagram: hidden accounts have a list of their own (a long press on "Add account").
+            if (UserConfig.getInstance(a).isClientActivated() && currentAccount != a && !org.fenixuz.hidden.HiddenAccounts.isHidden(a)) {
                 accountNumbers.add(a);
             }
         }
@@ -419,10 +423,11 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
             items.add(SettingsActivity.SettingCell.Factory.of(BUTTON_AI, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.premium_ai_editor, applyNewSpan(getString(R.string.EditProfileChatAutomation))));
         }
         items.add(UItem.asShadow(-3, getString(R.string.EditProfileChatAutomationInfo)));
-        final boolean hasAddAccount = UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT;
+        // Novagram: the row also stays while hidden accounts are on: a long press on it opens their list.
+        final boolean hasAddAccount = UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT || org.fenixuz.hidden.HiddenAccounts.hasCode();
         if (hasAddAccount) {
             addAccountRow = items.size();
-            items.add(InfoCell.Factory.of(BUTTON_ADD_ACCOUNT, R.drawable.outline_add_account, getString(R.string.AddAccount), null, 0).accent());
+            items.add(InfoCell.Factory.of(BUTTON_ADD_ACCOUNT, R.drawable.outline_add_account, org.fenixuz.utils.LanguageCode.addAccount(), null, 0).accent());
         }
         if (!accountNumbers.isEmpty()) {
             if (!hasAddAccount) {
@@ -557,6 +562,18 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
 
     @Override
     protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
+        // An account row's id is its index in the list, so it can equal BUTTON_ADD_ACCOUNT: check the type too.
+        if (item.id == BUTTON_ADD_ACCOUNT && !item.instanceOf(SettingsActivity.AccountCell.Factory.class)) {
+            // Novagram: a long press on "Add account" opens the hidden accounts, after their code.
+            return org.fenixuz.hidden.HiddenAccounts.askUnlock(this);
+        }
+        if (item.instanceOf(SettingsActivity.AccountCell.Factory.class)) {
+            // Novagram: a long press on an account hides or shows it.
+            final ItemOptions o = ItemOptions.makeOptions(this, view);
+            org.fenixuz.hidden.HiddenAccounts.addHideOption(o, this, item.intValue);
+            o.setScrimViewBackground(listView.getClipBackground(view)).show();
+            return true;
+        }
         return false;
     }
 
@@ -564,7 +581,7 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.userInfoDidLoad) {
             setValue();
-        } else if (id == NotificationCenter.updateInterfaces) {
+        } else if (id == NotificationCenter.updateInterfaces || id == NotificationCenter.novagramHiddenAccountsChanged) {
             if (listView != null) {
                 listView.adapter.update(true);
             }

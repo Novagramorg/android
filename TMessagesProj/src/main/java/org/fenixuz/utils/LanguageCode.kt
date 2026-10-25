@@ -1826,6 +1826,48 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(426, "Report", "Shikoyat", "Пожаловаться"))
         // The sponsored-message menus' "Sponsor Info" / "Advertiser Info" item; see sponsorInfo().
         titlesLanguages.add(TitleLanguages(427, "Sponsor Info", "Reklama beruvchi haqida", "Информация о рекламодателе"))
+        // Hidden accounts (org.fenixuz.hidden).
+        titlesLanguages.add(TitleLanguages(428, "Hidden accounts", "Yashirin akkauntlar", "Скрытые аккаунты"))
+        titlesLanguages.add(TitleLanguages(429,
+            "Hide accounts from the list and open them with your code.",
+            "Akkauntlarni ro'yxatdan yashiring va kodingiz bilan oching.",
+            "Скрывайте аккаунты из списка и открывайте их своим кодом."))
+        titlesLanguages.add(TitleLanguages(430,
+            "To hide: press and hold an account.\nTo open: press and hold \"Add account\" and enter your code.",
+            "Yashirish: akkauntni bosib turing.\nOchish: «Akkaunt qo'shish»ni bosib turing va kodni kiriting.",
+            "Скрыть: нажмите и удерживайте аккаунт.\nОткрыть: нажмите и удерживайте «Добавить аккаунт» и введите код."))
+        titlesLanguages.add(TitleLanguages(431, "Change code", "Kodni o'zgartirish", "Изменить код"))
+        titlesLanguages.add(TitleLanguages(432, "At least one account must stay visible.", "Kamida bitta akkaunt ochiq qolishi kerak.", "Хотя бы один аккаунт должен оставаться видимым."))
+        titlesLanguages.add(TitleLanguages(433, "Account hidden", "Akkaunt yashirildi", "Аккаунт скрыт"))
+        titlesLanguages.add(TitleLanguages(434, "Hidden accounts are shown", "Yashirin akkauntlar ko'rsatildi", "Скрытые аккаунты показаны"))
+        titlesLanguages.add(TitleLanguages(435,
+            "Forgot the code? Sign out of that account from another device and sign in again.",
+            "Kodni unutsangiz, boshqa qurilmadan shu akkauntdan chiqib, qayta kiring.",
+            "Забыли код? Выйдите из этого аккаунта с другого устройства и войдите снова."))
+        // The "Add account" button; see addAccount().
+        titlesLanguages.add(TitleLanguages(436, "Add account", "Akkaunt qo'shish", "Добавить аккаунт"))
+        titlesLanguages.add(TitleLanguages(437,
+            "Hide accounts from the account list. Only your code opens them.",
+            "Akkauntlarni ro'yxatdan yashiring. Ularni faqat kodingiz bilan ochish mumkin.",
+            "Скрывайте аккаунты из списка. Открыть их можно только вашим кодом."))
+        titlesLanguages.add(TitleLanguages(438, "Turn on", "Yoqish", "Включить"))
+        titlesLanguages.add(TitleLanguages(439, "Unlock with fingerprint", "Barmoq izi bilan ochish", "Разблокировка отпечатком пальца"))
+        titlesLanguages.add(TitleLanguages(440, "Turn off hidden accounts", "Yashirin akkauntlarni o'chirish", "Отключить скрытые аккаунты"))
+        titlesLanguages.add(TitleLanguages(441, "Hide", "Yashirish", "Скрыть"))
+        titlesLanguages.add(TitleLanguages(442, "Show", "Ko'rsatish", "Показать"))
+        titlesLanguages.add(TitleLanguages(443,
+            "All hidden accounts will be visible again, and the code will be removed.",
+            "Barcha yashirin akkauntlar yana ko'rinadi va kod o'chiriladi.",
+            "Все скрытые аккаунты снова станут видимыми, а код будет удалён."))
+        titlesLanguages.add(TitleLanguages(444, "Account is visible again", "Akkaunt yana ko'rinadi", "Аккаунт снова виден"))
+        titlesLanguages.add(TitleLanguages(445, "Turn off", "O'chirish", "Отключить"))
+        titlesLanguages.add(TitleLanguages(446, "Vibrate when entering the code", "Kod terishda tebranish", "Вибрация при вводе кода"))
+        titlesLanguages.add(TitleLanguages(447, "No hidden accounts yet", "Hozircha yashirin akkauntlar yo'q", "Скрытых аккаунтов пока нет"))
+        titlesLanguages.add(TitleLanguages(448,
+            "Tap: open the account. Press and hold: show it in the list again.",
+            "Bosing: akkauntga o'tish. Bosib turing: ro'yxatga qaytarish.",
+            "Нажмите: открыть аккаунт. Нажмите и удерживайте: вернуть в список."))
+        titlesLanguages.add(TitleLanguages(449, "Hidden accounts settings", "Yashirin akkauntlar sozlamalari", "Настройки скрытых аккаунтов"))
     }
 
     /**
@@ -1842,6 +1884,15 @@ object LanguageCode {
     fun sponsorInfo(reportable: Boolean): String =
         if (languageCode == "uz") getMyTitles(427)
         else LocaleController.getString(if (reportable) R.string.SponsoredMessageSponsorReportable else R.string.SponsoredMessageSponsor)
+
+    /**
+     * The "Add account" button. Telegram's Uzbek cloud pack has no AddAccount, so Uzbek users saw English, while the
+     * hidden-accounts texts tell them to press and hold "Akkaunt qo'shish". Only Uzbek is replaced.
+     */
+    @JvmStatic
+    fun addAccount(): String =
+        if (languageCode == "uz") getMyTitles(436)
+        else LocaleController.getString(R.string.AddAccount)
 
     @JvmStatic
     fun messagesSelected(count: Int): String =

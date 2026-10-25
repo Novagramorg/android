@@ -599,7 +599,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (UserConfig.getInstance(a).isClientActivated()) {
+            // Novagram: hidden accounts have a list of their own (a long press on "Add account"); only the one the user is
+            // in shows here, as the current account.
+            if (UserConfig.getInstance(a).isClientActivated() && (!org.fenixuz.hidden.HiddenAccounts.isHidden(a) || a == currentAccount)) {
                 accountNumbers.add(a);
             }
         }
@@ -615,8 +617,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         });
 
         ItemOptions o = ItemOptions.makeOptions(this, button);
-        if (UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT) {
-            o.add(R.drawable.msg_addbot, getString(R.string.AddAccount), () -> {
+        // Novagram: "Add account" also stays while hidden accounts are on: a long press on it opens their list.
+        if (UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT || org.fenixuz.hidden.HiddenAccounts.hasCode()) {
+            o.add(R.drawable.msg_addbot, org.fenixuz.utils.LanguageCode.addAccount(), () -> {
                 int freeAccounts = 0;
                 Integer availableAccount = null;
                 for (int a = UserConfig.MAX_ACCOUNT_COUNT - 1; a >= 0; a--) {
@@ -636,6 +639,13 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                     showDialog(new LimitReachedBottomSheet(this, getContext(), TYPE_ACCOUNTS, currentAccount, null));
                 }
             });
+            if (org.fenixuz.hidden.HiddenAccounts.hasCode()) {
+                o.getLast().setOnLongClickListener(v -> {
+                    o.dismiss();
+                    org.fenixuz.hidden.HiddenAccounts.askUnlock(this);
+                    return true;
+                });
+            }
         }
 
         if (BuildConfig.DEBUG_PRIVATE_VERSION) {
@@ -653,6 +663,15 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                     if (LaunchActivity.instance != null) {
                         LaunchActivity.instance.switchToAccount(account, true);
                     }
+                });
+                // Novagram: a long press on an account hides or shows it.
+                btn.setOnLongClickListener(v -> {
+                    o.dismiss();
+                    final ItemOptions options = ItemOptions.makeOptions(this, button);
+                    org.fenixuz.hidden.HiddenAccounts.addHideOption(options, this, account);
+                    options.translate(0, -dp(4));
+                    options.show();
+                    return true;
                 });
                 o.addView(btn, LayoutHelper.createLinear(230, 48));
             }
@@ -708,7 +727,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final TextView textView = new TextView(getContext());
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         textView.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
-        textView.setText(UserObject.getUserName(user));
+        textView.setText(org.fenixuz.hidden.HiddenAccounts.withHiddenMark(account, UserObject.getUserName(user)));
         textView.setMaxLines(2);
         textView.setEllipsize(TextUtils.TruncateAt.END);
         btn.addView(textView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL, 13, 0, 14, 0));

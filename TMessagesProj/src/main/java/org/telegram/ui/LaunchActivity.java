@@ -380,6 +380,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     };
 
     private FlagSecureReason flagSecureReason;
+    // Novagram: keeps a hidden account's screens out of the recent-apps thumbnail (below Android 13, where the thumbnail
+    // alone can't be turned off, by FLAG_SECURE). See updateHiddenAccountWindow().
+    private FlagSecureReason hiddenAccountSecureReason;
     private final LiteMode.BatteryReceiver batteryReceiver = new LiteMode.BatteryReceiver();
     private WindowAnimatedInsetsProvider rootAnimatedInsetsListener;
 
@@ -411,6 +414,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         instance = this;
         ApplicationLoader.postInitApplication();
         AndroidUtilities.checkDisplaySize(this, getResources().getConfiguration());
+        // Novagram: never open on a hidden account while hidden accounts are locked (e.g. the activity was recreated).
+        org.fenixuz.hidden.HiddenAccounts.ensureSelectedVisible();
         currentAccount = UserConfig.selectedAccount;
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         if (!UserConfig.getInstance(currentAccount).isClientActivated()) {
@@ -444,6 +449,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
         flagSecureReason = new FlagSecureReason(getWindow(), () -> SharedConfig.passcodeHash.length() > 0 && !SharedConfig.allowScreenCapture);
         flagSecureReason.attach();
+        if (Build.VERSION.SDK_INT < 33) {
+            hiddenAccountSecureReason = new FlagSecureReason(getWindow(), () -> org.fenixuz.hidden.HiddenAccounts.isHidden(currentAccount));
+            hiddenAccountSecureReason.attach();
+        }
 
         super.onCreate(savedInstanceState);
         if (Build.VERSION.SDK_INT >= 24) {
@@ -581,7 +590,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             .add(NotificationCenter.requestPermissions)
             .add(NotificationCenter.billingConfirmPurchaseError)
             .add(NotificationCenter.tlSchemeParseException)
-            .add(NotificationCenter.memoryLeakFoundException);
+            .add(NotificationCenter.memoryLeakFoundException)
+            .add(NotificationCenter.novagramHiddenAccountsChanged);
 
         LiteMode.addOnPowerSaverAppliedListener(onPowerSaverCallback = this::onPowerSaver);
         if (actionBarLayout.getFragmentStack().isEmpty() && (layersActionBarLayout == null || layersActionBarLayout.getFragmentStack().isEmpty())) {
@@ -1198,6 +1208,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (account == UserConfig.selectedAccount || !UserConfig.isValidAccount(account)) {
             return;
         }
+        // Novagram: a hidden account can't be opened while hidden accounts are locked, whatever asks for it (a list, a
+        // link, a notification, a widget).
+        if (org.fenixuz.hidden.HiddenAccounts.isConcealed(account)) {
+            return;
+        }
         switchingAccount = true;
 
         ConnectionsManager.getInstance(currentAccount).setAppPaused(true, false);
@@ -1236,14 +1251,39 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             showTosActivity(account, UserConfig.getInstance(account).unacceptedTermsOfService);
         }
         updateCurrentConnectionState(currentAccount);
+        org.fenixuz.hidden.HiddenAccounts.onAccountSelected(account);
 
         switchingAccount = false;
+    }
+
+    /**
+     * Novagram: hidden accounts were locked (or the account on screen was just hidden) while a hidden account is on
+     * screen: go to a visible account, or to the login screen when no visible account is left.
+     */
+    public void leaveConcealedAccount() {
+        if (!org.fenixuz.hidden.HiddenAccounts.isConcealed(currentAccount)) {
+            return;
+        }
+        final int visible = org.fenixuz.hidden.HiddenAccounts.visibleAccount();
+        if (visible >= 0) {
+            switchToAccount(visible, true);
+            return;
+        }
+        final int free = org.fenixuz.hidden.HiddenAccounts.visibleAccountOrFreeSlot();
+        if (free < 0) {
+            return;
+        }
+        UserConfig.selectedAccount = free;
+        UserConfig.getInstance(0).saveConfig(false);
+        checkCurrentAccount();
+        showLoginAfterLogout();
     }
 
     private void switchToAvailableAccountOrLogout() {
         int account = -1;
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (UserConfig.getInstance(a).isClientActivated()) {
+            // Novagram: never fall back to a hidden account.
+            if (UserConfig.getInstance(a).isClientActivated() && !org.fenixuz.hidden.HiddenAccounts.isHidden(a)) {
                 account = a;
                 break;
             }
@@ -1254,15 +1294,19 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (account != -1) {
             switchToAccount(account, true);
         } else {
-            RestrictedLanguagesSelectActivity.checkRestrictedLanguages(true);
-            clearFragments();
-            actionBarLayout.rebuildLogout();
-            if (AndroidUtilities.isTablet()) {
-                layersActionBarLayout.rebuildLogout();
-                rightActionBarLayout.rebuildLogout();
-            }
-            presentFragment(new IntroActivity().setOnLogout());
+            showLoginAfterLogout();
         }
+    }
+
+    private void showLoginAfterLogout() {
+        RestrictedLanguagesSelectActivity.checkRestrictedLanguages(true);
+        clearFragments();
+        actionBarLayout.rebuildLogout();
+        if (AndroidUtilities.isTablet()) {
+            layersActionBarLayout.rebuildLogout();
+            rightActionBarLayout.rebuildLogout();
+        }
+        presentFragment(new IntroActivity().setOnLogout());
     }
 
     public void clearFragments() {
@@ -1293,6 +1337,27 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (currentAccount == UserConfig.selectedAccount && observersGroup != null) {
             return;
         }
+        try {
+            checkCurrentAccountObservers();
+        } finally {
+            updateHiddenAccountWindow();
+        }
+    }
+
+    /**
+     * Novagram: while a hidden account is on screen, its screens must not stay in the recent-apps thumbnail: it would
+     * still show them after hidden accounts lock. Android 13+ can turn off just the thumbnail; older versions use
+     * FLAG_SECURE (which also blocks screenshots, only while a hidden account is open).
+     */
+    private void updateHiddenAccountWindow() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            setRecentsScreenshotEnabled(!org.fenixuz.hidden.HiddenAccounts.isHidden(currentAccount));
+        } else if (hiddenAccountSecureReason != null) {
+            hiddenAccountSecureReason.invalidate();
+        }
+    }
+
+    private void checkCurrentAccountObservers() {
 
         if (observersGroup != null) {
             observersGroup.removeAllObservers();
@@ -6753,6 +6818,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
         });
         onPasscodePause();
+        // Novagram: unlocked hidden accounts lock again once the app has been away for a while.
+        org.fenixuz.hidden.HiddenAccounts.onAppPaused();
         actionBarLayout.onPause();
         if (AndroidUtilities.isTablet()) {
             if (rightActionBarLayout != null) {
@@ -6916,6 +6983,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (flagSecureReason != null) {
             flagSecureReason.detach();
         }
+        if (hiddenAccountSecureReason != null) {
+            hiddenAccountSecureReason.detach();
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && frameMetricsOverlayView != null) {
             frameMetricsOverlayView.detach();
@@ -7005,6 +7075,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         checkFreeDiscSpace(0);
         MediaController.checkGallery();
         onPasscodeResume();
+        org.fenixuz.hidden.HiddenAccounts.onAppResumed();
         if (passcodeDialog == null || passcodeDialog.passcodeView.getVisibility() != View.VISIBLE) {
             actionBarLayout.onResume();
             if (AndroidUtilities.isTablet()) {
@@ -7313,6 +7384,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
         } else if (id == NotificationCenter.didSetPasscode) {
             flagSecureReason.invalidate();
+        } else if (id == NotificationCenter.novagramHiddenAccountsChanged) {
+            updateHiddenAccountWindow();
         } else if (id == NotificationCenter.reloadInterface) {
             boolean last = mainFragmentsStack.size() > 1 && mainFragmentsStack.get(mainFragmentsStack.size() - 1) instanceof ProfileActivity;
             if (last) {

@@ -14762,7 +14762,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (UserConfig.getInstance(a).isClientActivated()) {
+            // Novagram: hidden accounts have a list of their own; only the one the user is in shows here.
+            if (UserConfig.getInstance(a).isClientActivated() && (!org.fenixuz.hidden.HiddenAccounts.isHidden(a) || a == currentAccount)) {
                 accountNumbers.add(a);
             }
         }

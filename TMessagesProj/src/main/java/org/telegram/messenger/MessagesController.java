@@ -16188,6 +16188,8 @@ public class MessagesController extends BaseController implements NotificationCe
         } else {
             getConnectionsManager().cleanup(type == 2);
         }
+        // Novagram: logging out of a hidden account forgets that it was hidden; logging in again shows it.
+        org.fenixuz.hidden.HiddenAccounts.onLoggedOut(getUserConfig().getClientUserId());
         getUserConfig().clearConfig();
         SharedPrefsHelper.cleanupAccount(currentAccount);
 
@@ -16205,7 +16207,8 @@ public class MessagesController extends BaseController implements NotificationCe
             if (UserConfig.selectedAccount == currentAccount) {
                 int account = -1;
                 for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-                    if (UserConfig.getInstance(a).isClientActivated()) {
+                    // Novagram: never fall back to a hidden account.
+                    if (UserConfig.getInstance(a).isClientActivated() && !org.fenixuz.hidden.HiddenAccounts.isHidden(a)) {
                         account = a;
                         break;
                     }

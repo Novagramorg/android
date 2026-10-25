@@ -255,6 +255,8 @@ public class ApplicationLoader extends Application {
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             UserConfig.getInstance(a).loadConfig();
         }
+        // Novagram: hidden accounts are locked at every start, so the app must not open on one.
+        org.fenixuz.hidden.HiddenAccounts.ensureSelectedVisible();
         // Novagram: bring up ONLY the accounts the UI and push need immediately — account 0 (global/push) and the
         // selected (visible) account. Building a full stack (MessagesController + native ConnectionsManager + a
         // connection + unsent-message scan) for EVERY logged-in account on the main thread blocks the first frame;

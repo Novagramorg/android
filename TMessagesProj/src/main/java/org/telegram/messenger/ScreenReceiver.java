@@ -24,6 +24,8 @@ public class ScreenReceiver extends BroadcastReceiver {
             }
             ConnectionsManager.getInstance(UserConfig.selectedAccount).setAppPaused(true, true);
             ApplicationLoader.isScreenOn = false;
+            // Novagram: unlocked hidden accounts lock as soon as the screen goes off.
+            org.fenixuz.hidden.HiddenAccounts.onScreenOff();
         } else if (intent.getAction().equals(Intent.ACTION_SCREEN_ON)) {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("screen on");

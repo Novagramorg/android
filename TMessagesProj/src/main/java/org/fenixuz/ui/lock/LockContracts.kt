@@ -16,6 +16,9 @@ interface LockCredential {
 
     /** True when [input] matches the stored passcode. */
     fun check(input: String): Boolean
+
+    /** Whether the lock screen vibrates on key presses and on a wrong passcode. */
+    val vibrate: Boolean get() = true
 }
 
 /** What the passcode-creation screen needs to read/write a passcode for one feature. */

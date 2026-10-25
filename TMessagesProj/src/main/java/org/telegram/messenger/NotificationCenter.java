@@ -388,6 +388,9 @@ public class NotificationCenter {
     // Novagram: the system banners for this account changed (loaded, failed, or one's ends_at passed); the chat list
     // redraws its hint cell. See org.fenixuz.ads.AdsBanners.
     public static final int novagramBannersUpdated = totalEvents++;
+    // Novagram: an account was hidden or shown, or hidden accounts were locked or unlocked (global instance, main
+    // thread). Account lists rebuild. See org.fenixuz.hidden.HiddenAccounts.
+    public static final int novagramHiddenAccountsChanged = totalEvents++;
     public static final int guardBotDecisionResult = totalEvents++;
     public static final int webBrowserSettingsUpdate = totalEvents++;
     public static final int communityPendingRequestsUpdate = totalEvents++;

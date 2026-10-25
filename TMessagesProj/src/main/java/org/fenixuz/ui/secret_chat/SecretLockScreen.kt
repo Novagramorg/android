@@ -178,7 +178,7 @@ class SecretLockScreen(
                 return
             }
             try {
-                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (credential.vibrate) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             } catch (e: Exception) {
                 FileLog.e(e)
             }
@@ -290,7 +290,7 @@ class SecretLockScreen(
                 return false
             }
             try {
-                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (credential.vibrate) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             } catch (e: Exception) {
                 FileLog.e(e)
             }
@@ -627,7 +627,7 @@ class SecretLockScreen(
     }
 
     private fun onPasscodeError() {
-        BotWebViewVibrationEffect.NOTIFICATION_ERROR.vibrate()
+        if (credential.vibrate) BotWebViewVibrationEffect.NOTIFICATION_ERROR.vibrate()
         shakeTextView()
     }
 
@@ -915,10 +915,12 @@ class SecretLockScreen(
                     imageView.playAnimation()
                     showPin(true)
                     AndroidUtilities.runOnUIThread({
-                        imageView.performHapticFeedback(
-                            HapticFeedbackConstants.KEYBOARD_TAP,
-                            HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
-                        )
+                        if (credential.vibrate) {
+                            imageView.performHapticFeedback(
+                                HapticFeedbackConstants.KEYBOARD_TAP,
+                                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
+                            )
+                        }
                     }, 350)
                     val animatorSet = AnimatorSet()
                     val animators = ArrayList<Animator>()

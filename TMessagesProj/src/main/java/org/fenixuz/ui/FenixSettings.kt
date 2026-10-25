@@ -98,6 +98,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val ADMIN_FOLDERS_REFRESH = 31
     private val AVATAR_PROFILE = 32
     private val TIME_SECONDS = 33
+    private val HIDDEN_ACCOUNTS = 34
 
     // Onboarding: a toolbar "?" replays the full feature tour; the short tour auto-runs once on first open.
     private val HELP_BUTTON = 1001
@@ -225,6 +226,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(GHOST_MODE, 32, 245),
         step(GHOST_ACTIONBAR_BTN, 342, 343),
         step(SECRET_CHAT, 213, 217),
+        step(HIDDEN_ACCOUNTS, 428, 429),
         step(STRANGER_SHIELD, 319, 320),
         step(APK_SHIELD, 378, 379),
         step(CONFIRM_STICKER, 190, 386),
@@ -312,6 +314,8 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             UItem.asButtonCheck(SECRET_CHAT, LanguageCode.getMyTitles(213), LanguageCode.getMyTitles(217))
                 .setChecked(SecretPassword.hasPassword())
         )
+        // Hidden accounts: a screen of its own (it lists the accounts and asks for the code first).
+        items.add(UItem.asButton(HIDDEN_ACCOUNTS, LanguageCode.getMyTitles(428)))
         items.add(UItem.asShadow(null))
 
         // Chat-lock management — just the "change common password" row. Fingerprint unlock is now
@@ -496,6 +500,9 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             }
             CHANGE_COMMON_PASSWORD -> {
                 presentFragment(SecretPasscodeScreen(Password.editorForCommonPassword(), SecretPasswordType.SET_NEW))
+            }
+            HIDDEN_ACCOUNTS -> {
+                org.fenixuz.hidden.HiddenAccountsScreen.open(this)
             }
             STORY_GHOST -> {
                 GhostStory.changeGhostMode(!GhostStory.ghostMode)

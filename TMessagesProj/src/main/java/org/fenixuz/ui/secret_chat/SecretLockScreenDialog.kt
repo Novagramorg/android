@@ -22,12 +22,15 @@ import org.telegram.ui.LaunchActivity
  * Transparent full-screen dialog that hosts the [SecretLockScreen] over whatever fragment is open
  * (the secret folder, a locked chat, …). While shown, the app container is scaled up to mirror
  * Telegram's app-lock reveal animation. [onUnlocked] (optional) fires once the passcode is accepted.
+ * Back closes [baseFragment] too when [finishOnBack] (a locked screen must not stay open behind it); otherwise it only
+ * closes the lock screen (the hidden-accounts code prompt over an ordinary screen).
  */
-class SecretLockScreenDialog(
+class SecretLockScreenDialog @JvmOverloads constructor(
     private val baseFragment: BaseFragment,
     context: Context,
     credential: LockCredential,
-    private val onUnlocked: Runnable? = null
+    private val onUnlocked: Runnable? = null,
+    private val finishOnBack: Boolean = true
 ) : Dialog(context, R.style.TransparentDialog) {
 
     private val windowView: FrameLayout = FrameLayout(context)
@@ -114,7 +117,16 @@ class SecretLockScreenDialog(
 
     override fun onBackPressed() {
         if (secretLockScreen.onBackPressed()) {
-            baseFragment.finishFragment()
+            if (finishOnBack) {
+                baseFragment.finishFragment()
+            } else {
+                dismiss()
+                val drawerLayoutContainer = LaunchActivity.instance?.drawerLayoutContainer
+                if (drawerLayoutContainer != null) {
+                    drawerLayoutContainer.scaleX = 1f
+                    drawerLayoutContainer.scaleY = 1f
+                }
+            }
         }
     }
 }
