@@ -41,7 +41,8 @@ import javax.crypto.spec.PBEKeySpec
  * while the user is in it): hidden accounts have a list of their own, [HiddenAccountsListScreen], which a long press on
  * "Add account" opens after the code. Entering the code unlocks hidden accounts until the app has been in the
  * background for [RELOCK_DELAY_MS], the screen turns off, or the process restarts; then the app leaves a hidden account
- * it is showing for a visible one, and the list needs the code again.
+ * it is showing for a visible one, and the list needs the code again. With [hideOnBackground] off they stay unlocked
+ * through all of that, until the lock button of the list.
  *
  * Accounts are remembered by Telegram user id, not by slot, so a reshuffle of slots never hides the wrong account,
  * and logging out of a hidden account forgets it: logging in again brings it back visible.
@@ -65,6 +66,8 @@ object HiddenAccounts {
     private const val KEY_LAST_VISIBLE = "last_visible"
     private const val KEY_FINGERPRINT = "fingerprint"
     private const val KEY_VIBRATE = "vibrate"
+    private const val KEY_HIDE_ON_BACKGROUND = "hide_on_background"
+    private const val KEY_KEPT_UNLOCKED = "kept_unlocked"
 
     private const val ITERATIONS = 10000
     private const val KEY_BITS = 256
@@ -78,10 +81,13 @@ object HiddenAccounts {
     @Volatile
     private var ids: Set<Long> = prefs.getStringSet(KEY_IDS, null)?.mapNotNull { it.toLongOrNull() }?.toHashSet() ?: emptySet()
 
-    /** True while hidden accounts are unlocked: they then show everywhere like visible ones. */
+    /**
+     * True while hidden accounts are unlocked: they then show everywhere like visible ones. Every start begins locked,
+     * unless [hideOnBackground] is off and they were unlocked when the app was left.
+     */
     @JvmStatic
     @Volatile
-    var unlocked = false
+    var unlocked = !prefs.getBoolean(KEY_HIDE_ON_BACKGROUND, true) && prefs.getBoolean(KEY_KEPT_UNLOCKED, false)
         private set
 
     private val relockRunnable = Runnable { lock() }
@@ -205,7 +211,8 @@ object HiddenAccounts {
     fun disable() {
         AndroidUtilities.cancelRunOnUIThread(relockRunnable)
         unlocked = false
-        prefs.edit().remove(KEY_HASH).remove(KEY_SALT).remove(KEY_TYPE).remove(KEY_FINGERPRINT).remove(KEY_VIBRATE).apply()
+        prefs.edit().remove(KEY_HASH).remove(KEY_SALT).remove(KEY_TYPE).remove(KEY_FINGERPRINT).remove(KEY_VIBRATE)
+            .remove(KEY_HIDE_ON_BACKGROUND).remove(KEY_KEPT_UNLOCKED).apply()
         val wereHidden = (0 until UserConfig.MAX_ACCOUNT_COUNT).filter { isHidden(it) }
         saveIds(emptySet())
         for (a in wereHidden) {
@@ -261,6 +268,9 @@ object HiddenAccounts {
     @JvmStatic
     fun unlock() {
         AndroidUtilities.cancelRunOnUIThread(relockRunnable)
+        if (!hideOnBackground) {
+            prefs.edit().putBoolean(KEY_KEPT_UNLOCKED, true).apply()
+        }
         if (unlocked) return
         unlocked = true
         notifyChanged()
@@ -270,6 +280,7 @@ object HiddenAccounts {
     @JvmStatic
     fun lock() {
         AndroidUtilities.cancelRunOnUIThread(relockRunnable)
+        prefs.edit().remove(KEY_KEPT_UNLOCKED).apply()
         if (!unlocked) return
         unlocked = false
         notifyChanged()
@@ -280,7 +291,7 @@ object HiddenAccounts {
     @JvmStatic
     fun onAppPaused() {
         AndroidUtilities.cancelRunOnUIThread(relockRunnable)
-        if (unlocked) {
+        if (unlocked && hideOnBackground) {
             AndroidUtilities.runOnUIThread(relockRunnable, RELOCK_DELAY_MS)
         }
     }
@@ -292,7 +303,9 @@ object HiddenAccounts {
 
     @JvmStatic
     fun onScreenOff() {
-        lock()
+        if (hideOnBackground) {
+            lock()
+        }
     }
 
     /**
@@ -373,6 +386,24 @@ object HiddenAccounts {
         get() = prefs.getBoolean(KEY_VIBRATE, true)
         set(value) {
             prefs.edit().putBoolean(KEY_VIBRATE, value).apply()
+        }
+
+    /**
+     * Whether hidden accounts lock again once the app is left: [RELOCK_DELAY_MS] in the background, the screen turning
+     * off, a restart. On unless the user turns it off, like Graph's "Hide on background". Off, they stay unlocked (the app
+     * reopens on the hidden account the user was in) until the lock button of [HiddenAccountsListScreen].
+     */
+    @JvmStatic
+    var hideOnBackground: Boolean
+        get() = prefs.getBoolean(KEY_HIDE_ON_BACKGROUND, true)
+        set(value) {
+            val edit = prefs.edit().putBoolean(KEY_HIDE_ON_BACKGROUND, value)
+            if (value) {
+                edit.remove(KEY_KEPT_UNLOCKED)
+            } else if (unlocked) {
+                edit.putBoolean(KEY_KEPT_UNLOCKED, true)
+            }
+            edit.apply()
         }
 
     private fun codeType(): Int = prefs.getInt(KEY_TYPE, SharedConfig.PASSCODE_TYPE_PIN)

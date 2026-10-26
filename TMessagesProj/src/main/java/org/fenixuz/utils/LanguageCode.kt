@@ -1881,6 +1881,12 @@ object LanguageCode {
             "Enter a password. You'll open hidden accounts with it.",
             "Parol kiriting. Yashirin akkauntlarni shu parol bilan ochasiz.",
             "Введите пароль. Им вы будете открывать скрытые аккаунты."))
+        titlesLanguages.add(TitleLanguages(454, "Hide when leaving the app", "Ilovadan chiqqanda yashirish", "Скрывать при выходе из приложения"))
+        titlesLanguages.add(TitleLanguages(455,
+            "On: hidden accounts lock 30 seconds after you leave the app or when the screen turns off. Off: they stay open, also after a restart, until you lock them with the lock button in the hidden accounts list.",
+            "Yoqiq bo'lsa, yashirin akkauntlar ilovadan chiqqaningizdan 30 soniya o'tib yoki ekran o'chganda yopiladi. O'chiq bo'lsa, ular ochiq qoladi, ilova qayta ishga tushganda ham. Ularni yashirin akkauntlar ro'yxatidagi qulf tugmasi bilan yopasiz.",
+            "Если включено, скрытые аккаунты закрываются через 30 секунд после выхода из приложения или при выключении экрана. Если выключено, они остаются открытыми, даже после перезапуска, пока вы не закроете их кнопкой замка в списке скрытых аккаунтов."))
+        titlesLanguages.add(TitleLanguages(456, "Lock hidden accounts", "Yashirin akkauntlarni yopish", "Закрыть скрытые аккаунты"))
     }
 
     /**

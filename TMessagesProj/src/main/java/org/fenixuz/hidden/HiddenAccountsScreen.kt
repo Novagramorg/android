@@ -34,6 +34,7 @@ class HiddenAccountsScreen @JvmOverloads constructor(private var pendingHide: In
     private val FINGERPRINT = 3
     private val TURN_OFF = 4
     private val VIBRATE = 5
+    private val HIDE_ON_BACKGROUND = 6
 
     override fun getTitle(): CharSequence = LanguageCode.getMyTitles(428)
 
@@ -97,6 +98,8 @@ class HiddenAccountsScreen @JvmOverloads constructor(private var pendingHide: In
         }
         items.add(UItem.asCheck(VIBRATE, LanguageCode.getMyTitles(446)).setChecked(HiddenAccounts.vibrate))
         items.add(UItem.asShadow(LanguageCode.getMyTitles(435)))
+        items.add(UItem.asCheck(HIDE_ON_BACKGROUND, LanguageCode.getMyTitles(454)).setChecked(HiddenAccounts.hideOnBackground))
+        items.add(UItem.asShadow(LanguageCode.getMyTitles(455)))
         items.add(UItem.asButton(TURN_OFF, LanguageCode.getMyTitles(440)).red())
         items.add(UItem.asShadow(null))
     }
@@ -111,6 +114,10 @@ class HiddenAccountsScreen @JvmOverloads constructor(private var pendingHide: In
             VIBRATE -> {
                 HiddenAccounts.vibrate = !HiddenAccounts.vibrate
                 (view as? TextCheckCell)?.isChecked = HiddenAccounts.vibrate
+            }
+            HIDE_ON_BACKGROUND -> {
+                HiddenAccounts.hideOnBackground = !HiddenAccounts.hideOnBackground
+                (view as? TextCheckCell)?.isChecked = HiddenAccounts.hideOnBackground
             }
             TURN_OFF -> confirmTurnOff()
         }

@@ -11,6 +11,7 @@ import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.NotificationCenter
 import org.telegram.messenger.R
 import org.telegram.messenger.UserConfig
+import org.telegram.ui.ActionBar.ActionBar
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.Components.ItemOptions
@@ -24,12 +25,14 @@ import org.telegram.ui.SettingsActivity
 
 /**
  * Novagram: the list of hidden accounts, opened by a long press on "Add account" and the code. Tapping an account opens
- * it; a long press shows it in the account lists again. Hidden accounts are listed nowhere else, so this screen closes
- * as soon as they lock again (see [HiddenAccounts.lock]).
+ * it; a long press shows it in the account lists again. The lock button locks hidden accounts at once (with
+ * [HiddenAccounts.hideOnBackground] off it is the only way). Hidden accounts are listed nowhere else, so this screen
+ * closes as soon as they lock again (see [HiddenAccounts.lock]).
  */
 class HiddenAccountsListScreen : UniversalFragment(), NotificationCenter.NotificationCenterDelegate {
 
     private val ACCOUNT_BASE = 1000
+    private val LOCK = 1
 
     // Telegram's empty-list duck with a line under it, centred on the plain background (a shadow-type row, so the list's
     // sections don't wrap it in a card); built once, reused by every fillItems.
@@ -62,6 +65,16 @@ class HiddenAccountsListScreen : UniversalFragment(), NotificationCenter.Notific
         listView.setSections()
         listView.adapter.setApplyBackground(false)
         actionBar.setAdaptiveBackground(listView)
+        actionBar.createMenu().addItem(LOCK, R.drawable.outline_header_lock_24).contentDescription = LanguageCode.getMyTitles(456)
+        actionBar.setActionBarMenuOnItemClick(object : ActionBar.ActionBarMenuOnItemClick() {
+            override fun onItemClick(id: Int) {
+                when (id) {
+                    -1 -> finishFragment()
+                    // Leaves a hidden account on screen for a visible one; this screen then closes itself.
+                    LOCK -> HiddenAccounts.lock()
+                }
+            }
+        })
         return view
     }
 
