@@ -397,7 +397,8 @@ public class ContactsController extends BaseController {
                     boolean found = false;
                     for (int b = 0; b < UserConfig.MAX_ACCOUNT_COUNT; b++) {
                         TLRPC.User user = UserConfig.getInstance(b).getCurrentUser();
-                        if (user != null) {
+                        // Novagram: a hidden account has no system account (Settings > Accounts, the contacts app).
+                        if (user != null && !org.fenixuz.hidden.HiddenAccounts.isHidden(b)) {
                             if (acc.name.equals("" + user.id)) {
                                 if (b == currentAccount) {
                                     systemAccount = acc;
@@ -421,7 +422,7 @@ public class ContactsController extends BaseController {
             }
             if (getUserConfig().isClientActivated()) {
                 readContacts();
-                if (systemAccount == null) {
+                if (systemAccount == null && !org.fenixuz.hidden.HiddenAccounts.isHidden(currentAccount)) {
                     try {
                         systemAccount = new Account("" + getUserConfig().getClientUserId(), "org.telegram.messenger");
                         am.addAccountExplicitly(systemAccount, "", null);
@@ -443,7 +444,8 @@ public class ContactsController extends BaseController {
                 boolean found = false;
                 for (int b = 0; b < UserConfig.MAX_ACCOUNT_COUNT; b++) {
                     TLRPC.User user = UserConfig.getInstance(b).getCurrentUser();
-                    if (user != null) {
+                    // Novagram: a hidden account has no system account.
+                    if (user != null && !org.fenixuz.hidden.HiddenAccounts.isHidden(b)) {
                         if (acc.name.equals("" + user.id)) {
                             found = true;
                             break;
@@ -530,11 +532,14 @@ public class ContactsController extends BaseController {
                     } catch (Throwable ignore) {
 
                     }
-                    try {
-                        systemAccount = new Account("" + getUserConfig().getClientUserId(), "org.telegram.messenger");
-                        am.addAccountExplicitly(systemAccount, "", null);
-                    } catch (Exception ignore) {
+                    // Novagram: a hidden account has no system account.
+                    if (!org.fenixuz.hidden.HiddenAccounts.isHidden(currentAccount)) {
+                        try {
+                            systemAccount = new Account("" + getUserConfig().getClientUserId(), "org.telegram.messenger");
+                            am.addAccountExplicitly(systemAccount, "", null);
+                        } catch (Exception ignore) {
 
+                        }
                     }
                     getMessagesStorage().putCachedPhoneBook(new HashMap<>(), false, true);
                     getMessagesStorage().putContacts(new ArrayList<>(), true);
@@ -2919,7 +2924,8 @@ public class ContactsController extends BaseController {
     }
 
     public void createOrUpdateConnectionServiceContact(long id, String firstName, String lastName) {
-        if (!hasContactsPermission()) {
+        // Novagram: no system account (a hidden account, or not created yet) means nowhere to put it.
+        if (!hasContactsPermission() || systemAccount == null) {
             return;
         }
         try {
@@ -3011,7 +3017,7 @@ public class ContactsController extends BaseController {
     }
 
     public void deleteConnectionServiceContact() {
-        if (!hasContactsPermission())
+        if (!hasContactsPermission() || systemAccount == null)
             return;
         try {
             ContentResolver resolver = ApplicationLoader.applicationContext.getContentResolver();

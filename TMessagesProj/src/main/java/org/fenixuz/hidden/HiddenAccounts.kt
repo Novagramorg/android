@@ -1,5 +1,7 @@
 package org.fenixuz.hidden
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.SharedPreferences
 import android.text.SpannableStringBuilder
@@ -11,8 +13,14 @@ import org.fenixuz.utils.LanguageCode
 import org.fenixuz.utils.Password
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
+import org.telegram.messenger.ChatsWidgetProvider
+import org.telegram.messenger.ContactsController
+import org.telegram.messenger.ContactsWidgetProvider
+import org.telegram.messenger.FeedWidgetProvider
 import org.telegram.messenger.FileLog
+import org.telegram.messenger.MediaDataController
 import org.telegram.messenger.NotificationCenter
+import org.telegram.messenger.NotificationsController
 import org.telegram.messenger.R
 import org.telegram.messenger.SharedConfig
 import org.telegram.messenger.UserConfig
@@ -39,8 +47,12 @@ import javax.crypto.spec.PBEKeySpec
  *
  * There is one code for all hidden accounts. It is stored as a salted PBKDF2 hash, never as text.
  *
- * Main thread only, except [isHidden] / [isConcealed], which background code (notifications) may call: the set of ids
- * is an immutable snapshot swapped on every change.
+ * Outside the account lists a hidden account leaves no trace either, locked or not: it sends no notifications and rings
+ * no calls, counts in no launcher badge, gets no launcher shortcuts, has no system account (Settings > Accounts, the
+ * contacts app), shows nothing in widgets, and account pickers ([isListed]) leave it out.
+ *
+ * Main thread only, except [isHidden] / [isConcealed] / [isListed] / [listedCount], which background code
+ * (notifications, contacts) may call: the set of ids is an immutable snapshot swapped on every change.
  */
 object HiddenAccounts {
 
@@ -88,6 +100,24 @@ object HiddenAccounts {
     @JvmStatic
     fun isConcealed(account: Int): Boolean = !unlocked && isHidden(account)
 
+    /**
+     * Whether [account] is offered by an account picker (which account opens a link, logs in to a site, joins a
+     * channel...): a logged-in visible account, or the hidden one the user is in. The same rule as the account lists.
+     */
+    @JvmStatic
+    fun isListed(account: Int): Boolean =
+        UserConfig.getInstance(account).isClientActivated && (!isHidden(account) || account == UserConfig.selectedAccount)
+
+    /** How many accounts are [isListed]: what "more than one account" means for anything the user sees. */
+    @JvmStatic
+    fun listedCount(): Int {
+        var count = 0
+        for (a in 0 until UserConfig.MAX_ACCOUNT_COUNT) {
+            if (isListed(a)) count++
+        }
+        return count
+    }
+
     @JvmStatic
     fun hasHidden(): Boolean {
         for (a in 0 until UserConfig.MAX_ACCOUNT_COUNT) {
@@ -116,6 +146,7 @@ object HiddenAccounts {
         val updated = HashSet(ids)
         if (hidden) updated.add(userId) else updated.remove(userId)
         saveIds(updated)
+        onHiddenChanged(account, hidden)
         if (hidden && !unlocked) {
             leaveConcealedAccount()
         }
@@ -174,7 +205,11 @@ object HiddenAccounts {
         AndroidUtilities.cancelRunOnUIThread(relockRunnable)
         unlocked = false
         prefs.edit().remove(KEY_HASH).remove(KEY_SALT).remove(KEY_TYPE).remove(KEY_FINGERPRINT).remove(KEY_VIBRATE).apply()
+        val wereHidden = (0 until UserConfig.MAX_ACCOUNT_COUNT).filter { isHidden(it) }
         saveIds(emptySet())
+        for (a in wereHidden) {
+            onHiddenChanged(a, false)
+        }
     }
 
     /** The account with user id [userId] is being logged out: it is no longer hidden (logging in again shows it). */
@@ -188,6 +223,30 @@ object HiddenAccounts {
         ids = updated
         prefs.edit().putStringSet(KEY_IDS, updated.mapTo(HashSet()) { it.toString() }).apply()
         notifyChanged()
+    }
+
+    /** Brings what lives outside the app's screens (see the class comment) in line after [account] was hidden or shown. */
+    private fun onHiddenChanged(account: Int, hidden: Boolean) {
+        NotificationsController.getInstance(account).onHiddenChanged(hidden)
+        ContactsController.getInstance(account).checkAppAccount()
+        MediaDataController.getInstance(UserConfig.selectedAccount).buildShortcuts()
+        updateWidgets()
+    }
+
+    /** Widgets of a hidden account show nothing (their services check [isHidden]); this makes them reload. */
+    private fun updateWidgets() {
+        try {
+            val context = ApplicationLoader.applicationContext
+            val manager = AppWidgetManager.getInstance(context) ?: return
+            for (provider in arrayOf(ChatsWidgetProvider::class.java, ContactsWidgetProvider::class.java, FeedWidgetProvider::class.java)) {
+                val ids = manager.getAppWidgetIds(ComponentName(context, provider))
+                if (ids.isNotEmpty()) {
+                    manager.notifyAppWidgetViewDataChanged(ids, R.id.list_view)
+                }
+            }
+        } catch (e: Exception) {
+            FileLog.e(e)
+        }
     }
 
     private fun notifyChanged() {
@@ -263,6 +322,10 @@ object HiddenAccounts {
     fun onAccountSelected(account: Int) {
         if (!isHidden(account)) {
             prefs.edit().putInt(KEY_LAST_VISIBLE, account).apply()
+            // A hidden account gets no launcher shortcuts: coming back from one, they are this account's again.
+            if (hasHidden()) {
+                MediaDataController.getInstance(account).buildShortcuts()
+            }
         }
     }
 
@@ -385,6 +448,21 @@ object HiddenAccounts {
         dialog.show()
         dialog.secretLockScreen.onShow(fingerprint, true, -1, -1, null, null)
         return true
+    }
+
+    /**
+     * Login found that [account] is logged in already. When it is a hidden account and hidden accounts are locked, asks
+     * for the code and opens it instead of saying so. Returns false (and shows nothing) otherwise: the caller then goes
+     * on as usual.
+     */
+    @JvmStatic
+    fun openFromLogin(fragment: BaseFragment, account: Int): Boolean {
+        if (!isConcealed(account)) return false
+        return askCode(fragment) {
+            unlock()
+            (fragment.parentActivity as? LaunchActivity)?.switchToAccount(account, true)
+            fragment.finishFragment()
+        }
     }
 
     /**

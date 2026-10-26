@@ -4634,7 +4634,7 @@ public class ChatActivity extends BaseFragment implements
             // Novagram: join this PUBLIC channel/group on all your other logged-in accounts at once.
             if (currentChat != null && chatMode == MODE_DEFAULT && ChatObject.isChannel(currentChat)
                     && ChatObject.getPublicUsername(currentChat) != null
-                    && UserConfig.getActivatedAccountsCount() > 1) {
+                    && org.fenixuz.hidden.HiddenAccounts.listedCount() > 1) {
                 headerItem.lazilyAddSubItem(join_all_accounts, R.drawable.outline_add_account,
                         org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(294));
             }

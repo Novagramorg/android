@@ -131,7 +131,8 @@ public class NotificationPermissionDialog extends BottomSheet implements Notific
         int counter = 0;
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; ++a) {
             MessagesStorage messagesStorage = MessagesStorage.getInstance(a);
-            if (messagesStorage != null) {
+            // Novagram: nor do hidden accounts count here.
+            if (messagesStorage != null && !org.fenixuz.hidden.HiddenAccounts.isHidden(a)) {
                 counter += messagesStorage.getMainUnreadCount();
             }
         }

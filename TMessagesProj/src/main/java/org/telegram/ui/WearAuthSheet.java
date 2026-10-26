@@ -202,7 +202,8 @@ public class WearAuthSheet {
         final ArrayList<Integer> accountNumbers = new ArrayList<>();
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (UserConfig.getInstance(a).isClientActivated()) {
+            // Novagram: hidden accounts aren't offered.
+            if (UserConfig.getInstance(a).isClientActivated() && org.fenixuz.hidden.HiddenAccounts.isListed(a)) {
                 if (!ConnectionsManager.getInstance(a).isTestBackend()) {
                     nonTestAccount = a;
                 }

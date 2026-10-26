@@ -262,7 +262,8 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
         }
         if ("org.telegram.passport.AUTHORIZE".equals(intent.getAction())) {
             if (state == 0) {
-                int activatedAccountsCount = UserConfig.getActivatedAccountsCount();
+                // Novagram: hidden accounts aren't offered.
+                int activatedAccountsCount = org.fenixuz.hidden.HiddenAccounts.listedCount();
                 if (activatedAccountsCount == 0) {
                     passcodeSaveIntent = intent;
                     passcodeSaveIntentIsNew = isNew;

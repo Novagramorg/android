@@ -230,7 +230,8 @@ class ContactsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactor
 
     public void onDataSetChanged() {
         dids.clear();
-        if (accountInstance == null || !accountInstance.getUserConfig().isClientActivated()) {
+        // Novagram: a hidden account's widget shows nothing.
+        if (accountInstance == null || !accountInstance.getUserConfig().isClientActivated() || org.fenixuz.hidden.HiddenAccounts.isHidden(accountInstance.getCurrentAccount())) {
             return;
         }
         ArrayList<TLRPC.User> users = new ArrayList<>();

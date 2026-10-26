@@ -3203,6 +3203,11 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         String userPhone = userConfig.getCurrentUser().phone;
                         if (PhoneNumberUtils.compare(phone, userPhone) && ConnectionsManager.getInstance(a).isTestBackend() == testBackend) {
                             final int num = a;
+                            // Novagram: a locked hidden account isn't named as logged in: its code opens it instead.
+                            if (org.fenixuz.hidden.HiddenAccounts.openFromLogin(LoginActivity.this, num)) {
+                                needHideProgress(false);
+                                return;
+                            }
                             AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                             builder.setTitle(getString(R.string.AppName));
                             builder.setMessage(getString("AccountAlreadyLoggedIn", R.string.AccountAlreadyLoggedIn));
@@ -3580,6 +3585,11 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             continue;
                         }
                         if (userConfig.getClientUserId() == userId && ConnectionsManager.getInstance(a).isTestBackend() == testBackend) {
+                            // Novagram: a locked hidden account opens after its code.
+                            if (org.fenixuz.hidden.HiddenAccounts.openFromLogin(LoginActivity.this, a)) {
+                                needHideProgress(false);
+                                return;
+                            }
                             if (UserConfig.selectedAccount != a) {
                                 ((LaunchActivity) getParentActivity()).switchToAccount(a, true);
                             }

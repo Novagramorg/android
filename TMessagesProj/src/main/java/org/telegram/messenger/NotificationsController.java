@@ -212,6 +212,10 @@ public class NotificationsController extends BaseController implements Notificat
 
         notificationManager = NotificationManagerCompat.from(ApplicationLoader.applicationContext);
         systemNotificationManager = (NotificationManager) ApplicationLoader.applicationContext.getSystemService(Context.NOTIFICATION_SERVICE);
+        // Novagram: a hidden account has no notification categories (see onHiddenChanged); clears any left over.
+        if (org.fenixuz.hidden.HiddenAccounts.isHidden(currentAccount)) {
+            notificationsQueue.postRunnable(this::deleteChannelGroups);
+        }
 
         try {
             audioManager = (AudioManager) ApplicationLoader.applicationContext.getSystemService(Context.AUDIO_SERVICE);
@@ -1326,7 +1330,7 @@ public class NotificationsController extends BaseController implements Notificat
                 notifyCheck = isLast;
             }
 
-            if (!popupArrayAdd.isEmpty() && !AndroidUtilities.needShowPasscode() && !SharedConfig.isWaitingForPasscodeEnter) {
+            if (!popupArrayAdd.isEmpty() && canAccountNotify(currentAccount) && !AndroidUtilities.needShowPasscode() && !SharedConfig.isWaitingForPasscodeEnter) {
                 int popupFinal = popup;
                 AndroidUtilities.runOnUIThread(() -> {
                     popupMessages.addAll(0, popupArrayAdd);
@@ -1840,6 +1844,10 @@ public class NotificationsController extends BaseController implements Notificat
             if (!UserConfig.getInstance(a).isClientActivated()) {
                 continue;
             }
+            // Novagram: a hidden account counts in no launcher badge.
+            if (org.fenixuz.hidden.HiddenAccounts.isHidden(a)) {
+                continue;
+            }
             if (!SharedConfig.showNotificationsForAllAccounts && UserConfig.selectedAccount != a) {
                 continue;
             }
@@ -1910,6 +1918,35 @@ public class NotificationsController extends BaseController implements Notificat
 
     public void updateBadge() {
         notificationsQueue.postRunnable(() -> setBadge(getTotalAllUnreadCount()));
+    }
+
+    /**
+     * Novagram: the account was hidden or shown again. A hidden account sends no notifications (canAccountNotify) and
+     * counts in no badge; hiding it also removes its notifications and its notification categories, which the system
+     * settings list under the user's name. Shown again, the categories come back with its next notification.
+     */
+    public void onHiddenChanged(boolean hidden) {
+        notificationsQueue.postRunnable(() -> {
+            if (hidden) {
+                dismissNotification();
+                deleteChannelGroups();
+            }
+            setBadge(getTotalAllUnreadCount());
+        });
+    }
+
+    private void deleteChannelGroups() {
+        channelGroupsCreated = false;
+        if (Build.VERSION.SDK_INT < 26) {
+            return;
+        }
+        try {
+            for (String group : new String[]{"channels", "groups", "private", "stories", "reactions", "other"}) {
+                systemNotificationManager.deleteNotificationChannelGroup(group + currentAccount);
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 
     private void setBadge(int count) {
@@ -4237,8 +4274,13 @@ public class NotificationsController extends BaseController implements Notificat
         return MessagesController.getGlobalNotificationsSettings().getBoolean(getAccountNotificationsKey(account), true);
     }
 
+    /** Novagram: whether [account] may notify at all: its switch is on and it is not a hidden account. */
+    public static boolean canAccountNotify(int account) {
+        return isAccountNotificationsEnabled(account) && !org.fenixuz.hidden.HiddenAccounts.isHidden(account);
+    }
+
     private void showOrUpdateNotification(boolean notifyAboutLast) {
-        if (!getUserConfig().isClientActivated() || pushMessages.isEmpty() && storyPushMessages.isEmpty() || !SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount || !isAccountNotificationsEnabled(currentAccount)) {
+        if (!getUserConfig().isClientActivated() || pushMessages.isEmpty() && storyPushMessages.isEmpty() || !SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount || !canAccountNotify(currentAccount)) {
             dismissNotification();
             return;
         }
@@ -4406,7 +4448,7 @@ public class NotificationsController extends BaseController implements Notificat
 
             String detailText;
             if (allowSummary) {
-                if (UserConfig.getActivatedAccountsCount() > 1) {
+                if (org.fenixuz.hidden.HiddenAccounts.listedCount() > 1) {
                     if (pushDialogs.size() == 1) {
                         detailText = UserObject.getFirstName(getUserConfig().getCurrentUser());
                     } else {

@@ -7699,7 +7699,8 @@ public class AlertsCreator {
     }
 
     public static AlertDialog createAccountSelectDialog(Activity parentActivity, final AccountSelectDelegate delegate) {
-        if (UserConfig.getActivatedAccountsCount() < 2) {
+        // Novagram: hidden accounts aren't offered (the callers check the same count).
+        if (org.fenixuz.hidden.HiddenAccounts.listedCount() < 2) {
             return null;
         }
 
@@ -7711,7 +7712,7 @@ public class AlertsCreator {
         linearLayout.setOrientation(LinearLayout.VERTICAL);
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             TLRPC.User u = UserConfig.getInstance(a).getCurrentUser();
-            if (u != null) {
+            if (u != null && org.fenixuz.hidden.HiddenAccounts.isListed(a)) {
                 AccountSelectCell cell = new AccountSelectCell(parentActivity, false);
                 cell.setAccount(a, false);
                 cell.setPadding(dp(14), 0, dp(14), 0);

@@ -146,8 +146,8 @@ public class VoIPGroupNotification {
             return;
         }
         if (MessagesController.getInstance(account).callRequestsDisabled) return;
-        // Novagram: also honour the per-account notification switch for group/conference call invites.
-        if (!NotificationsController.isAccountNotificationsEnabled(account)) return;
+        // Novagram: also honour the per-account notification switch, and hidden accounts, for group/conference call invites.
+        if (!NotificationsController.canAccountNotify(account)) return;
         if (ignoreCalls != null && ignoreCalls.contains(msg_id))
             return;
 

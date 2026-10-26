@@ -134,7 +134,8 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
     }
 
     public void onDataSetChanged() {
-        if (accountInstance == null || !accountInstance.getUserConfig().isClientActivated()) {
+        // Novagram: a hidden account's widget shows nothing.
+        if (accountInstance == null || !accountInstance.getUserConfig().isClientActivated() || org.fenixuz.hidden.HiddenAccounts.isHidden(accountInstance.getCurrentAccount())) {
             messages.clear();
             return;
         }

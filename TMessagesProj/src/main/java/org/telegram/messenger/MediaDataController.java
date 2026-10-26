@@ -5002,7 +5002,8 @@ public class MediaDataController extends BaseController {
             maxShortcuts = 5;
         }
         ArrayList<TLRPC.TL_topPeer> hintsFinal = new ArrayList<>();
-        if (SharedConfig.passcodeHash.length() <= 0) {
+        // Novagram: nor while a hidden account builds them: its chats would show on the launcher icon and in share sheets.
+        if (SharedConfig.passcodeHash.length() <= 0 && !org.fenixuz.hidden.HiddenAccounts.isHidden(currentAccount)) {
             for (int a = 0; a < hints.size(); a++) {
                 hintsFinal.add(hints.get(a));
                 if (hintsFinal.size() == maxShortcuts - 2) {

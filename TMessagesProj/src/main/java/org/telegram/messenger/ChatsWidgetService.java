@@ -386,7 +386,8 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
     public void onDataSetChanged() {
         dids.clear();
         messageObjects.clear();
-        if (accountInstance == null || !accountInstance.getUserConfig().isClientActivated()) {
+        // Novagram: a hidden account's widget shows nothing.
+        if (accountInstance == null || !accountInstance.getUserConfig().isClientActivated() || org.fenixuz.hidden.HiddenAccounts.isHidden(accountInstance.getCurrentAccount())) {
             return;
         }
         ArrayList<TLRPC.User> users = new ArrayList<>();

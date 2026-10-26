@@ -20551,6 +20551,8 @@ public class MessagesController extends BaseController implements NotificationCe
                             // This is the single funnel for 1-on-1 incoming calls (both the SDK33+
                             // pre-notification and the older VoIPService path branch off below this point),
                             // so one gate here silences the call — no ring, no heads-up — for a muted account.
+                            // A hidden account still rings, like in Graph: a call can't wait (on Android 13+ the call
+                            // screen doesn't name the account it came to). Its messages and group call invites stay silent.
                             if (!NotificationsController.isAccountNotificationsEnabled(currentAccount)) {
                                 if (BuildVars.LOGS_ENABLED) {
                                     FileLog.d("Novagram: ignoring incoming call for account " + currentAccount + " — notifications are off for it");

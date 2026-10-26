@@ -1,5 +1,6 @@
 package org.fenixuz.utils
 
+import org.fenixuz.hidden.HiddenAccounts
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ChatObject
 import org.telegram.messenger.MessagesController
@@ -44,7 +45,8 @@ object JoinAllAccounts {
         val targets = ArrayList<Int>()
         for (a in 0 until UserConfig.MAX_ACCOUNT_COUNT) {
             if (a == currentAccount) continue
-            if (UserConfig.getInstance(a).isClientActivated()) targets.add(a)
+            // Hidden accounts are left out: they'd join without the user seeing it, and the result would count them.
+            if (HiddenAccounts.isListed(a)) targets.add(a)
         }
         if (targets.isEmpty()) return false
 

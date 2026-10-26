@@ -2637,7 +2637,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                                 long wantUserId = Long.parseLong(accountUserID);
                                                 for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                                                     UserConfig cfg = UserConfig.getInstance(a);
-                                                    if (cfg.isClientActivated() && cfg.getClientUserId() == wantUserId) {
+                                                    if (cfg.isClientActivated() && cfg.getClientUserId() == wantUserId && !org.fenixuz.hidden.HiddenAccounts.isConcealed(a)) {
                                                         intentAccount[0] = a;
                                                         switchToAccount(a, true);
                                                         break;
@@ -2919,7 +2919,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                             int accountId = Utilities.parseInt(cursor.getString(cursor.getColumnIndex(ContactsContract.RawContacts.ACCOUNT_NAME)));
                                             for (int a = -1; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                                                 int i = a == -1 ? intentAccount[0] : a;
-                                                if ((a == -1 && MessagesStorage.getInstance(i).containsLocalDialog(userId)) || UserConfig.getInstance(i).getClientUserId() == accountId) {
+                                                if (!org.fenixuz.hidden.HiddenAccounts.isConcealed(i) && ((a == -1 && MessagesStorage.getInstance(i).containsLocalDialog(userId)) || UserConfig.getInstance(i).getClientUserId() == accountId)) {
                                                     intentAccount[0] = i;
                                                     switchToAccount(intentAccount[0], true);
                                                     break;
@@ -4058,7 +4058,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             progress.onCancel(() -> AndroidUtilities.cancelRunOnUIThread(runnable));
             AndroidUtilities.runOnUIThread(runnable, 7500);
             return;
-        } else if (state == 0 && UserConfig.getActivatedAccountsCount() >= 2 && auth != null) {
+        } else if (state == 0 && org.fenixuz.hidden.HiddenAccounts.listedCount() >= 2 && auth != null) {
             AlertsCreator.createAccountSelectDialog(this, account -> {
                 if (account != intentAccount) {
                     switchToAccount(account, true);

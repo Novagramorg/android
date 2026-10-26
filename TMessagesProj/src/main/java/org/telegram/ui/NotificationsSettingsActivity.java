@@ -166,7 +166,8 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
         MessagesController.getInstance(currentAccount).loadSignUpNotificationsSettings();
         loadExceptions(null);
 
-        if (UserConfig.getActivatedAccountsCount() > 1) {
+        // Novagram: hidden accounts don't count (they send no notifications anyway).
+        if (org.fenixuz.hidden.HiddenAccounts.listedCount() > 1) {
             accountsSectionRow = rowCount++;
             accountsAllRow = rowCount++;
             accountsInfoRow = rowCount++;
