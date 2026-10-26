@@ -437,14 +437,15 @@ object HiddenAccounts {
     }
 
     /**
-     * Asks for the code over [fragment] and runs [onAccepted] once it is right. Back closes the lock screen and leaves
+     * Asks for the code over [fragment] and runs [onAccepted] as soon as it is right, under the fading lock screen: a
+     * screen it opens (without animation) is what the lock screen reveals. Back closes the lock screen and leaves
      * [fragment] open. Returns false (and shows nothing) when no code has been set.
      */
     @JvmStatic
     fun askCode(fragment: BaseFragment, onAccepted: Runnable): Boolean {
         if (!hasCode()) return false
         val activity = fragment.parentActivity ?: return false
-        val dialog = SecretLockScreenDialog(fragment, activity, credential(), onAccepted, false)
+        val dialog = SecretLockScreenDialog(fragment, activity, credential(), onAccepted, false, SecretLockScreenDialog.UNLOCK_BEHIND)
         dialog.show()
         dialog.secretLockScreen.onShow(fingerprint, true, -1, -1, null, null)
         return true
@@ -478,7 +479,7 @@ object HiddenAccounts {
         }
         return askCode(fragment) {
             unlock()
-            fragment.presentFragment(HiddenAccountsListScreen())
+            fragment.presentFragment(HiddenAccountsListScreen(), false, true)
         }
     }
 }

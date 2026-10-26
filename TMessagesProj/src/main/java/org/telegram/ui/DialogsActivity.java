@@ -8697,10 +8697,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         // A locked chat must stay locked in the preview too — gate it behind the passcode first.
         if (org.fenixuz.utils.Password.INSTANCE.isLocked(dialogId)) {
+            // The preview opens the moment the code is right and the lock screen closes at once: no chat list in between.
+            // Back only closes the lock screen, like for any code prompt over an ordinary screen.
             SecretLockScreenDialog lock = new SecretLockScreenDialog(this, getParentActivity(), org.fenixuz.utils.Password.INSTANCE.credentialFor(dialogId), () -> {
                 ChatPreviewBottomSheet sheet = new ChatPreviewBottomSheet(getParentActivity(), dialogId, getParentActivity());
                 showDialog(sheet);
-            });
+            }, false, SecretLockScreenDialog.UNLOCK_THEN_CLOSE);
             lock.show();
             lock.getSecretLockScreen().onShow(true, true, -1, -1, null, null);
             if (haptic) {

@@ -21,20 +21,41 @@ import org.telegram.ui.LaunchActivity
 /**
  * Transparent full-screen dialog that hosts the [SecretLockScreen] over whatever fragment is open
  * (the secret folder, a locked chat, …). While shown, the app container is scaled up to mirror
- * Telegram's app-lock reveal animation. [onUnlocked] (optional) fires once the passcode is accepted.
+ * Telegram's app-lock reveal animation. [onUnlocked] (optional) fires once the passcode is accepted, at the moment
+ * [unlockMode] says.
  * Back closes [baseFragment] too when [finishOnBack] (a locked screen must not stay open behind it); otherwise it only
- * closes the lock screen (the hidden-accounts code prompt over an ordinary screen).
+ * closes the lock screen (a code prompt over an ordinary screen).
  */
 class SecretLockScreenDialog @JvmOverloads constructor(
     private val baseFragment: BaseFragment,
     context: Context,
     credential: LockCredential,
     private val onUnlocked: Runnable? = null,
-    private val finishOnBack: Boolean = true
+    private val finishOnBack: Boolean = true,
+    private val unlockMode: Int = UNLOCK_AFTER_HIDE
 ) : Dialog(context, R.style.TransparentDialog) {
+
+    companion object {
+        /** [onUnlocked] runs once the lock screen has faded out: the lock sits over the very screen it guards. */
+        const val UNLOCK_AFTER_HIDE = 0
+
+        /**
+         * [onUnlocked] runs as soon as the code is accepted and opens a screen, without animation, under the fading lock
+         * screen, which then reveals that screen instead of the one below for a moment.
+         */
+        const val UNLOCK_BEHIND = 1
+
+        /**
+         * [onUnlocked] runs as soon as the code is accepted and shows a dialog. That dialog would open above the fading
+         * lock screen, so the lock screen closes at once instead.
+         */
+        const val UNLOCK_THEN_CLOSE = 2
+    }
 
     private val windowView: FrameLayout = FrameLayout(context)
     val secretLockScreen: SecretLockScreen
+    private var unlockDone = false
+    private var closed = false
 
     init {
         if (Build.VERSION.SDK_INT >= 21) {
@@ -50,19 +71,29 @@ class SecretLockScreenDialog @JvmOverloads constructor(
         }
 
         secretLockScreen = SecretLockScreen(context, credential, object : SecretLockScreen.SecretLockScreenInterFace {
+            override fun onAccepted() {
+                super.onAccepted()
+                if (unlockMode == UNLOCK_AFTER_HIDE) return
+                unlockDone = true
+                onUnlocked?.run()
+                if (unlockMode == UNLOCK_THEN_CLOSE) {
+                    close()
+                }
+            }
+
             override fun onHidden() {
                 super.onHidden()
-                dismiss()
-                val drawerLayoutContainer = LaunchActivity.instance?.drawerLayoutContainer
-                if (drawerLayoutContainer != null) {
-                    drawerLayoutContainer.scaleX = 1f
-                    drawerLayoutContainer.scaleY = 1f
+                close()
+                if (!unlockDone) {
+                    unlockDone = true
+                    onUnlocked?.run()
                 }
-                onUnlocked?.run()
             }
 
             override fun onAnimationUpdate(open: Float) {
                 super.onAnimationUpdate(open)
+                // Once closed early (UNLOCK_THEN_CLOSE) the fade still runs: it must not scale the app again.
+                if (closed) return
                 val drawerLayoutContainer = LaunchActivity.instance?.drawerLayoutContainer ?: return
                 drawerLayoutContainer.scaleX = AndroidUtilities.lerp(1f, 1.25f, open)
                 drawerLayoutContainer.scaleY = AndroidUtilities.lerp(1f, 1.25f, open)
@@ -120,13 +151,19 @@ class SecretLockScreenDialog @JvmOverloads constructor(
             if (finishOnBack) {
                 baseFragment.finishFragment()
             } else {
-                dismiss()
-                val drawerLayoutContainer = LaunchActivity.instance?.drawerLayoutContainer
-                if (drawerLayoutContainer != null) {
-                    drawerLayoutContainer.scaleX = 1f
-                    drawerLayoutContainer.scaleY = 1f
-                }
+                close()
             }
+        }
+    }
+
+    /** Closes the lock screen and puts the app container back to its normal scale. */
+    private fun close() {
+        closed = true
+        dismiss()
+        val drawerLayoutContainer = LaunchActivity.instance?.drawerLayoutContainer
+        if (drawerLayoutContainer != null) {
+            drawerLayoutContainer.scaleX = 1f
+            drawerLayoutContainer.scaleY = 1f
         }
     }
 }

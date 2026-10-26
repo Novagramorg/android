@@ -144,7 +144,7 @@ class HiddenAccountsScreen @JvmOverloads constructor(private var pendingHide: In
             if (HiddenAccounts.hasCode()) {
                 HiddenAccounts.askCode(fragment) {
                     HiddenAccounts.unlock()
-                    fragment.presentFragment(HiddenAccountsScreen())
+                    fragment.presentFragment(HiddenAccountsScreen(), false, true)
                 }
             } else {
                 fragment.presentFragment(HiddenAccountsScreen())

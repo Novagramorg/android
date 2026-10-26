@@ -118,6 +118,10 @@ class SecretLockScreen(
 
     interface SecretLockScreenInterFace {
         fun onAnimationUpdate(open: Float) {}
+
+        /** The code (or fingerprint) was just accepted; the lock screen starts fading out right after. */
+        fun onAccepted() {}
+
         fun onHidden() {}
     }
 
@@ -546,6 +550,7 @@ class SecretLockScreen(
 
         setOnTouchListener(null)
         delegate?.didAcceptedPassword(this)
+        secretLockScreenInterFace.onAccepted()
 
         imageView.animatedDrawable.setCustomEndFrame(71)
         imageView.animatedDrawable.setCurrentFrame(37, false)
