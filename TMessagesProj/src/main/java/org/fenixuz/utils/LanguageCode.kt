@@ -1833,9 +1833,9 @@ object LanguageCode {
             "Akkauntlarni ro'yxatdan yashiring va kodingiz bilan oching.",
             "Скрывайте аккаунты из списка и открывайте их своим кодом."))
         titlesLanguages.add(TitleLanguages(430,
-            "To hide: press and hold an account.\nTo open: press and hold \"Add account\" and enter your code.",
-            "Yashirish: akkauntni bosib turing.\nOchish: «Akkaunt qo'shish»ni bosib turing va kodni kiriting.",
-            "Скрыть: нажмите и удерживайте аккаунт.\nОткрыть: нажмите и удерживайте «Добавить аккаунт» и введите код."))
+            "To open: press and hold \"Add account\".",
+            "Ochish: «Akkaunt qo'shish»ni bosib turing.",
+            "Открыть: нажмите и удерживайте «Добавить аккаунт»."))
         titlesLanguages.add(TitleLanguages(431, "Change code", "Kodni o'zgartirish", "Изменить код"))
         titlesLanguages.add(TitleLanguages(432, "At least one account must stay visible.", "Kamida bitta akkaunt ochiq qolishi kerak.", "Хотя бы один аккаунт должен оставаться видимым."))
         titlesLanguages.add(TitleLanguages(433, "Account hidden", "Akkaunt yashirildi", "Аккаунт скрыт"))

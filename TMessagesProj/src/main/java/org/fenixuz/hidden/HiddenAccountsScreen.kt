@@ -97,9 +97,9 @@ class HiddenAccountsScreen @JvmOverloads constructor(private var pendingHide: In
             items.add(UItem.asCheck(FINGERPRINT, LanguageCode.getMyTitles(439)).setChecked(HiddenAccounts.fingerprint))
         }
         items.add(UItem.asCheck(VIBRATE, LanguageCode.getMyTitles(446)).setChecked(HiddenAccounts.vibrate))
-        items.add(UItem.asShadow(LanguageCode.getMyTitles(435)))
+        items.add(UItem.asShadow(null))
         items.add(UItem.asCheck(HIDE_ON_BACKGROUND, LanguageCode.getMyTitles(454)).setChecked(HiddenAccounts.hideOnBackground))
-        items.add(UItem.asShadow(LanguageCode.getMyTitles(455)))
+        items.add(UItem.asShadow(null))
         items.add(UItem.asButton(TURN_OFF, LanguageCode.getMyTitles(440)).red())
         items.add(UItem.asShadow(null))
     }

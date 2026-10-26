@@ -98,7 +98,7 @@ class HiddenAccountsListScreen : UniversalFragment(), NotificationCenter.Notific
         for (account in hidden) {
             items.add(SettingsActivity.AccountCell.Factory.of(ACCOUNT_BASE + account, account))
         }
-        items.add(UItem.asShadow(LanguageCode.getMyTitles(448)))
+        items.add(UItem.asShadow(null))
     }
 
     private fun emptyView(): View {
