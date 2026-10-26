@@ -609,8 +609,10 @@ class SecretPasscodeScreen(
         if (passwordType == SecretPasswordType.CHANGE) {
             descriptionTextSwitcher?.setText(LocaleController.getString(R.string.EnterYourPasscodeInfo), animate)
         } else if (passcodeSetStep == 0) {
+            val pin = currentPasswordType == SharedConfig.PASSCODE_TYPE_PIN
             descriptionTextSwitcher?.setText(
-                LocaleController.getString(if (currentPasswordType == SharedConfig.PASSCODE_TYPE_PIN) R.string.CreatePasscodeInfoPIN else R.string.CreatePasscodeInfoPassword),
+                editor.texts?.let { if (pin) it.createPin else it.createPassword }
+                    ?: LocaleController.getString(if (pin) R.string.CreatePasscodeInfoPIN else R.string.CreatePasscodeInfoPassword),
                 animate
             )
         }
@@ -717,7 +719,7 @@ class SecretPasscodeScreen(
 
         titleTextView!!.text = LocaleController.getString(R.string.ConfirmCreatePasscode)
         descriptionTextSwitcher!!.setText(
-            AndroidUtilities.replaceTags(LocaleController.getString(R.string.PasscodeReinstallNotice))
+            editor.texts?.forgotCode ?: AndroidUtilities.replaceTags(LocaleController.getString(R.string.PasscodeReinstallNotice))
         )
         firstPassword = if (isPinCode()) codeFieldContainer!!.code else passwordEditText!!.text.toString()
         passwordEditText!!.setText("")

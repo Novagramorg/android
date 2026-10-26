@@ -8,6 +8,7 @@ import android.text.SpannableStringBuilder
 import android.util.Base64
 import org.fenixuz.ui.lock.LockCredential
 import org.fenixuz.ui.lock.LockEditor
+import org.fenixuz.ui.lock.LockTexts
 import org.fenixuz.ui.secret_chat.SecretLockScreenDialog
 import org.fenixuz.utils.LanguageCode
 import org.fenixuz.utils.Password
@@ -416,6 +417,7 @@ object HiddenAccounts {
         override val fingerPrint: Boolean get() = fingerprint && Password.isFingerprintHardwareAvailable()
         override val vibrate: Boolean get() = HiddenAccounts.vibrate
         override fun check(input: String): Boolean = checkCode(input)
+        override val texts: LockTexts get() = lockTexts()
     }
 
     /** For the code creation screen. [onSaved] runs once a new code is stored. */
@@ -434,7 +436,19 @@ object HiddenAccounts {
 
         // Turning the feature off goes through [disable] (the settings screen), not the code screen.
         override fun remove() = Unit
+
+        override val texts: LockTexts get() = lockTexts()
     }
+
+    /** The lock screens' wording for hidden accounts: Telegram's speaks of unlocking the app and reinstalling it. */
+    private fun lockTexts() = LockTexts(
+        title = LanguageCode.getMyTitles(428),
+        enterCode = LanguageCode.getMyTitles(450),
+        enterCodeOrFingerprint = LanguageCode.getMyTitles(451),
+        createPin = LanguageCode.getMyTitles(452),
+        createPassword = LanguageCode.getMyTitles(453),
+        forgotCode = LanguageCode.getMyTitles(435),
+    )
 
     /**
      * Asks for the code over [fragment] and runs [onAccepted] as soon as it is right, under the fading lock screen: a

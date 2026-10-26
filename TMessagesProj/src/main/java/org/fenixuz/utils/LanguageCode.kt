@@ -1868,6 +1868,19 @@ object LanguageCode {
             "Bosing: akkauntga o'tish. Bosib turing: ro'yxatga qaytarish.",
             "Нажмите: открыть аккаунт. Нажмите и удерживайте: вернуть в список."))
         titlesLanguages.add(TitleLanguages(449, "Hidden accounts settings", "Yashirin akkauntlar sozlamalari", "Настройки скрытых аккаунтов"))
+        titlesLanguages.add(TitleLanguages(450, "Enter the code", "Kodni kiriting", "Введите код"))
+        titlesLanguages.add(TitleLanguages(451,
+            "Enter the code or use your fingerprint",
+            "Kodni kiriting yoki barmoq izidan foydalaning",
+            "Введите код или используйте отпечаток пальца"))
+        titlesLanguages.add(TitleLanguages(452,
+            "Enter any 4 digits. You'll open hidden accounts with them.",
+            "Istalgan 4 ta raqam kiriting. Yashirin akkauntlarni shu kod bilan ochasiz.",
+            "Введите любые 4 цифры. Ими вы будете открывать скрытые аккаунты."))
+        titlesLanguages.add(TitleLanguages(453,
+            "Enter a password. You'll open hidden accounts with it.",
+            "Parol kiriting. Yashirin akkauntlarni shu parol bilan ochasiz.",
+            "Введите пароль. Им вы будете открывать скрытые аккаунты."))
     }
 
     /**

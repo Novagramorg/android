@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.gson.Gson
 import org.fenixuz.ui.lock.LockCredential
 import org.fenixuz.ui.lock.LockEditor
+import org.fenixuz.ui.lock.LockTexts
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.ContactsController
 import org.telegram.messenger.MessagesController
@@ -77,6 +78,7 @@ object SecretPassword {
         // per-setup flag, which stayed false, so the secret folder never showed fingerprint at all.
         override val fingerPrint: Boolean get() = org.fenixuz.utils.Password.isFingerprintHardwareAvailable()
         override fun check(input: String): Boolean = checkPassword(input)
+        override val texts: LockTexts? get() = null
     }
 
     /** Adapts this store to the shared passcode-creation screen. */
@@ -87,6 +89,7 @@ object SecretPassword {
         override fun check(input: String): Boolean = checkPassword(input)
         override fun save(password: String, type: Int, fingerPrint: Boolean) = changePassword(password, type, fingerPrint)
         override fun remove() = removePassword()
+        override val texts: LockTexts? get() = null
     }
 
     // endregion

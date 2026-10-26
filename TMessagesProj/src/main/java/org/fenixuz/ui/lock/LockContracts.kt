@@ -19,7 +19,31 @@ interface LockCredential {
 
     /** Whether the lock screen vibrates on key presses and on a wrong passcode. */
     val vibrate: Boolean get() = true
+
+    /**
+     * The feature's own wording for the lock screen, or null for Telegram's. No default on purpose, here and in
+     * [LockEditor]: every implementor states it, so a change here always recompiles them (a default member once left
+     * implementors stale after an incremental build, and they crashed with AbstractMethodError).
+     */
+    val texts: LockTexts?
 }
+
+/**
+ * A feature's own wording for the lock screens, instead of Telegram's app-lock texts ("Unlock to use Novagram",
+ * "you'll need to reinstall the app"…), which are wrong for a lock inside the app.
+ */
+class LockTexts(
+    /** Lock screen title, also the fingerprint prompt's. */
+    val title: String,
+    /** The line under the lock screen title, without and with fingerprint unlock. */
+    val enterCode: String,
+    val enterCodeOrFingerprint: String,
+    /** Code creation: the line under the title, for a PIN and for a password. */
+    val createPin: String,
+    val createPassword: String,
+    /** Code creation, second step: what to do if the code is forgotten. */
+    val forgotCode: String,
+)
 
 /** What the passcode-creation screen needs to read/write a passcode for one feature. */
 interface LockEditor {
@@ -36,4 +60,7 @@ interface LockEditor {
 
     /** Remove the passcode (used by the "turn off" / disable flow). */
     fun remove()
+
+    /** The feature's own wording for the code creation screen, or null for Telegram's. See [LockCredential.texts]. */
+    val texts: LockTexts?
 }

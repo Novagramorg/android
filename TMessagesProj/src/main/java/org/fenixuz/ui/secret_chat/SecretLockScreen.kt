@@ -767,7 +767,7 @@ class SecretLockScreen(
                             }
                         })
                     val promptInfo = PromptInfo.Builder()
-                        .setTitle(LocaleController.getString(R.string.UnlockToUse))
+                        .setTitle(credential.texts?.title ?: LocaleController.getString(R.string.UnlockToUse))
                         .setNegativeButtonText(LocaleController.getString(R.string.UsePIN))
                         .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                         .build()
@@ -830,8 +830,8 @@ class SecretLockScreen(
         if (type == SharedConfig.PASSCODE_TYPE_PASSWORD) {
             fingerprintImage.visibility = fingerprintView!!.visibility
         }
-        subtitleView.text =
-            LocaleController.getString(if (hasFingerprint) R.string.EnterPINorFingerprint else R.string.EnterPIN)
+        subtitleView.text = credential.texts?.let { if (hasFingerprint) it.enterCodeOrFingerprint else it.enterCode }
+            ?: LocaleController.getString(if (hasFingerprint) R.string.EnterPINorFingerprint else R.string.EnterPIN)
     }
 
     @JvmOverloads
@@ -884,7 +884,7 @@ class SecretLockScreen(
         backgroundFrameLayout.setBackgroundColor(0x22000000)
         (backgroundDrawable as MotionBackgroundDrawable).setParentView(backgroundFrameLayout)
 
-        passcodeTextView.text = LocaleController.getString(R.string.AppLocked)
+        passcodeTextView.text = credential.texts?.title ?: LocaleController.getString(R.string.AppLocked)
 
         if (type == SharedConfig.PASSCODE_TYPE_PIN) {
             if (retryTextView.visibility != VISIBLE) {
@@ -1391,7 +1391,7 @@ class SecretLockScreen(
         title.typeface = AndroidUtilities.bold()
         title.gravity = Gravity.CENTER_HORIZONTAL
         title.setTextColor(-0x1)
-        title.text = LocaleController.getString(R.string.UnlockToUse)
+        title.text = credential.texts?.title ?: LocaleController.getString(R.string.UnlockToUse)
         numbersTitleContainer.addView(title, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT.toFloat(), Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0f, 0f, 0f, 0f))
 
         subtitleView = TextView(context)
@@ -1399,7 +1399,7 @@ class SecretLockScreen(
         // Novagram: centered like the title — the Uzbek text wraps to two lines and the second line hugged the left edge
         subtitleView.gravity = Gravity.CENTER_HORIZONTAL
         subtitleView.setTextColor(-0x1)
-        subtitleView.text = LocaleController.getString(R.string.EnterPINorFingerprint)
+        subtitleView.text = credential.texts?.enterCodeOrFingerprint ?: LocaleController.getString(R.string.EnterPINorFingerprint)
         numbersTitleContainer.addView(subtitleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT.toFloat(), Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0f, 40f, 0f, 0f))
 
         numberFrameLayouts = ArrayList(12)

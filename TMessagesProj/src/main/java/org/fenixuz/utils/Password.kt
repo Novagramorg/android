@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.fenixuz.ui.lock.LockCredential
 import org.fenixuz.ui.lock.LockEditor
+import org.fenixuz.ui.lock.LockTexts
 import org.telegram.messenger.ApplicationLoader
 
 /**
@@ -189,12 +190,14 @@ object Password {
                 // No per-chat or global opt-in — the passcode always remains as the fallback.
                 override val fingerPrint: Boolean get() = isFingerprintHardwareAvailable()
                 override fun check(input: String): Boolean = individual.password == input
+                override val texts: LockTexts? get() = null
             }
         } else {
             object : LockCredential {
                 override val type: Int? get() = getCommonPassword()?.type
                 override val fingerPrint: Boolean get() = isFingerprintHardwareAvailable()
                 override fun check(input: String): Boolean = checkCommon(input)
+                override val texts: LockTexts? get() = null
             }
         }
     }
@@ -214,6 +217,7 @@ object Password {
             addCommonLock(dialogId)
         }
         override fun remove() = removeEverything()
+        override val texts: LockTexts? get() = null
     }
 
     /**
@@ -229,6 +233,7 @@ object Password {
             addIndividualLock(dialogId, password, type, fingerPrint)
         }
         override fun remove() = unlock(dialogId)
+        override val texts: LockTexts? get() = null
     }
 
     /**
@@ -246,6 +251,7 @@ object Password {
             changeCommonPassword(password, type, fingerPrint)
         }
         override fun remove() = removeEverything()
+        override val texts: LockTexts? get() = null
     }
 
     // endregion
