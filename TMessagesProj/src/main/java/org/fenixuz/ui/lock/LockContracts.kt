@@ -43,6 +43,8 @@ class LockTexts(
     val createPassword: String,
     /** Code creation, second step: what to do if the code is forgotten. */
     val forgotCode: String,
+    /** Turning the lock off, which asks for the current code first: the line under the title. Null for Telegram's. */
+    val changeInfo: String? = null,
 )
 
 /** What the passcode-creation screen needs to read/write a passcode for one feature. */

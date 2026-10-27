@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import org.fenixuz.ui.lock.LockCredential
 import org.fenixuz.ui.lock.LockEditor
 import org.fenixuz.ui.lock.LockTexts
+import org.fenixuz.utils.LanguageCode
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.ContactsController
 import org.telegram.messenger.MessagesController
@@ -78,7 +79,7 @@ object SecretPassword {
         // per-setup flag, which stayed false, so the secret folder never showed fingerprint at all.
         override val fingerPrint: Boolean get() = org.fenixuz.utils.Password.isFingerprintHardwareAvailable()
         override fun check(input: String): Boolean = checkPassword(input)
-        override val texts: LockTexts? get() = null
+        override val texts: LockTexts get() = lockTexts()
     }
 
     /** Adapts this store to the shared passcode-creation screen. */
@@ -89,8 +90,19 @@ object SecretPassword {
         override fun check(input: String): Boolean = checkPassword(input)
         override fun save(password: String, type: Int, fingerPrint: Boolean) = changePassword(password, type, fingerPrint)
         override fun remove() = removePassword()
-        override val texts: LockTexts? get() = null
+        override val texts: LockTexts get() = lockTexts()
     }
+
+    /** The lock screens' wording for the secret folder: Telegram's speaks of unlocking the app and reinstalling it. */
+    private fun lockTexts() = LockTexts(
+        title = LanguageCode.getMyTitles(213),
+        enterCode = LanguageCode.getMyTitles(450),
+        enterCodeOrFingerprint = LanguageCode.getMyTitles(451),
+        createPin = LanguageCode.getMyTitles(463),
+        createPassword = LanguageCode.getMyTitles(464),
+        forgotCode = LanguageCode.getMyTitles(465),
+        changeInfo = LanguageCode.getMyTitles(466),
+    )
 
     // endregion
 

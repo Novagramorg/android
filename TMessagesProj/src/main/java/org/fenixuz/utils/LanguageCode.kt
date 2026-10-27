@@ -1887,6 +1887,43 @@ object LanguageCode {
             "Yoqiq bo'lsa, yashirin akkauntlar ilovadan chiqqaningizdan 30 soniya o'tib yoki ekran o'chganda yopiladi. O'chiq bo'lsa, ular ochiq qoladi, ilova qayta ishga tushganda ham. Ularni yashirin akkauntlar ro'yxatidagi qulf tugmasi bilan yopasiz.",
             "Если включено, скрытые аккаунты закрываются через 30 секунд после выхода из приложения или при выключении экрана. Если выключено, они остаются открытыми, даже после перезапуска, пока вы не закроете их кнопкой замка в списке скрытых аккаунтов."))
         titlesLanguages.add(TitleLanguages(456, "Lock hidden accounts", "Yashirin akkauntlarni yopish", "Закрыть скрытые аккаунты"))
+        titlesLanguages.add(TitleLanguages(457, "Chat is locked", "Suhbat qulflangan", "Чат заблокирован"))
+        titlesLanguages.add(TitleLanguages(458,
+            "Enter any 4 digits. You'll open locked chats with them.",
+            "Istalgan 4 ta raqam kiriting. Qulflangan suhbatlarni shu kod bilan ochasiz.",
+            "Введите любые 4 цифры. Ими вы будете открывать заблокированные чаты."))
+        titlesLanguages.add(TitleLanguages(459,
+            "Enter a password. You'll open locked chats with it.",
+            "Parol kiriting. Qulflangan suhbatlarni shu parol bilan ochasiz.",
+            "Введите пароль. Им вы будете открывать заблокированные чаты."))
+        titlesLanguages.add(TitleLanguages(460,
+            "Enter any 4 digits. You'll open this chat with them.",
+            "Istalgan 4 ta raqam kiriting. Bu suhbatni shu kod bilan ochasiz.",
+            "Введите любые 4 цифры. Ими вы будете открывать этот чат."))
+        titlesLanguages.add(TitleLanguages(461,
+            "Enter a password. You'll open this chat with it.",
+            "Parol kiriting. Bu suhbatni shu parol bilan ochasiz.",
+            "Введите пароль. Им вы будете открывать этот чат."))
+        titlesLanguages.add(TitleLanguages(462,
+            "Don't forget the code: a locked chat opens only with it.",
+            "Kodni unutmang: qulflangan suhbat faqat shu kod bilan ochiladi.",
+            "Не забудьте код: заблокированный чат открывается только им."))
+        titlesLanguages.add(TitleLanguages(463,
+            "Enter any 4 digits. You'll open Secret Chat with them.",
+            "Istalgan 4 ta raqam kiriting. Yashirin suhbatni shu kod bilan ochasiz.",
+            "Введите любые 4 цифры. Ими вы будете открывать секретный чат."))
+        titlesLanguages.add(TitleLanguages(464,
+            "Enter a password. You'll open Secret Chat with it.",
+            "Parol kiriting. Yashirin suhbatni shu parol bilan ochasiz.",
+            "Введите пароль. Им вы будете открывать секретный чат."))
+        titlesLanguages.add(TitleLanguages(465,
+            "Don't forget the code: Secret Chat opens only with it.",
+            "Kodni unutmang: yashirin suhbat faqat shu kod bilan ochiladi.",
+            "Не забудьте код: секретный чат открывается только им."))
+        titlesLanguages.add(TitleLanguages(466,
+            "Enter your current code to turn off Secret Chat.",
+            "Yashirin suhbatni o'chirish uchun hozirgi kodni kiriting.",
+            "Введите текущий код, чтобы отключить секретный чат."))
     }
 
     /**

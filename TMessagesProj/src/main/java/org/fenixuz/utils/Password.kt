@@ -190,14 +190,14 @@ object Password {
                 // No per-chat or global opt-in — the passcode always remains as the fallback.
                 override val fingerPrint: Boolean get() = isFingerprintHardwareAvailable()
                 override fun check(input: String): Boolean = individual.password == input
-                override val texts: LockTexts? get() = null
+                override val texts: LockTexts get() = lockTexts(individual = true)
             }
         } else {
             object : LockCredential {
                 override val type: Int? get() = getCommonPassword()?.type
                 override val fingerPrint: Boolean get() = isFingerprintHardwareAvailable()
                 override fun check(input: String): Boolean = checkCommon(input)
-                override val texts: LockTexts? get() = null
+                override val texts: LockTexts get() = lockTexts(individual = false)
             }
         }
     }
@@ -217,7 +217,7 @@ object Password {
             addCommonLock(dialogId)
         }
         override fun remove() = removeEverything()
-        override val texts: LockTexts? get() = null
+        override val texts: LockTexts get() = lockTexts(individual = false)
     }
 
     /**
@@ -233,7 +233,7 @@ object Password {
             addIndividualLock(dialogId, password, type, fingerPrint)
         }
         override fun remove() = unlock(dialogId)
-        override val texts: LockTexts? get() = null
+        override val texts: LockTexts get() = lockTexts(individual = true)
     }
 
     /**
@@ -251,8 +251,21 @@ object Password {
             changeCommonPassword(password, type, fingerPrint)
         }
         override fun remove() = removeEverything()
-        override val texts: LockTexts? get() = null
+        override val texts: LockTexts get() = lockTexts(individual = false)
     }
+
+    /**
+     * The lock screens' wording for locked chats: Telegram's speaks of unlocking the app and of reinstalling it. A chat
+     * on its own code ([individual]) is "this chat" when the code is created; the shared code opens all the others.
+     */
+    private fun lockTexts(individual: Boolean) = LockTexts(
+        title = LanguageCode.getMyTitles(457),
+        enterCode = LanguageCode.getMyTitles(450),
+        enterCodeOrFingerprint = LanguageCode.getMyTitles(451),
+        createPin = LanguageCode.getMyTitles(if (individual) 460 else 458),
+        createPassword = LanguageCode.getMyTitles(if (individual) 461 else 459),
+        forgotCode = LanguageCode.getMyTitles(462),
+    )
 
     // endregion
 }

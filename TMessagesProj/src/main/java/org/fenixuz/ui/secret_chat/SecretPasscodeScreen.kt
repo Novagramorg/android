@@ -607,7 +607,7 @@ class SecretPasscodeScreen(
     private fun updateFields() {
         val animate = !(descriptionTextSwitcher?.currentView?.let { it as? TextView }?.text.isNullOrEmpty())
         if (passwordType == SecretPasswordType.CHANGE) {
-            descriptionTextSwitcher?.setText(LocaleController.getString(R.string.EnterYourPasscodeInfo), animate)
+            descriptionTextSwitcher?.setText(editor.texts?.changeInfo ?: LocaleController.getString(R.string.EnterYourPasscodeInfo), animate)
         } else if (passcodeSetStep == 0) {
             val pin = currentPasswordType == SharedConfig.PASSCODE_TYPE_PIN
             descriptionTextSwitcher?.setText(
