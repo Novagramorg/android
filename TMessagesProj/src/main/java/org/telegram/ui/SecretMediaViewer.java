@@ -73,6 +73,7 @@ import androidx.media3.common.C;
 import androidx.media3.exoplayer.ExoPlayer;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
@@ -1565,6 +1566,15 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             FileLog.e(e);
         }
 
+        // Novagram: a disappearing photo can be screenshotted, as on iPhone, where Telegram can't block it. Videos and GIFs
+        // stay protected: dropping the flag would also allow screen recording, which nobody could notice. Secret
+        // (end-to-end) chats stay protected too. Decided for every message, since the layout params are reused. The sender
+        // isn't told: Telegram's screenshot detector only runs below Android 6 (ChatActivity), and the user chose it so.
+        if (document == null && !DialogObject.isEncryptedDialog(messageObject.getDialogId())) {
+            windowLayoutParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
+        } else {
+            windowLayoutParams.flags |= WindowManager.LayoutParams.FLAG_SECURE;
+        }
         WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
         wm.addView(windowView, windowLayoutParams);
         secretDeleteTimer.invalidate();
