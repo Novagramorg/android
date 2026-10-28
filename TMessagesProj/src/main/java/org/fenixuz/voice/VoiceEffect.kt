@@ -6,7 +6,9 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
+import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -26,6 +28,11 @@ class VoicePreset(
     /** Shown before the name in the picker, as in Graph. */
     val emoji: String,
     val semitones: Float = 0f,
+    /**
+     * Where the formants (the resonances that make a voice sound like a man's, a woman's or a child's) end up, in
+     * semitones, apart from the pitch ([FormantWarp]); null leaves them moving with the pitch, the cartoon voice.
+     */
+    val formant: Float? = null,
     /** Tape speed: above 1 the voice is faster and thinner, below 1 slower and thicker; the message's length changes. */
     val rate: Float = 1f,
     /** Robot: the voice rebuilt as a monotone buzz at [robotHz], keeping its words (spectral, phases dropped). */
@@ -86,23 +93,23 @@ class VoicePreset(
             // modulation
             VoicePreset(14, 482, "\uD83C\uDF9B\uFE0F", vibratoHz = 6f, vibratoDepthMs = 2.5f),
             // child
-            VoicePreset(1, 469, "\uD83E\uDDD2", semitones = 7f),
+            VoicePreset(1, 469, "\uD83E\uDDD2", semitones = 12f, formant = 5.5f, gain = 1.1f),
             // mouse
             VoicePreset(7, 475, "\uD83D\uDC01", semitones = 14f),
             // man
-            VoicePreset(3, 471, "\uD83D\uDC68\u200D\uD83E\uDDB0", semitones = -5f),
+            VoicePreset(3, 471, "\uD83D\uDC68\u200D\uD83E\uDDB0", semitones = -6f, formant = -3f),
             // woman
-            VoicePreset(2, 470, "\uD83D\uDC69\u200D\uD83E\uDDB0", semitones = 4f),
+            VoicePreset(2, 470, "\uD83D\uDC69\u200D\uD83E\uDDB0", semitones = 9f, formant = 3.5f, gain = 1.1f),
             // monster
-            VoicePreset(6, 474, "\uD83D\uDC7A", semitones = -6f, drive = 2.5f, ringHz = 30f, ringMix = 0.25f, gain = 0.58f),
+            VoicePreset(6, 474, "\uD83D\uDC7A", semitones = -8f, formant = -5f, drive = 2.5f, ringHz = 30f, ringMix = 0.25f, gain = 0.54f),
             // echo
             VoicePreset(10, 478, "\uD83C\uDF99\uFE0F", echoMs = 300f, echoFeedback = 0.45f, echoMix = 0.5f, gain = 0.85f),
             // noise
             VoicePreset(15, 483, "\uD83D\uDCA5", noise = 0.02f),
-            // helium
-            VoicePreset(4, 472, "\uD83C\uDF88", semitones = 9f),
-            // hexafluoride
-            VoicePreset(5, 473, "\uD83C\uDF88", semitones = -10f),
+            // helium: as in the real gas, mostly the formants go up (sound is faster in it), the pitch only a little
+            VoicePreset(4, 472, "\uD83C\uDF88", semitones = 3f, formant = 9f, gain = 0.95f),
+            // hexafluoride: the other way, a heavy gas
+            VoicePreset(5, 473, "\uD83C\uDF88", semitones = -3f, formant = -7f, gain = 1.08f),
             // cave
             VoicePreset(12, 480, "\uD83D\uDD73\uFE0F", reverbMix = 0.3f, reverbRoom = 0.7f, reverbDamp = 0.3f, reverbPreDelayMs = 35f),
         )
@@ -123,6 +130,15 @@ class VoicePreset(
  * recording, used from one thread.
  */
 class VoiceEffect(val preset: VoicePreset, private val sampleRate: Int) {
+
+    // Sonic moves the formants along with the pitch, so the warp moves them only by what is left over.
+    private val warp = preset.formant?.let { FormantWarp(2f.pow((it - preset.semitones) / 12f), sampleRate) }
+
+    // The warp can raise peaks; it runs at half level and applyStages brings the level back.
+    private val inputScale = if (warp != null) 1f / WARP_HEADROOM else 1f
+
+    // What the warp gives for its first [FormantWarp.size] samples is the silence before the voice reached it.
+    private var warpLagLeft = warp?.size ?: 0
 
     // Pitch keeps the length; tape speed resamples to sampleRate / rate, so the same samples play faster or slower.
     private val sonic: Sonic? = if (preset.semitones != 0f || preset.rate != 1f) {
@@ -162,22 +178,26 @@ class VoiceEffect(val preset: VoicePreset, private val sampleRate: Int) {
     private fun msToSamples(ms: Float): Int = max(1, (sampleRate * ms / 1000f).toInt())
 
     fun process(input: ShortArray, count: Int): ShortArray {
+        val source = if (warp != null) warped(input, count) else input.copyOf(count)
         val pitched = if (sonic != null) {
-            sonic.queueInput(ShortBuffer.wrap(input, 0, count))
+            sonic.queueInput(ShortBuffer.wrap(source))
             takeSonicOutput(sonic)
         } else {
-            input.copyOf(count)
+            source
         }
         applyStages(pitched)
         return pitched
     }
 
     fun drain(): ShortArray {
+        // Silence through the warp first: it still holds the last of the voice.
+        val warpRest = if (warp != null) warped(ShortArray(warp.size), warp.size) else ShortArray(0)
         val rest = if (sonic != null) {
+            sonic.queueInput(ShortBuffer.wrap(warpRest))
             sonic.queueEndOfStream()
             takeSonicOutput(sonic)
         } else {
-            ShortArray(0)
+            warpRest
         }
         // Silence pushed through the stages brings out what they still hold; the echo or reverb part fades to nothing.
         val out = rest.copyOf(rest.size + spectralLag + fadeLength)
@@ -199,7 +219,7 @@ class VoiceEffect(val preset: VoicePreset, private val sampleRate: Int) {
 
     private fun applyStages(samples: ShortArray) {
         for (i in samples.indices) {
-            var x = samples[i] / 32768f
+            var x = samples[i] / 32768f * inputScale
 
             if (spectral != null) {
                 val wet = spectral.process(x)
@@ -272,6 +292,124 @@ class VoiceEffect(val preset: VoicePreset, private val sampleRate: Int) {
     private fun nextNoise(): Float {
         noiseSeed = xorshift(noiseSeed)
         return noiseSeed / 2147483648f
+    }
+
+    /** [count] samples of [input] through the warp, without its lag at the start. */
+    private fun warped(input: ShortArray, count: Int): ShortArray {
+        val warp = warp!!
+        val skip = min(warpLagLeft, count)
+        val out = ShortArray(count - skip)
+        for (i in 0 until count) {
+            val y = warp.process(input[i] / 32768f) * WARP_HEADROOM
+            if (i >= skip) {
+                out[i - skip] = (y * 32767f).coerceIn(-32768f, 32767f).toInt().toShort()
+            }
+        }
+        warpLagLeft -= skip
+        return out
+    }
+
+    private companion object {
+        const val WARP_HEADROOM = 0.5f
+    }
+}
+
+/**
+ * Moves the formants (the resonances of the throat and mouth) by [factor] along the frequency axis and leaves the pitch
+ * where it is. In each STFT frame the spectral envelope is the log spectrum smoothed through the cepstrum: only the
+ * quefrencies below [LIFTER_SECONDS] stay, shorter than the pitch period of any speaking voice, so the harmonics don't
+ * count and no pitch detection is needed. The frame is then filtered by the warped envelope over its own envelope.
+ * 75 % overlapping Hann windows; the output lags the input by [size] samples.
+ */
+private class FormantWarp(private val factor: Float, sampleRate: Int) {
+    val size = if (sampleRate > 32000) 2048 else 1024
+    private val hop = size / 4
+    private val half = size / 2
+    private val lifter = max(8, (sampleRate * LIFTER_SECONDS).roundToInt())
+    private val window = FloatArray(size) { (0.5 - 0.5 * cos(2.0 * PI * it / size)).toFloat() }
+    private val input = FloatArray(size)
+    private val output = FloatArray(size)
+    private val re = FloatArray(size)
+    private val im = FloatArray(size)
+    private val cepstrumRe = FloatArray(size)
+    private val cepstrumIm = FloatArray(size)
+    private val envelope = FloatArray(half + 1)
+    private val fft = Fft(size)
+    private var pos = 0
+    private var sinceFrame = 0
+
+    // Hann analysis and synthesis at 75 % overlap add up to 1.5.
+    private val scale = hop / (0.375f * size)
+
+    fun process(x: Float): Float {
+        input[pos] = x
+        val y = output[pos]
+        output[pos] = 0f
+        pos = (pos + 1) % size
+        if (++sinceFrame == hop) {
+            sinceFrame = 0
+            frame()
+        }
+        return y
+    }
+
+    private fun frame() {
+        for (i in 0 until size) {
+            re[i] = input[(pos + i) % size] * window[i]
+            im[i] = 0f
+        }
+        fft.transform(re, im, false)
+        // The log magnitude, an even real sequence, through the inverse transform: the cepstrum.
+        for (k in 0..half) {
+            val level = ln(hypot(re[k], im[k]) + 1e-9f)
+            cepstrumRe[k] = level
+            cepstrumIm[k] = 0f
+            if (k in 1 until half) {
+                cepstrumRe[size - k] = level
+                cepstrumIm[size - k] = 0f
+            }
+        }
+        fft.transform(cepstrumRe, cepstrumIm, true)
+        for (n in 0 until size) {
+            val quefrency = if (n <= half) n else size - n
+            cepstrumRe[n] *= when {
+                quefrency < lifter -> 1f
+                quefrency < lifter + LIFTER_TAPER -> (0.5 + 0.5 * cos(PI * (quefrency - lifter) / LIFTER_TAPER)).toFloat()
+                else -> 0f
+            }
+            cepstrumIm[n] = 0f
+        }
+        fft.transform(cepstrumRe, cepstrumIm, false)
+        for (k in 0..half) {
+            envelope[k] = cepstrumRe[k]
+        }
+        for (k in 0..half) {
+            // The envelope [factor] times lower down lands here: above 1 the formants go up.
+            val from = k / factor
+            val below = from.toInt()
+            val target = if (below >= half) envelope[half] else envelope[below] + (envelope[below + 1] - envelope[below]) * (from - below)
+            // Limited, so that a quiet valley or the noise between words isn't blown up.
+            val gain = exp((target - envelope[k]).coerceIn(-MAX_LOG_GAIN, MAX_LOG_GAIN))
+            re[k] *= gain
+            im[k] *= gain
+            if (k in 1 until half) {
+                re[size - k] = re[k]
+                im[size - k] = -im[k]
+            }
+        }
+        fft.transform(re, im, true)
+        for (i in 0 until size) {
+            output[(pos + i) % size] += re[i] * window[i] * scale
+        }
+    }
+
+    private companion object {
+        /** 1.5 ms: half the pitch period of a 330 Hz voice, so even a high voice's harmonics stay out of the envelope. */
+        const val LIFTER_SECONDS = 0.0015f
+        const val LIFTER_TAPER = 16
+
+        /** ln(8): at most 18 dB up or down. */
+        const val MAX_LOG_GAIN = 2.0794415f
     }
 }
 
