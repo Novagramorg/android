@@ -20,8 +20,9 @@ import org.telegram.ui.Components.LayoutHelper
 
 /**
  * Novagram voice changer: the list of effects, opened from the button above the pause button while a voice message is
- * recorded (as in Graph Messenger). One radio row per effect, in Graph's order with its emoji; "Record speed" asks for one
- * of four speeds. The choice is kept for the next recordings and applies from when the recording resumes.
+ * recorded (as in Graph Messenger), or from the Novagram settings. One radio row per effect, in Graph's order with its
+ * emoji; "Record speed" asks for one of four speeds. The choice is kept for the next recordings and applies from when
+ * the recording resumes.
  */
 object VoiceChangerSheet {
 

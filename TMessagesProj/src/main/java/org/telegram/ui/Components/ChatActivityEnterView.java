@@ -1255,6 +1255,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         public final RectF voiceChangerRect = new RectF();
         private boolean voiceChangerVisible;
         private boolean voiceChangerPressed;
+        // While an effect is on, the button fills with the send button's colour (as "once" does when it is on), so a
+        // changed voice is never sent by surprise.
+        private final AnimatedFloat voiceChangerOn = new AnimatedFloat(this, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
+        private final Paint voiceChangerOnPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private int voiceChangerIconColor;
+        private int voiceChangerIconDrawnColor;
 
         @Override
         public void setAlpha(float alpha) {
@@ -1766,6 +1772,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                     lockShadowDrawable.draw(canvas);
                     canvas.drawRoundRect(rectF, dpf2(18), dpf2(18), lockBackgroundPaint);
                 }
+                final float on = voiceChangerOn.set(org.fenixuz.voice.VoiceChanger.isOn());
+                if (on > 0) {
+                    voiceChangerOnPaint.setAlpha((int) (0xFF * on));
+                    canvas.drawCircle(rectF.centerX(), rectF.centerY(), dpf2(15) * on, voiceChangerOnPaint);
+                }
+                final int iconColor = ColorUtils.blendARGB(voiceChangerIconColor, 0xFFFFFFFF, on);
+                if (iconColor != voiceChangerIconDrawnColor) {
+                    voiceChangerIconDrawnColor = iconColor;
+                    voiceChangerDrawable.setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.SRC_IN));
+                }
                 final int inset = dp(7);
                 voiceChangerDrawable.setBounds((int) rectF.left + inset, (int) rectF.top + inset, (int) rectF.right - inset, (int) rectF.bottom - inset);
                 voiceChangerDrawable.draw(canvas);
@@ -1789,15 +1805,17 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (audioTimelineView != null) {
                 audioTimelineView.setPlaying(false);
             }
-            org.fenixuz.voice.VoiceChangerSheet.show(getContext(), resourcesProvider, pausedHere ? () -> {
-                // As long as the recording is still on screen (the pause button's own condition; recordingAudioVideo is
-                // already false while paused). The pause may still be joining the parts (seconds for a long message on
-                // a slow phone): recordQueue runs in order, so the resume simply follows it, as a quick second tap on
-                // the pause button would.
-                if (sendButtonVisible && MediaController.getInstance().isRecordingPaused()) {
+            org.fenixuz.voice.VoiceChangerSheet.show(getContext(), resourcesProvider, () -> {
+                // The button shows whether an effect is on now.
+                invalidate();
+                // Resumed only if it was this list that paused it, and as long as the recording is still on screen (the
+                // pause button's own condition; recordingAudioVideo is already false while paused). The pause may still
+                // be joining the parts (seconds for a long message on a slow phone): recordQueue runs in order, so the
+                // resume simply follows it, as a quick second tap on the pause button would.
+                if (pausedHere && sendButtonVisible && MediaController.getInstance().isRecordingPaused()) {
                     toggleVoiceRecordingPause();
                 }
-            } : null);
+            });
         }
 
         /** What the pause button does for a voice message, either way. */
@@ -1874,7 +1892,10 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             micDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
             vidDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
-            voiceChangerDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
+            voiceChangerIconColor = getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock);
+            voiceChangerIconDrawnColor = voiceChangerIconColor;
+            voiceChangerDrawable.setColorFilter(new PorterDuffColorFilter(voiceChangerIconColor, PorterDuff.Mode.SRC_IN));
+            voiceChangerOnPaint.setColor(getThemedColor(Theme.key_chat_messagePanelVoiceBackground));
         }
 
         private void scale(RectF rect, float s) {
@@ -2030,7 +2051,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 } else if (id == 5) {
                     rect.set((int) voiceChangerRect.left, (int) voiceChangerRect.top, (int) voiceChangerRect.right, (int) voiceChangerRect.bottom);
                     info.setBoundsInParent(rect);
-                    info.setText(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(467));
+                    info.setText(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(467) + ", " + org.fenixuz.voice.VoiceChanger.currentTitle());
                 }
             }
 

@@ -1,6 +1,7 @@
 package org.fenixuz.voice
 
 import java.nio.ShortBuffer
+import org.fenixuz.utils.LanguageCode
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -619,22 +620,34 @@ object VoiceChanger {
         get() = org.telegram.messenger.ApplicationLoader.applicationContext
             .getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
 
-    /** The chosen preset's id; [VoicePreset.OFF] records the voice as it is. */
+    // Read from the prefs once: the recording button asks on every frame it draws.
+    @Volatile
+    private var current: VoicePreset? = null
+
+    private fun current(): VoicePreset =
+        current ?: VoicePreset.byId(prefs.getInt(KEY_PRESET, VoicePreset.OFF)).also { current = it }
+
+    /** The chosen preset's id; [VoicePreset.OFF] records the voice as it is, and so does an id no preset has any more. */
     @JvmStatic
     var presetId: Int
-        get() = prefs.getInt(KEY_PRESET, VoicePreset.OFF)
+        get() = current().id
         set(value) {
+            current = VoicePreset.byId(value)
             prefs.edit().putInt(KEY_PRESET, value).apply()
         }
 
     @JvmStatic
     val isOn: Boolean
-        get() = presetId != VoicePreset.OFF
+        get() = current().id != VoicePreset.OFF
+
+    /** The chosen effect's name, as the settings row shows it: a speed by its own name ("Thick"), none as "Off". */
+    @JvmStatic
+    fun currentTitle(): String = LanguageCode.getMyTitles(current().titleId)
 
     /** A new effect for one recording, or null when the voice changer is off. */
     @JvmStatic
     fun newEffect(sampleRate: Int): VoiceEffect? {
-        val preset = VoicePreset.byId(presetId)
+        val preset = current()
         return if (preset.id == VoicePreset.OFF) null else VoiceEffect(preset, sampleRate)
     }
 }

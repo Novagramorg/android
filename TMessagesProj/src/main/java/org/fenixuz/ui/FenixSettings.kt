@@ -31,6 +31,8 @@ import org.fenixuz.utils.StoryDownload
 import org.fenixuz.utils.StoryUtil
 import org.fenixuz.utils.StrangerShield
 import org.fenixuz.utils.VoiceDictation
+import org.fenixuz.voice.VoiceChanger
+import org.fenixuz.voice.VoiceChangerSheet
 import org.fenixuz.utils.EditMessage
 import org.fenixuz.utils.DeletedMsg
 import org.fenixuz.utils.GhostVariable
@@ -99,6 +101,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val AVATAR_PROFILE = 32
     private val TIME_SECONDS = 33
     private val HIDDEN_ACCOUNTS = 34
+    private val VOICE_CHANGER = 35
 
     // Onboarding: a toolbar "?" replays the full feature tour; the short tour auto-runs once on first open.
     private val HELP_BUTTON = 1001
@@ -128,6 +131,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         REMINDER_ENABLED to "reminder",
         STRANGER_SHIELD to "protection_from_strangers",
         APK_SHIELD to "block_apk",
+        VOICE_CHANGER to "voice_changer",
         ROUND_CAMERA to "round_video_camera",
         ADMIN_FOLDERS to "admin_folders",
         AVATAR_PROFILE to "avatar_profile",
@@ -230,6 +234,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(STRANGER_SHIELD, 319, 320),
         step(APK_SHIELD, 378, 379),
         step(CONFIRM_STICKER, 190, 386),
+        step(VOICE_CHANGER, 467, 489),
         step(ROUND_CAMERA, 353, 354),
         step(VOICE_MIC, 381, 382),
         step(FOLDER_ICONS, 240, 241),
@@ -361,6 +366,12 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             UItem.asButtonCheck(CONFIRM_GIF, LanguageCode.getMyTitles(212), LanguageCode.getMyTitles(193))
                 .setChecked(ConfirmDialogsPref.confirmGif)
         )
+        items.add(UItem.asShadow(null))
+
+        // Voice changer: the same list as the button above the pause button while recording. Chosen here, the
+        // next voice message has the effect from its first word, with no pause in it to change it.
+        items.add(UItem.asHeader(LanguageCode.getMyTitles(488)))
+        items.add(ChoiceCell.Factory.of(VOICE_CHANGER, LanguageCode.getMyTitles(467), LanguageCode.getMyTitles(489), VoiceChanger.currentTitle()))
         items.add(UItem.asShadow(null))
 
         // Round video note camera — a persistent choice (front by default) used every time a round
@@ -542,6 +553,10 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
                 (view as NotificationsCheckCell).setChecked(ConfirmDialogsPref.confirmGif)
             }
             ROUND_CAMERA -> showRoundCameraPicker()
+            VOICE_CHANGER -> {
+                val context = parentActivity ?: return
+                VoiceChangerSheet.show(context, resourceProvider, Runnable { listView?.adapter?.update(true) })
+            }
             FOLDER_ICONS -> {
                 FolderIcons.setIconMode(!FolderIcons.isIconMode())
                 (view as NotificationsCheckCell).setChecked(FolderIcons.isIconMode())

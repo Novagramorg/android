@@ -1948,6 +1948,11 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(485, "Thick", "Yo'g'on", "Толсто"))
         titlesLanguages.add(TitleLanguages(486, "Thin", "Ingichka", "Тонко"))
         titlesLanguages.add(TitleLanguages(487, "Very thin", "Juda ingichka", "Очень тонко"))
+        titlesLanguages.add(TitleLanguages(488, "Voice messages", "Ovozli xabarlar", "Голосовые сообщения"))
+        titlesLanguages.add(TitleLanguages(489,
+            "Record voice messages in another voice: robot, woman, child and more. While recording, it is also in the button above the pause button.",
+            "Ovozli xabarni boshqa ovozda yozing: robot, ayol, bola va boshqalar. Yozish paytida pauza tugmasi ustidagi tugmada ham bor.",
+            "Записывайте голосовые другим голосом: робот, женщина, ребёнок и другие. Во время записи он есть и на кнопке над паузой."))
     }
 
     /**
