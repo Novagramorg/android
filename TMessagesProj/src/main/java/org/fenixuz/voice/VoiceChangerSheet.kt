@@ -20,15 +20,15 @@ import org.telegram.ui.Components.LayoutHelper
 
 /**
  * Novagram voice changer: the list of effects, opened from the button above the pause button while a voice message is
- * recorded (as in Graph Messenger), or from the Novagram settings. One radio row per effect, in Graph's order with its
- * emoji; "Record speed" asks for one of four speeds. The choice is kept for the next recordings and applies from when
- * the recording resumes.
+ * recorded (as in Graph Messenger), from the call screens, or from the Novagram settings. One radio row per effect, in
+ * Graph's order with its emoji; "Record speed" asks for one of four speeds. Voice messages and calls keep a choice each
+ * ([forCall]); calls have no speed row, as a live voice can't be played faster or slower.
  */
 object VoiceChangerSheet {
 
     /** [onClosed] runs once as the sheet starts to close, however it is closed (a pick, Back, a tap outside, a swipe). */
     @JvmStatic
-    fun show(context: Context, resourcesProvider: Theme.ResourcesProvider?, onClosed: Runnable?) {
+    fun show(context: Context, resourcesProvider: Theme.ResourcesProvider?, forCall: Boolean, onClosed: Runnable?) {
         val list = LinearLayout(context)
         list.orientation = LinearLayout.VERTICAL
         // As in Graph the sheet takes part of the screen, with the chat still visible above it; the rows scroll inside.
@@ -61,6 +61,7 @@ object VoiceChangerSheet {
 
         val cells = ArrayList<RadioColorCell>()
         for (row in VoicePreset.ROWS) {
+            if (forCall && row.id == VoicePreset.SPEED_ROW) continue
             val cell = RadioColorCell(context, resourcesProvider)
             cell.setPadding(AndroidUtilities.dp(4f), 0, AndroidUtilities.dp(4f), 0)
             cell.tag = row.id
@@ -69,18 +70,18 @@ object VoiceChangerSheet {
             cell.setOnClickListener {
                 if (row.id == VoicePreset.SPEED_ROW) {
                     askSpeed(context, resourcesProvider) {
-                        refresh(cells, true)
+                        refresh(cells, true, forCall)
                         sheet.dismiss()
                     }
                 } else {
-                    VoiceChanger.presetId = row.id
-                    refresh(cells, true)
+                    if (forCall) VoiceChanger.callPresetId = row.id else VoiceChanger.presetId = row.id
+                    refresh(cells, true, forCall)
                     // Long enough to see the radio button move.
                     AndroidUtilities.runOnUIThread({ sheet.dismiss() }, 150)
                 }
             }
         }
-        refresh(cells, false)
+        refresh(cells, false, forCall)
 
         // Telegram draws its emoji once they are loaded; until then a row shows a placeholder, so redraw on the signal.
         val emojiObserver = NotificationCenter.NotificationCenterDelegate { id, _, _ ->
@@ -108,8 +109,8 @@ object VoiceChangerSheet {
      * Ticks the chosen effect's row; the "Record speed" row also names the chosen speed under it. [animated] only moves
      * the radio buttons (after a tap), since setting the text resets them without animation.
      */
-    private fun refresh(cells: List<RadioColorCell>, animated: Boolean) {
-        val selected = VoiceChanger.presetId
+    private fun refresh(cells: List<RadioColorCell>, animated: Boolean, forCall: Boolean) {
+        val selected = if (forCall) VoiceChanger.callPresetId else VoiceChanger.presetId
         for (cell in cells) {
             val id = cell.tag as Int
             val checked = if (id == VoicePreset.SPEED_ROW) VoicePreset.isSpeed(selected) else id == selected

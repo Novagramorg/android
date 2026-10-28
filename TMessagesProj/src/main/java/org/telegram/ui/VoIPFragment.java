@@ -184,6 +184,8 @@ public class VoIPFragment implements
     private VoIPStatusTextView statusTextView;
     private ConferenceParticipantsView participantsView;
     private ImageView backIcon;
+    private ImageView voiceChangerIcon;
+    private final Paint voiceChangerLitPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private ImageView addIcon;
     private int speakerPhoneIconResId;
     private ImageView speakerPhoneIcon;
@@ -502,6 +504,7 @@ public class VoIPFragment implements
         ((FrameLayout.LayoutParams) buttonsLayout.getLayoutParams()).bottomMargin = lastInsets.getSystemWindowInsetBottom();
         ((FrameLayout.LayoutParams) acceptDeclineView.getLayoutParams()).bottomMargin = lastInsets.getSystemWindowInsetBottom();
         ((FrameLayout.LayoutParams) backIcon.getLayoutParams()).topMargin = lastInsets.getSystemWindowInsetTop();
+        ((FrameLayout.LayoutParams) voiceChangerIcon.getLayoutParams()).topMargin = dp(56) + lastInsets.getSystemWindowInsetTop();
         ((FrameLayout.LayoutParams) addIcon.getLayoutParams()).topMargin = lastInsets.getSystemWindowInsetTop();
         ((FrameLayout.LayoutParams) speakerPhoneIcon.getLayoutParams()).topMargin = dp(56) + lastInsets.getSystemWindowInsetTop();
         ((FrameLayout.LayoutParams) statusLayout.getLayoutParams()).topMargin = dp(135) + lastInsets.getSystemWindowInsetTop();
@@ -1173,6 +1176,32 @@ public class VoIPFragment implements
         frameLayout.addView(backIcon, LayoutHelper.createFrame(56, 56, Gravity.TOP | Gravity.LEFT));
         ScaleStateListAnimator.apply(backIcon);
 
+        // Novagram voice changer, as in Graph Messenger, which puts it at the top of the call screen: here under the
+        // minimize button, across from the speaker, as the top right already holds "add people". It shows and hides
+        // with the minimize button and has its ripple; while an effect is on, it is lit.
+        voiceChangerIcon = new ImageView(context) {
+            @Override
+            protected void onDraw(Canvas canvas) {
+                if (org.fenixuz.voice.VoiceChanger.isCallOn()) {
+                    // As big as the ripple (20 dp), not the whole 56 dp button, which touches the screen's edge.
+                    canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, dp(20), voiceChangerLitPaint);
+                }
+                super.onDraw(canvas);
+            }
+        };
+        voiceChangerLitPaint.setColor(ColorUtils.setAlphaComponent(Color.WHITE, (int) (255 * 0.25f)));
+        voiceChangerIcon.setBackground(Theme.createSelectorDrawable(ColorUtils.setAlphaComponent(Color.WHITE, (int) (255 * 0.3f))));
+        voiceChangerIcon.setImageResource(R.drawable.msg_voice_changer);
+        voiceChangerIcon.setPadding(dp(16), dp(16), dp(16), dp(16));
+        voiceChangerIcon.setContentDescription(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(467));
+        frameLayout.addView(voiceChangerIcon, LayoutHelper.createFrame(56, 56, Gravity.TOP | Gravity.LEFT, 0, 56, 0, 0));
+        ScaleStateListAnimator.apply(voiceChangerIcon);
+        voiceChangerIcon.setOnClickListener(view -> {
+            if (lockOnScreen) return;
+            startWaitingFoHideUi();
+            org.fenixuz.voice.VoiceChangerSheet.show(context, new DarkBlueThemeResourcesProvider(), true, this::updateVoiceChangerIcon);
+        });
+
         speakerPhoneIcon = new ImageView(context) {
             @Override
             public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
@@ -1231,6 +1260,7 @@ public class VoIPFragment implements
         });
         if (windowView.isLockOnScreen()) {
             backIcon.setVisibility(View.GONE);
+            voiceChangerIcon.setVisibility(View.GONE);
             addIcon.setVisibility(View.GONE);
         }
 
@@ -1485,6 +1515,7 @@ public class VoIPFragment implements
 
         speakerPhoneIcon.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         backIcon.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
+        voiceChangerIcon.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         addIcon.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         emojiLayout.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         statusLayout.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
@@ -1540,6 +1571,7 @@ public class VoIPFragment implements
             windowView.invalidate();
             Animator animator = createPiPTransition(true);
             backIcon.setAlpha(0f);
+            voiceChangerIcon.setAlpha(0f);
             addIcon.setAlpha(0f);
             emojiLayout.setAlpha(0f);
             statusLayout.setAlpha(0f);
@@ -1556,6 +1588,7 @@ public class VoIPFragment implements
 
                 speakerPhoneIcon.animate().setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
                 backIcon.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
+                voiceChangerIcon.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
                 addIcon.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
                 emojiLayout.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
                 statusLayout.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
@@ -1765,6 +1798,13 @@ public class VoIPFragment implements
         }
         previousState = currentState;
         updateViewState();
+    }
+
+    /** Novagram voice changer: redraws the button, which is lit while an effect is on for calls. */
+    private void updateVoiceChangerIcon() {
+        if (voiceChangerIcon != null) {
+            voiceChangerIcon.invalidate();
+        }
     }
 
     private void startWaitingFoHideUi() {
@@ -2073,6 +2113,13 @@ public class VoIPFragment implements
                 }
                 backIcon.animate().alpha(0f).start();
             }
+            if (showBack) {
+                voiceChangerIcon.setVisibility(View.VISIBLE);
+                voiceChangerIcon.animate().alpha(1f).start();
+            } else {
+                // Gone once faded out, so the invisible button can't be tapped.
+                voiceChangerIcon.animate().alpha(0f).withEndAction(() -> voiceChangerIcon.setVisibility(View.GONE)).start();
+            }
             if (showAdd) {
                 addIcon.animate().alpha(1f).start();
             } else {
@@ -2086,6 +2133,8 @@ public class VoIPFragment implements
         } else {
             backIcon.setVisibility(showBack ? View.VISIBLE : View.GONE);
             backIcon.setAlpha(showBack ? 1f : 0);
+            voiceChangerIcon.setVisibility(showBack ? View.VISIBLE : View.GONE);
+            voiceChangerIcon.setAlpha(showBack ? 1f : 0);
             addIcon.setVisibility(showAdd ? View.VISIBLE : View.GONE);
             addIcon.setAlpha(showAdd ? 1f : 0);
             notificationsLayout.setTranslationY(-AndroidUtilities.dp(16) - (uiVisible ? AndroidUtilities.dp(80) : 0));
@@ -2293,6 +2342,7 @@ public class VoIPFragment implements
             notificationsLayoutStartDelay = 150;
             speakerPhoneIcon.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             backIcon.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
+            voiceChangerIcon.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             addIcon.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             emojiLayout.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             callingUserTitle.animate().alpha(0).setDuration(150).translationY(-AndroidUtilities.dp(10)).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
@@ -2315,6 +2365,7 @@ public class VoIPFragment implements
             statusTextView.animate().alpha(1f).setDuration(150).translationY(0).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             speakerPhoneIcon.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             backIcon.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
+            voiceChangerIcon.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             addIcon.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             emojiLayout.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             buttonsLayout.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();

@@ -615,6 +615,7 @@ object VoiceChanger {
 
     private const val PREFS = "novagram_voice_changer"
     private const val KEY_PRESET = "preset"
+    private const val KEY_CALL_PRESET = "call_preset"
 
     private val prefs
         get() = org.telegram.messenger.ApplicationLoader.applicationContext
@@ -626,6 +627,15 @@ object VoiceChanger {
 
     private fun current(): VoicePreset =
         current ?: VoicePreset.byId(prefs.getInt(KEY_PRESET, VoicePreset.OFF)).also { current = it }
+
+    // Calls keep a choice of their own, as in Graph. A tape speed can't change a live voice, so it never is one.
+    @Volatile
+    private var currentCall: VoicePreset? = null
+
+    private fun currentCall(): VoicePreset =
+        currentCall ?: forCall(prefs.getInt(KEY_CALL_PRESET, VoicePreset.OFF)).also { currentCall = it }
+
+    private fun forCall(id: Int): VoicePreset = if (VoicePreset.isSpeed(id)) VoicePreset.byId(VoicePreset.OFF) else VoicePreset.byId(id)
 
     /** The chosen preset's id; [VoicePreset.OFF] records the voice as it is, and so does an id no preset has any more. */
     @JvmStatic
@@ -648,6 +658,29 @@ object VoiceChanger {
     @JvmStatic
     fun newEffect(sampleRate: Int): VoiceEffect? {
         val preset = current()
+        return if (preset.id == VoicePreset.OFF) null else VoiceEffect(preset, sampleRate)
+    }
+
+    /** The preset for calls; read by the call's audio thread every 10 ms, so it is cached. */
+    @JvmStatic
+    var callPresetId: Int
+        get() = currentCall().id
+        set(value) {
+            currentCall = forCall(value)
+            prefs.edit().putInt(KEY_CALL_PRESET, value).apply()
+        }
+
+    @JvmStatic
+    val isCallOn: Boolean
+        get() = currentCall().id != VoicePreset.OFF
+
+    @JvmStatic
+    fun callTitle(): String = LanguageCode.getMyTitles(currentCall().titleId)
+
+    /** A new effect for a call, or null when the voice changer is off for calls. */
+    @JvmStatic
+    fun newCallEffect(sampleRate: Int): VoiceEffect? {
+        val preset = currentCall()
         return if (preset.id == VoicePreset.OFF) null else VoiceEffect(preset, sampleRate)
     }
 }

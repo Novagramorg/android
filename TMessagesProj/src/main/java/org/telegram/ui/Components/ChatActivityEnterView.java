@@ -1805,7 +1805,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (audioTimelineView != null) {
                 audioTimelineView.setPlaying(false);
             }
-            org.fenixuz.voice.VoiceChangerSheet.show(getContext(), resourcesProvider, () -> {
+            org.fenixuz.voice.VoiceChangerSheet.show(getContext(), resourcesProvider, false, () -> {
                 // The button shows whether an effect is on now.
                 invalidate();
                 // Resumed only if it was this list that paused it, and as long as the recording is still on screen (the

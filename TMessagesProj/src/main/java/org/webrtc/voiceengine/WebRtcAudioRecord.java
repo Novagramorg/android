@@ -153,6 +153,9 @@ public class WebRtcAudioRecord {
    */
   private class AudioRecordThread extends Thread {
     private volatile boolean keepAlive = true;
+    // Novagram voice changer: the microphone only (capture type 1 records the screen's sound), in mono.
+    private final org.fenixuz.voice.CallVoiceChanger voiceChanger =
+        captureType != 1 && requestedChannels == 1 ? new org.fenixuz.voice.CallVoiceChanger(requestedSampleRate) : null;
 
     public AudioRecordThread(String name) {
       super(name);
@@ -175,6 +178,13 @@ public class WebRtcAudioRecord {
           deviceBytesRead = 0;
         }
         if (bytesRead == byteBuffer.capacity()) {
+          if (voiceChanger != null) {
+            try {
+              voiceChanger.process(byteBuffer, bytesRead);
+            } catch (Throwable e) {
+              FileLog.e(e);
+            }
+          }
           if (microphoneMute) {
             byteBuffer.clear();
             byteBuffer.put(emptyBytes);

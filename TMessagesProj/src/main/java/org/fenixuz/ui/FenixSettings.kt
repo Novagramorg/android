@@ -102,6 +102,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val TIME_SECONDS = 33
     private val HIDDEN_ACCOUNTS = 34
     private val VOICE_CHANGER = 35
+    private val VOICE_CHANGER_CALL = 36
 
     // Onboarding: a toolbar "?" replays the full feature tour; the short tour auto-runs once on first open.
     private val HELP_BUTTON = 1001
@@ -132,6 +133,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         STRANGER_SHIELD to "protection_from_strangers",
         APK_SHIELD to "block_apk",
         VOICE_CHANGER to "voice_changer",
+        VOICE_CHANGER_CALL to "voice_changer_call",
         ROUND_CAMERA to "round_video_camera",
         ADMIN_FOLDERS to "admin_folders",
         AVATAR_PROFILE to "avatar_profile",
@@ -235,6 +237,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(APK_SHIELD, 378, 379),
         step(CONFIRM_STICKER, 190, 386),
         step(VOICE_CHANGER, 467, 489),
+        step(VOICE_CHANGER_CALL, 490, 491),
         step(ROUND_CAMERA, 353, 354),
         step(VOICE_MIC, 381, 382),
         step(FOLDER_ICONS, 240, 241),
@@ -368,10 +371,12 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         )
         items.add(UItem.asShadow(null))
 
-        // Voice changer: the same list as the button above the pause button while recording. Chosen here, the
-        // next voice message has the effect from its first word, with no pause in it to change it.
-        items.add(UItem.asHeader(LanguageCode.getMyTitles(488)))
-        items.add(ChoiceCell.Factory.of(VOICE_CHANGER, LanguageCode.getMyTitles(467), LanguageCode.getMyTitles(489), VoiceChanger.currentTitle()))
+        // Voice changer, a choice for voice messages and one for calls, as in Graph. Each row opens the same list as its
+        // button (above the pause button while recording; on the call screen). Chosen here, a voice message has the
+        // effect from its first word, with no pause in it to change it.
+        items.add(UItem.asHeader(LanguageCode.getMyTitles(467)))
+        items.add(ChoiceCell.Factory.of(VOICE_CHANGER, LanguageCode.getMyTitles(488), LanguageCode.getMyTitles(489), VoiceChanger.currentTitle()))
+        items.add(ChoiceCell.Factory.of(VOICE_CHANGER_CALL, LanguageCode.getMyTitles(490), LanguageCode.getMyTitles(491), VoiceChanger.callTitle()))
         items.add(UItem.asShadow(null))
 
         // Round video note camera — a persistent choice (front by default) used every time a round
@@ -553,9 +558,9 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
                 (view as NotificationsCheckCell).setChecked(ConfirmDialogsPref.confirmGif)
             }
             ROUND_CAMERA -> showRoundCameraPicker()
-            VOICE_CHANGER -> {
+            VOICE_CHANGER, VOICE_CHANGER_CALL -> {
                 val context = parentActivity ?: return
-                VoiceChangerSheet.show(context, resourceProvider, Runnable { listView?.adapter?.update(true) })
+                VoiceChangerSheet.show(context, resourceProvider, item.id == VOICE_CHANGER_CALL, Runnable { listView?.adapter?.update(true) })
             }
             FOLDER_ICONS -> {
                 FolderIcons.setIconMode(!FolderIcons.isIconMode())

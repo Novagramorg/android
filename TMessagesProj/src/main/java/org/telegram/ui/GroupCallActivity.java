@@ -242,6 +242,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
     private static final int noise_item = 11;
     private static final int comments_enable_item = 12;
     private static final int comments_disable_item = 13;
+    private static final int voice_changer_item = 14;
     private static final int user_item_gap = 0;
 
     private static final int MUTE_BUTTON_STATE_UNMUTE = 0;
@@ -391,6 +392,8 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
     private final ActionBarMenuSubItem editTitleItem;
     private ActionBarMenuSubItem soundItem;
     private final ActionBarMenuSubItem noiseItem;
+    // Novagram voice changer, as in Graph Messenger: under noise suppression, with the chosen effect under its name.
+    private final ActionBarMenuSubItem voiceChangerItem;
     private final ActionBarMenuSubItem permissionItem;
     private final ActionBarMenuSubItem recordItem;
     private final ActionBarMenuSubItem screenItem;
@@ -1680,6 +1683,8 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
         }
         noiseItem.setIcon(SharedConfig.noiseSupression ? R.drawable.msg_noise_on : R.drawable.msg_noise_off);
         noiseItem.setSubtext(SharedConfig.noiseSupression ? getString(R.string.VoipNoiseCancellationEnabled) : getString(R.string.VoipNoiseCancellationDisabled));
+        voiceChangerItem.setVisibility(noiseItem.getVisibility());
+        voiceChangerItem.setSubtext(org.fenixuz.voice.VoiceChanger.callTitle());
 
         if (canManageCall()) {
             leaveItem.setVisibility(View.VISIBLE);
@@ -2159,6 +2164,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
                     accountSelectCell.setVisibility(View.GONE);
                     soundItem.setVisibility(View.GONE);
                     noiseItem.setVisibility(View.GONE);
+                    voiceChangerItem.setVisibility(View.GONE);
                     otherItem.forceUpdatePopupPosition();
                 } else if (id == edit_item) {
                     enterEventSent = false;
@@ -2297,6 +2303,9 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
                             userSwitchObject = object;
                         }
                     });
+                } else if (id == voice_changer_item) {
+                    org.fenixuz.voice.VoiceChangerSheet.show(getContext(), new DarkBlueThemeResourcesProvider(), true,
+                        () -> voiceChangerItem.setSubtext(org.fenixuz.voice.VoiceChanger.callTitle()));
                 } else if (id == noise_item) {
                     SharedConfig.toggleNoiseSupression();
                     VoIPService service = VoIPService.getSharedInstance();
@@ -4884,6 +4893,9 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
         noiseItem = otherItem.addSubItem(noise_item, R.drawable.msg_noise_on, null, getString(R.string.VoipNoiseCancellation), true, false);
         noiseItem.setItemHeight(56);
 
+        voiceChangerItem = otherItem.addSubItem(voice_changer_item, R.drawable.msg_voice_changer, null, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(467), true, false);
+        voiceChangerItem.setItemHeight(56);
+
         soundItemDivider = otherItem.addDivider(ColorUtils.blendARGB(Theme.getColor(Theme.key_voipgroup_actionBar), Color.BLACK, 0.3f));
         ((ViewGroup.MarginLayoutParams) soundItemDivider.getLayoutParams()).topMargin = 0;
         ((ViewGroup.MarginLayoutParams) soundItemDivider.getLayoutParams()).bottomMargin = 0;
@@ -4906,6 +4918,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
         disableComments.setColors(Theme.getColor(Theme.key_voipgroup_actionBarItems), Theme.getColor(Theme.key_voipgroup_actionBarItems));
         soundItem.setColors(Theme.getColor(Theme.key_voipgroup_actionBarItems), Theme.getColor(Theme.key_voipgroup_actionBarItems));
         noiseItem.setColors(Theme.getColor(Theme.key_voipgroup_actionBarItems), Theme.getColor(Theme.key_voipgroup_actionBarItems));
+        voiceChangerItem.setColors(Theme.getColor(Theme.key_voipgroup_actionBarItems), Theme.getColor(Theme.key_voipgroup_actionBarItems));
         leaveItem.setColors(Theme.getColor(Theme.key_voipgroup_leaveCallMenu), Theme.getColor(Theme.key_voipgroup_leaveCallMenu));
         inviteItem.setColors(Theme.getColor(Theme.key_voipgroup_actionBarItems), Theme.getColor(Theme.key_voipgroup_actionBarItems));
         editTitleItem.setColors(Theme.getColor(Theme.key_voipgroup_actionBarItems), Theme.getColor(Theme.key_voipgroup_actionBarItems));

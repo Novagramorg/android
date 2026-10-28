@@ -1953,6 +1953,11 @@ object LanguageCode {
             "Record voice messages in another voice: robot, woman, child and more. While recording, it is also in the button above the pause button.",
             "Ovozli xabarni boshqa ovozda yozing: robot, ayol, bola va boshqalar. Yozish paytida pauza tugmasi ustidagi tugmada ham bor.",
             "Записывайте голосовые другим голосом: робот, женщина, ребёнок и другие. Во время записи он есть и на кнопке над паузой."))
+        titlesLanguages.add(TitleLanguages(490, "Calls", "Qo'ng'iroqlar", "Звонки"))
+        titlesLanguages.add(TitleLanguages(491,
+            "Speak in another voice in calls and group calls. During a call, it is also in the button on the call screen.",
+            "Qo'ng'iroq va guruh qo'ng'iroqlarida boshqa ovozda gapiring. Qo'ng'iroq paytida qo'ng'iroq oynasidagi tugmada ham bor.",
+            "Говорите другим голосом в звонках и групповых звонках. Во время звонка он есть и на кнопке на экране звонка."))
     }
 
     /**
