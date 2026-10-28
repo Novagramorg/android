@@ -21,6 +21,8 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.microedition.khronos.egl.EGL10;
 import javax.microedition.khronos.egl.EGLConfig;
@@ -576,28 +578,60 @@ public class FilterGLThread extends DispatchQueue {
         uiBlur.setBlurManager(manager);
     }
 
+    // Novagram: how long getTexture() waits for the GL thread. Reading the picture back normally takes well under
+    // half a second; the caller is the UI thread, and Android reports an ANR after 5 s without input handling.
+    private static final long TEXTURE_WAIT_MS = 2000;
+
+    private static final int TEXTURE_WAITING = 0;
+    private static final int TEXTURE_DONE = 1;
+    private static final int TEXTURE_ABANDONED = 2;
+
     public Bitmap getTexture() {
         if (!initied || !isAlive()) {
             return null;
         }
         final CountDownLatch countDownLatch = new CountDownLatch(1);
         final Bitmap[] object = new Bitmap[1];
+        // Novagram: the wait used to have no limit, so the UI thread hung for good when the GL thread was busy for long
+        // (low memory, many accounts) or never ran the task (shut down right after it was queued): ANRs in Play Vitals.
+        // It now gives up after TEXTURE_WAIT_MS and returns null, which both callers already handle: the filter is
+        // just not applied. The state settles who wins when the GL thread finishes as the wait runs out.
+        final AtomicInteger state = new AtomicInteger(TEXTURE_WAITING);
         try {
             if (postRunnable(() -> {
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, filterShaders.getRenderFrameBuffer());
-                GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, filterShaders.getRenderTexture(blurred ? 0 : 1), 0);
-                GLES20.glClear(0);
-                object[0] = getRenderBufferBitmap();
-                countDownLatch.countDown();
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-                GLES20.glClear(0);
+                try {
+                    if (state.get() == TEXTURE_ABANDONED) {
+                        // Nobody waits for it any more: skip the read-back, a full-size bitmap that would only be dropped.
+                        return;
+                    }
+                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, filterShaders.getRenderFrameBuffer());
+                    GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, filterShaders.getRenderTexture(blurred ? 0 : 1), 0);
+                    GLES20.glClear(0);
+                    // Written before the state changes, so a waiter that sees TEXTURE_DONE also sees the bitmap.
+                    final Bitmap bitmap = getRenderBufferBitmap();
+                    object[0] = bitmap;
+                    if (!state.compareAndSet(TEXTURE_WAITING, TEXTURE_DONE)) {
+                        object[0] = null;
+                        if (bitmap != null) {
+                            bitmap.recycle();
+                        }
+                    }
+                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+                    GLES20.glClear(0);
+                } finally {
+                    countDownLatch.countDown();
+                }
             })) {
-                countDownLatch.await();
+                if (!countDownLatch.await(TEXTURE_WAIT_MS, TimeUnit.MILLISECONDS) && state.compareAndSet(TEXTURE_WAITING, TEXTURE_ABANDONED)) {
+                    FileLog.e("FilterGLThread: gave up waiting for the filtered bitmap");
+                    return null;
+                }
             }
         } catch (Exception e) {
+            state.compareAndSet(TEXTURE_WAITING, TEXTURE_ABANDONED);
             FileLog.e(e);
         }
-        return object[0];
+        return state.get() == TEXTURE_DONE ? object[0] : null;
     }
 
     public void shutdown() {
