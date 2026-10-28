@@ -1109,6 +1109,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     private Runnable recordStartRunnable;
     private DispatchQueue recordQueue;
     private DispatchQueue fileEncodingQueue;
+    // Novagram voice changer: the effect of the recording in progress, null = the voice as it is. Made when a recording
+    // starts or resumes, used on recordQueue, and drained into the file when the recording stops.
+    private volatile org.fenixuz.voice.VoiceEffect voiceEffect;
     private Runnable recordRunnable = new Runnable() {
         @Override
         public void run() {
@@ -1124,6 +1127,23 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 buffer.rewind();
                 int len = audioRecorder.read(buffer, buffer.capacity());
                 if (len > 0) {
+                    // Novagram voice changer: the rest of this branch (waveform, loudness, encoding) then works on the
+                    // changed voice. The raw buffer goes straight back to the pool; the result, sized by the effect,
+                    // never joins it. No short frame is written here with an effect: the encoder takes one as the end
+                    // of the stream, so the last one is written once, after the effect's tail (stopRecordingInternal).
+                    final org.fenixuz.voice.VoiceEffect effect = voiceEffect;
+                    final boolean changed = effect != null;
+                    if (changed) {
+                        ByteBuffer processed = applyVoiceEffect(effect, buffer, len);
+                        recordBuffers.add(buffer);
+                        if (processed.limit() == 0) {
+                            // The pitch shifter is still filling up.
+                            recordQueue.postRunnable(recordRunnable);
+                            return;
+                        }
+                        buffer = processed;
+                        len = processed.limit();
+                    }
                     buffer.limit(len);
                     double sum = 0;
                     try {
@@ -1164,7 +1184,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     buffer.position(0);
                     final double amplitude = Math.sqrt(sum / len / 2);
                     final ByteBuffer finalBuffer = buffer;
-                    final boolean flush = len != buffer.capacity();
+                    final boolean flush = !changed && len != buffer.capacity();
                     fileEncodingQueue.postRunnable(() -> {
                         while (finalBuffer.hasRemaining()) {
                             int oldLimit = -1;
@@ -1186,7 +1206,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                                 finalBuffer.limit(oldLimit);
                             }
                         }
-                        recordQueue.postRunnable(() -> recordBuffers.add(finalBuffer));
+                        if (!changed) {
+                            recordQueue.postRunnable(() -> recordBuffers.add(finalBuffer));
+                        }
                     });
                     recordQueue.postRunnable(recordRunnable);
                     AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(recordingCurrentAccount).postNotificationName(NotificationCenter.recordProgressChanged, recordingGuid, amplitude));
@@ -4629,6 +4651,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 audioRecorder.stop();
                 audioRecorder.release();
                 audioRecorder = null;
+                // Novagram voice changer: this segment's file is closed below on recordQueue, not after the pending
+                // writes, so the effect's last ~30 ms are dropped rather than written after the close.
+                voiceEffect = null;
                 recordQueue.postRunnable(() -> {
                     stopRecord();
                     final TLRPC.TL_document audioToSend = recordingAudio;
@@ -4693,6 +4718,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         writtenFrame = 0;
                         samplesCount = 0;
                         fileBuffer.rewind();
+                        voiceEffect = org.fenixuz.voice.VoiceChanger.newEffect(sampleRate);
                         audioRecorder.startRecording();
                         recordQueue.postRunnable(recordRunnable);
 
@@ -4770,6 +4796,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 recordTimeCount = 0;
                 writtenFrame = 0;
                 samplesCount = 0;
+                voiceEffect = org.fenixuz.voice.VoiceChanger.newEffect(sampleRate);
                 recordDialogId = dialogId;
                 recordMonoForumPeerId = monoForumPeerId;
                 recordMonoForumSuggestionParams = suggestionParams;
@@ -4876,13 +4903,71 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         ignoreOnPause = false;
     }
 
+    /** Novagram voice changer: [len] bytes of [raw] PCM run through [effect], in a new buffer (empty at the start). */
+    private static ByteBuffer applyVoiceEffect(org.fenixuz.voice.VoiceEffect effect, ByteBuffer raw, int len) {
+        short[] input = new short[len / 2];
+        raw.position(0);
+        raw.asShortBuffer().get(input);
+        return toPcmBuffer(effect.process(input, input.length));
+    }
+
+    private static ByteBuffer toPcmBuffer(short[] samples) {
+        ByteBuffer buffer = ByteBuffer.allocate(samples.length * 2);
+        buffer.order(ByteOrder.nativeOrder());
+        buffer.asShortBuffer().put(samples);
+        return buffer;
+    }
+
+    /**
+     * Novagram voice changer, on fileEncodingQueue: the effect's tail, then the frame left in fileBuffer. That frame is
+     * short, and the encoder takes a short frame as the end of the stream, so it must be the last one written.
+     */
+    private void writeVoiceEffectTail(ByteBuffer tail) {
+        while (tail.hasRemaining()) {
+            int oldLimit = -1;
+            if (tail.remaining() > fileBuffer.remaining()) {
+                oldLimit = tail.limit();
+                tail.limit(fileBuffer.remaining() + tail.position());
+            }
+            fileBuffer.put(tail);
+            if (fileBuffer.position() == fileBuffer.limit()) {
+                writeVoiceEffectFrame(fileBuffer.limit());
+            }
+            if (oldLimit != -1) {
+                tail.limit(oldLimit);
+            }
+        }
+        if (fileBuffer.position() > 0) {
+            writeVoiceEffectFrame(fileBuffer.position());
+        }
+    }
+
+    private void writeVoiceEffectFrame(int bytes) {
+        if (writeFrame(fileBuffer, bytes) != 0) {
+            recordTimeCount += bytes / 2 / (sampleRate / 1000);
+            writtenFrame++;
+        } else {
+            FileLog.e("writing frame failed");
+        }
+        // Rewound either way: a full fileBuffer that stays full would make the loop above spin.
+        fileBuffer.rewind();
+    }
+
     private void stopRecordingInternal(final int send, boolean notify, int scheduleDate, boolean once, long payStars) {
+        // Novagram voice changer: taken here, on recordQueue after the last read, so nothing else touches it.
+        final org.fenixuz.voice.VoiceEffect effect = voiceEffect;
+        voiceEffect = null;
         if (send != 0 && recordingAudioFile != null) {
             final TLRPC.TL_document audioToSend = recordingAudio;
             final File recordingAudioFileToSend_ = recordingAudioFile;
             final File recordingPrevAudioFileToSend_ = recordingPrevAudioFile;
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("stop recording internal filename " + (recordingAudioFile.getPath()));
+            }
+            if (effect != null) {
+                // Same queue as the chunks before it, and posted before the runnable below, so it lands before stopRecord.
+                final ByteBuffer tail = toPcmBuffer(effect.drain());
+                fileEncodingQueue.postRunnable(() -> writeVoiceEffectTail(tail));
             }
             fileEncodingQueue.postRunnable(() -> {
                 stopRecord();

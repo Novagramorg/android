@@ -1924,6 +1924,30 @@ object LanguageCode {
             "Enter your current code to turn off Secret Chat.",
             "Yashirin suhbatni o'chirish uchun hozirgi kodni kiriting.",
             "Введите текущий код, чтобы отключить секретный чат."))
+        titlesLanguages.add(TitleLanguages(467, "Voice changer", "Ovoz o'zgartirgich", "Изменение голоса"))
+        titlesLanguages.add(TitleLanguages(468, "Off", "O'chiq", "Выключено"))
+        titlesLanguages.add(TitleLanguages(469, "Child", "Bola", "Ребёнок"))
+        titlesLanguages.add(TitleLanguages(470, "Woman", "Ayol", "Женщина"))
+        titlesLanguages.add(TitleLanguages(471, "Man", "Erkak", "Мужчина"))
+        titlesLanguages.add(TitleLanguages(472, "Helium", "Geliy", "Гелий"))
+        titlesLanguages.add(TitleLanguages(473, "Hexafluoride", "Geksaftorid", "Гексафторид"))
+        titlesLanguages.add(TitleLanguages(474, "Monster", "Maxluq", "Монстр"))
+        titlesLanguages.add(TitleLanguages(475, "Mouse", "Sichqon", "Мышь"))
+        titlesLanguages.add(TitleLanguages(476, "Robotic", "Robot", "Робот"))
+        titlesLanguages.add(TitleLanguages(477, "Alien", "O'zga sayyoralik", "Пришелец"))
+        titlesLanguages.add(TitleLanguages(478, "Echo", "Aks-sado", "Эхо"))
+        titlesLanguages.add(TitleLanguages(479,
+            "Record speed (thick or thin)",
+            "Yozish tezligi (yo'g'on yoki ingichka)",
+            "Скорость записи (толще или тоньше)"))
+        titlesLanguages.add(TitleLanguages(480, "Cave", "G'or", "Пещера"))
+        titlesLanguages.add(TitleLanguages(481, "Hoarseness", "Xirillash", "Хрипота"))
+        titlesLanguages.add(TitleLanguages(482, "Modulation", "Modulyatsiya", "Модуляция"))
+        titlesLanguages.add(TitleLanguages(483, "Noise", "Shovqin", "Шум"))
+        titlesLanguages.add(TitleLanguages(484, "Very thick", "Juda yo'g'on", "Очень толсто"))
+        titlesLanguages.add(TitleLanguages(485, "Thick", "Yo'g'on", "Толсто"))
+        titlesLanguages.add(TitleLanguages(486, "Thin", "Ingichka", "Тонко"))
+        titlesLanguages.add(TitleLanguages(487, "Very thin", "Juda ingichka", "Очень тонко"))
     }
 
     /**

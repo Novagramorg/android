@@ -1248,6 +1248,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         private Drawable micDrawable;
         private Drawable vidDrawable;
 
+        // Novagram voice changer: a button above the pause button (above "once" when that is shown), as in Graph
+        // Messenger. It is drawn and pressed like "once", and only for voice messages.
+        private Drawable voiceChangerDrawable;
+        private BlurredBackgroundDrawable voiceChangerBackgroundDrawable;
+        public final RectF voiceChangerRect = new RectF();
+        private boolean voiceChangerVisible;
+        private boolean voiceChangerPressed;
+
         @Override
         public void setAlpha(float alpha) {
             super.setAlpha(alpha);
@@ -1290,6 +1298,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             micDrawable = getResources().getDrawable(R.drawable.input_mic).mutate();
             vidDrawable = getResources().getDrawable(R.drawable.input_video).mutate();
+            voiceChangerDrawable = getResources().getDrawable(R.drawable.msg_voice_changer).mutate();
 
             setWillNotDraw(false);
             updateColors();
@@ -1734,6 +1743,73 @@ public class ChatActivityEnterView extends FrameLayout implements
                 periodDrawable.draw(canvas);
                 canvas.restore();
             }
+
+            voiceChangerVisible = !isInVideoMode();
+            if (voiceChangerVisible) {
+                final float top = (onceVisible ? onceRect.top : cy) - dpf2(36) - dpf2(12);
+                rectF.set(cx - dpf2(18), top, cx + dpf2(18), top + dpf2(36));
+                voiceChangerRect.set(rectF);
+                canvas.save();
+                final float s3 = controlsScale * (1f - exitTransition) * slideToCancelLockProgress * snapAnimationProgress;
+                canvas.scale(s3, s3, rectF.centerX(), rectF.centerY());
+                if (voiceChangerBackgroundDrawable != null) {
+                    voiceChangerBackgroundDrawable.setBounds(
+                        (int) (rectF.left - dpf2(3)), (int) (rectF.top - dpf2(3)),
+                        (int) (rectF.right + dpf2(3)), (int) (rectF.bottom + dpf2(3))
+                    );
+                    voiceChangerBackgroundDrawable.draw(canvas);
+                } else {
+                    lockShadowDrawable.setBounds(
+                            (int) (rectF.left - dpf2(3)), (int) (rectF.top - dpf2(3)),
+                            (int) (rectF.right + dpf2(3)), (int) (rectF.bottom + dpf2(3))
+                    );
+                    lockShadowDrawable.draw(canvas);
+                    canvas.drawRoundRect(rectF, dpf2(18), dpf2(18), lockBackgroundPaint);
+                }
+                final int inset = dp(7);
+                voiceChangerDrawable.setBounds((int) rectF.left + inset, (int) rectF.top + inset, (int) rectF.right - inset, (int) rectF.bottom - inset);
+                voiceChangerDrawable.draw(canvas);
+                canvas.restore();
+            }
+        }
+
+        /**
+         * Novagram voice changer: as in Graph, the recording pauses (exactly like the pause button) while the effects are
+         * open, and goes on by itself once they close, an effect picked or not; a recording that was already paused
+         * stays paused. The chosen effect applies from the resume: MediaController makes a new effect for each segment.
+         */
+        private void openVoiceChanger() {
+            final boolean pausedHere = !MediaController.getInstance().isRecordingPaused();
+            if (pausedHere) {
+                toggleVoiceRecordingPause();
+            }
+            if (pauseHint != null && pauseHint.shown()) {
+                hideHintView();
+            }
+            if (audioTimelineView != null) {
+                audioTimelineView.setPlaying(false);
+            }
+            org.fenixuz.voice.VoiceChangerSheet.show(getContext(), resourcesProvider, pausedHere ? () -> {
+                // As long as the recording is still on screen (the pause button's own condition; recordingAudioVideo is
+                // already false while paused). The pause may still be joining the parts (seconds for a long message on
+                // a slow phone): recordQueue runs in order, so the resume simply follows it, as a quick second tap on
+                // the pause button would.
+                if (sendButtonVisible && MediaController.getInstance().isRecordingPaused()) {
+                    toggleVoiceRecordingPause();
+                }
+            } : null);
+        }
+
+        /** What the pause button does for a voice message, either way. */
+        private void toggleVoiceRecordingPause() {
+            if (sendButtonVisible) {
+                calledRecordRunnable = true;
+            }
+            MediaController.getInstance().toggleRecordingPause(voiceOnce);
+            delegate.needStartRecordAudio(0);
+            if (slideText != null) {
+                slideText.setEnabled(false);
+            }
         }
 
         @Override
@@ -1761,6 +1837,10 @@ public class ChatActivityEnterView extends FrameLayout implements
             periodBackgroundDrawable.setRadius(dp(18));
             periodBackgroundDrawable.setPadding(dp(3));
 
+            voiceChangerBackgroundDrawable = factory.create(this, colorProvider);
+            voiceChangerBackgroundDrawable.setRadius(dp(18));
+            voiceChangerBackgroundDrawable.setPadding(dp(3));
+
             updateColors();
         }
 
@@ -1773,6 +1853,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             if (periodBackgroundDrawable != null) {
                 periodBackgroundDrawable.updateColors();
+            }
+            if (voiceChangerBackgroundDrawable != null) {
+                voiceChangerBackgroundDrawable.updateColors();
             }
 
             periodDrawable.updateColors(
@@ -1791,6 +1874,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             micDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
             vidDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
+            voiceChangerDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
         }
 
         private void scale(RectF rect, float s) {
@@ -1815,6 +1899,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 if (onceVisible && (recordCircle != null && snapAnimationProgress > .1f)) {
                     oncePressed = onceRect.contains(x, y);
+                }
+                if (voiceChangerVisible && recordCircle != null && snapAnimationProgress > .1f) {
+                    voiceChangerPressed = voiceChangerRect.contains(x, y);
                 }
             } else if (event.getAction() == MotionEvent.ACTION_UP) {
                 if (pausePressed && pauseRect.contains(x, y)) {
@@ -1879,12 +1966,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                     invalidate();
                     pausePressed = oncePressed = false;
                     return true;
+                } else if (voiceChangerPressed && voiceChangerRect.contains(x, y)) {
+                    pausePressed = oncePressed = voiceChangerPressed = false;
+                    openVoiceChanger();
+                    return true;
                 }
-                pausePressed = oncePressed = false;
+                pausePressed = oncePressed = voiceChangerPressed = false;
             } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
-                pausePressed = oncePressed = false;
+                pausePressed = oncePressed = voiceChangerPressed = false;
             }
-            return pausePressed || oncePressed;
+            return pausePressed || oncePressed || voiceChangerPressed;
         }
 
         @Override
@@ -1907,6 +1998,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (onceVisible && (recordCircle != null && snapAnimationProgress > .1f) && onceRect.contains(x, y)) {
                     return 4;
                 }
+                if (voiceChangerVisible && (recordCircle != null && snapAnimationProgress > .1f) && voiceChangerRect.contains(x, y)) {
+                    return 5;
+                }
                 return HOST_ID;
             }
 
@@ -1917,6 +2011,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 if (onceVisible && (recordCircle != null && snapAnimationProgress > .1f)) {
                     list.add(4);
+                }
+                if (voiceChangerVisible && (recordCircle != null && snapAnimationProgress > .1f)) {
+                    list.add(5);
                 }
             }
 
@@ -1930,6 +2027,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                     rect.set((int) onceRect.left, (int) onceRect.top, (int) onceRect.right, (int) onceRect.bottom);
                     info.setBoundsInParent(rect);
                     info.setText(getString(voiceOnce ? R.string.AccActionOnceDeactivate : R.string.AccActionOnceActivate));
+                } else if (id == 5) {
+                    rect.set((int) voiceChangerRect.left, (int) voiceChangerRect.top, (int) voiceChangerRect.right, (int) voiceChangerRect.bottom);
+                    info.setBoundsInParent(rect);
+                    info.setText(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(467));
                 }
             }
 
