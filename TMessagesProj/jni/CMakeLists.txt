@@ -260,6 +260,12 @@ target_sources(${NATIVE_LIB} PRIVATE
         third_party/xiph/ogg/src/bitwise.c
         third_party/xiph/ogg/src/framing.c)
 
+# Novagram: opusfile defines _FILE_OFFSET_BITS=64, but on 32-bit Android before API 24 bionic hides fseeko64/ftello64,
+# and C11 here hides fseeko too, so stream.c called the 32-bit fseeko() implicitly with a 64-bit off_t (the wrong
+# registers): every op_open_file() failed with OP_EINVAL on armeabi-v7a and x86. That lost the earlier parts of a paused
+# voice message when it resumed (the join failed and deleted them), and broke trimming. 64-bit ABIs are unaffected.
+set_source_files_properties(third_party/xiph/opusfile/src/stream.c PROPERTIES COMPILE_DEFINITIONS _FILE_OFFSET_BITS=32)
+
 target_include_directories(${NATIVE_LIB} PUBLIC
         third_party/xiph/opus/include
         third_party/xiph/opus/silk
