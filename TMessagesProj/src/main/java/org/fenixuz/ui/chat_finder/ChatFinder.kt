@@ -91,6 +91,10 @@ class ChatFinder : BaseFragment() {
             setCursorSize(AndroidUtilities.dp(20f))
             setCursorWidth(1.5f)
             textSize = 17f
+            // The right side under RTL, as Telegram's own fields. This view draws its hint itself, so the hint
+            // needs its own switch (as in PassportActivity) to follow.
+            gravity = (if (LocaleController.isRTL) Gravity.RIGHT else Gravity.LEFT) or Gravity.CENTER_VERTICAL
+            setSupportRtlHint(true)
             setBackgroundDrawable(Theme.createEditTextDrawable(context, true))
             maxLines = 1
             filters = arrayOf(InputFilter { source, _, _, _, _, _ ->
@@ -141,7 +145,9 @@ class ChatFinder : BaseFragment() {
     private fun setUnavailable(typed: String) {
         available = false
         resolvedUsername = ""
-        statusView?.text = LanguageCode.getMyTitles(179) + if (typed.isNotEmpty()) "  @$typed" else ""
+        // The handle is wrapped in a first-strong isolate (U+2068..U+2069), as in Telegram's Arabic pack: next to
+        // Arabic text a bare "@name" renders as "name@".
+        statusView?.text = LanguageCode.getMyTitles(179) + if (typed.isNotEmpty()) "  \u2068@$typed\u2069" else ""
         statusView?.setTextColor(Theme.getColor(Theme.key_text_RedBold))
         updateOpenButton()
     }
@@ -149,7 +155,7 @@ class ChatFinder : BaseFragment() {
     private fun setAvailable(username: String) {
         available = true
         resolvedUsername = username
-        statusView?.text = LanguageCode.getMyTitles(180) + "  @$username"
+        statusView?.text = LanguageCode.getMyTitles(180) + "  \u2068@$username\u2069"
         statusView?.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGreenText))
         updateOpenButton()
     }

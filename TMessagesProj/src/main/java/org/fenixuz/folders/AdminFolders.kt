@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import org.fenixuz.ui.create_folder_dialog.FolderIcons
 import org.fenixuz.utils.LanguageCode
+import org.fenixuz.utils.LanguageCodeAr
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.ChatObject
 import org.telegram.messenger.DialogObject
@@ -255,7 +256,9 @@ object AdminFolders {
         val out = LinkedHashSet<String>()
         LanguageCode.getMyTitles(kind.titleCode)          // forces the table to initialize
         LanguageCode.titlesLanguages.getOrNull(kind.titleCode)?.let { t ->
-            for (v in listOf(t.en, t.uz, t.ru)) {
+            // Arabic too: a folder made while the app was in Arabic is titled in Arabic, and one we can't
+            // recognise as ours is never synced or removed, and enabling again would create a second one.
+            for (v in listOf(t.en, t.uz, t.ru, LanguageCodeAr.get(kind.titleCode).orEmpty())) {
                 // A missing translation would collapse to the bare marker, which would then match any folder
                 // the user happened to name "★". Skip it rather than widen the net.
                 if (v.isBlank()) continue

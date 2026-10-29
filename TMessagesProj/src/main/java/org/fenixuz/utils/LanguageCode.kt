@@ -2051,6 +2051,11 @@ object LanguageCode {
                     titlesLanguages[code].uz
                 }
 
+                // Arabic lives in its own table (see LanguageCodeAr); an id it doesn't have yet shows in English.
+                "ar" -> {
+                    LanguageCodeAr.get(code) ?: titlesLanguages[code].en
+                }
+
                 else -> {
                     titlesLanguages[code].en
                 }

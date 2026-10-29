@@ -19,6 +19,7 @@ import org.fenixuz.utils.LanguageCode
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.BuildVars
 import org.telegram.messenger.FileLog
+import org.telegram.messenger.LocaleController
 import org.telegram.messenger.UserConfig
 import org.telegram.messenger.Utilities
 import org.telegram.tgnet.ConnectionsManager
@@ -91,7 +92,9 @@ class QrLoginController(
             text = LanguageCode.getMyTitles(259)
             setTextColor(Theme.getColor(Theme.key_dialogTextGray2))
             textSize = 14f
-            gravity = Gravity.START
+            // Explicit side, not START: START aligns each line by its own script, so a line opening with a Latin
+            // name would jump to the left in Arabic.
+            gravity = if (LocaleController.isRTL) Gravity.RIGHT else Gravity.LEFT
             setLineSpacing(AndroidUtilities.dp(4f).toFloat(), 1f)
         }
 

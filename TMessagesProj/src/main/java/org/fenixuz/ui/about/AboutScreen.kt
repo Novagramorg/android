@@ -248,20 +248,23 @@ class AboutScreen : BaseFragment() {
             setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
             typeface = AndroidUtilities.bold()
             textSize = 16f
-        })
+            gravity = textStart()
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         block.addView(TextView(context).apply {
             text = LanguageCode.getMyTitles(367) + " · " + LanguageCode.getMyTitles(368)  // Founded 2022 · Republic of Uzbekistan
             setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText))
             textSize = 13f
             setPadding(0, dp(2), 0, 0)
-        })
+            gravity = textStart()
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         block.addView(TextView(context).apply {
             text = LanguageCode.getMyTitles(364)                          // legal blurb
             setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText))
             textSize = 14f
             setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(0, dp(10), 0, 0)
-        })
+            gravity = textStart()
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         card.addView(block)
 
         // Each row now leads with a plain-language label (what it is) and shows the address underneath, so a
@@ -315,6 +318,7 @@ class AboutScreen : BaseFragment() {
         typeface = AndroidUtilities.bold()
         textSize = 15f
         setPadding(dp(16), dp(14), dp(16), dp(8))
+        gravity = textStart()
     }
 
     /**
@@ -329,10 +333,13 @@ class AboutScreen : BaseFragment() {
         subtitle: String?,
         onClick: () -> Unit
     ): View {
+        // The app runs with supportsRtl="false" (as Telegram does), so marginStart/End and LinearLayout order never
+        // mirror on their own: under RTL the row is built chevron-texts-icon with explicit left/right margins.
+        val rtl = LocaleController.isRTL
         val rowView = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(12), dp(14), dp(12))
+            if (rtl) setPadding(dp(14), dp(12), dp(16), dp(12)) else setPadding(dp(16), dp(12), dp(14), dp(12))
             val tv = TypedValue()
             context.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
             setBackgroundResource(tv.resourceId)
@@ -351,7 +358,9 @@ class AboutScreen : BaseFragment() {
             }
             setPadding(dp(5), dp(5), dp(5), dp(5))
         }
-        rowView.addView(icon, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(14) })
+        val iconParams = LinearLayout.LayoutParams(dp(32), dp(32)).apply {
+            if (rtl) leftMargin = dp(14) else rightMargin = dp(14)
+        }
 
         val texts = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         texts.addView(TextView(context).apply {
@@ -360,6 +369,7 @@ class AboutScreen : BaseFragment() {
             textSize = 16f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
+            gravity = textStart()
         })
         if (!subtitle.isNullOrEmpty()) {
             texts.addView(TextView(context).apply {
@@ -369,35 +379,52 @@ class AboutScreen : BaseFragment() {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(1), 0, 0)
+                // Explicit, not START: a Latin subtitle (@channel, novagram.org) would otherwise sit on the left
+                // under a right-aligned Arabic title.
+                gravity = textStart()
             })
         }
-        rowView.addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginEnd = dp(8)
-        })
+        val textsParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            if (rtl) leftMargin = dp(8) else rightMargin = dp(8)
+        }
 
-        rowView.addView(ImageView(context).apply {
+        val chevron = ImageView(context).apply {
             setImageResource(R.drawable.msg_arrowright)
             colorFilter = android.graphics.PorterDuffColorFilter(
                 Theme.getColor(Theme.key_windowBackgroundWhiteGrayText), android.graphics.PorterDuff.Mode.SRC_IN
             )
             alpha = 0.6f
             // The chevron art points right; mirror it under RTL so it points the natural way.
-            if (LocaleController.isRTL) scaleX = -1f
-        }, LinearLayout.LayoutParams(dp(18), dp(18)))
+            if (rtl) scaleX = -1f
+        }
+        val chevronParams = LinearLayout.LayoutParams(dp(18), dp(18))
 
+        if (rtl) {
+            rowView.addView(chevron, chevronParams)
+            rowView.addView(texts, textsParams)
+            rowView.addView(icon, iconParams)
+        } else {
+            rowView.addView(icon, iconParams)
+            rowView.addView(texts, textsParams)
+            rowView.addView(chevron, chevronParams)
+        }
         return rowView
     }
 
-    /** A faint hair-line inset from the left so it lines up under the row text, Telegram-style. */
+    /** A faint hair-line inset on the icon side so it lines up under the row text, Telegram-style. */
     private fun divider(context: Context) = View(context).apply {
         setBackgroundColor(Theme.getColor(Theme.key_divider))
     }.also { }.let { v ->
         val holder = LinearLayout(context)
         holder.addView(v, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))).apply {
-            marginStart = dp(62)   // inset under the row text; marginStart so it mirrors under RTL
+            // Explicit side: without RTL support marginStart is always the left.
+            if (LocaleController.isRTL) rightMargin = dp(62) else leftMargin = dp(62)
         })
         holder
     }
+
+    /** Where a line of text starts: the right under RTL. TextView's START would follow each line's own script. */
+    private fun textStart() = if (LocaleController.isRTL) Gravity.RIGHT else Gravity.LEFT
 
     // ---- Actions ---------------------------------------------------------------------------------------------
 

@@ -41,6 +41,7 @@ import androidx.core.graphics.ColorUtils;
 import org.checkerframework.checker.units.qual.A;
 import org.checkerframework.checker.units.qual.C;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
 
 import java.util.ArrayList;
@@ -402,11 +403,35 @@ public class AnimatedTextView extends View {
                     ellipsizePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
                 }
                 ellipsizeGradientMatrix.reset();
-                ellipsizeGradientMatrix.postTranslate(bounds.right - rightPadding - w, 0);
-                ellipsizeGradient.setLocalMatrix(ellipsizeGradientMatrix);
-                canvas.drawRect(bounds.right - rightPadding - w, bounds.top, bounds.right - rightPadding + AndroidUtilities.dp(1), bounds.bottom, ellipsizePaint);
+                // Novagram: in an RTL layout (Arabic, Persian, Hebrew) text aligned right overflows, and has to
+                // fade, on the left. Fading the right edge there ate the first letters of every line, even of text
+                // that fits. LTR layouts keep the right-edge fade unchanged.
+                if (LocaleController.isRTL && isRightAligned()) {
+                    ellipsizeGradientMatrix.postScale(-1, 1);
+                    ellipsizeGradientMatrix.postTranslate(bounds.left + w, 0);
+                    ellipsizeGradient.setLocalMatrix(ellipsizeGradientMatrix);
+                    canvas.drawRect(bounds.left - AndroidUtilities.dp(1), bounds.top, bounds.left + w, bounds.bottom, ellipsizePaint);
+                } else {
+                    ellipsizeGradientMatrix.postTranslate(bounds.right - rightPadding - w, 0);
+                    ellipsizeGradient.setLocalMatrix(ellipsizeGradientMatrix);
+                    canvas.drawRect(bounds.right - rightPadding - w, bounds.top, bounds.right - rightPadding + AndroidUtilities.dp(1), bounds.bottom, ellipsizePaint);
+                }
                 canvas.restore();
             }
+        }
+
+        /** Same horizontal alignment rules as draw(): explicit gravity first, RTL text right otherwise. */
+        private boolean isRightAligned() {
+            if ((gravity | ~Gravity.LEFT) == ~0) {
+                return false;
+            }
+            if ((gravity | ~Gravity.RIGHT) == ~0) {
+                return true;
+            }
+            if ((gravity | ~Gravity.CENTER_HORIZONTAL) == ~0) {
+                return false;
+            }
+            return isRTL && !ignoreRTL;
         }
 
         public void setRightPadding(float rightPadding) {
