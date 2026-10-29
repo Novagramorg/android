@@ -20,7 +20,6 @@ import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.fenixuz.utils.By;
-import org.fenixuz.utils.DeletedMsg;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.ChatObject;
@@ -1119,15 +1118,13 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
                 });
             }
         } else {
-            // Fenix delete-save: an admin deleting other members' messages here is a DELIBERATE delete (By.Me).
-            // Set myDelete right before each call so the synchronous messagesDeleted handler in ChatActivity
-            // also treats it as By.Me (removes from view); otherwise delete-save would preserve them.
+            // Fenix delete-save: an admin deleting other members' messages here is a DELIBERATE delete (By.Me), so
+            // delete-save removes them instead of keeping them. By.Me goes to storage and, with the messagesDeleted
+            // notification, to the open chat.
             if (!supergroupMessageIds.isEmpty()) {
-                DeletedMsg.INSTANCE.setMyDelete(true);
                 MessagesController.getInstance(currentAccount).deleteMessages(supergroupMessageIds, null, null, -inChat.id, topicId, false, mode, By.Me);
             }
             if (!groupMessageIds.isEmpty()) {
-                DeletedMsg.INSTANCE.setMyDelete(true);
                 MessagesController.getInstance(currentAccount).deleteMessages(groupMessageIds, null, null, mergeDialogId, topicId, true, mode, By.Me);
             }
         }

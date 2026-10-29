@@ -9300,11 +9300,11 @@ public class MessagesController extends BaseController implements NotificationCe
         deleteMessages(messages, randoms, encryptedChat, dialogId, forAll, mode, false, 0, null, topicId);
     }
 
-    // Fenix delete-save: tracks who deleted the messages (By.Me = current user via delete dialog, By.You = server-pushed).
-    public By whoDeleted = By.You;
+    // Fenix delete-save: who deleted the messages decides whether delete-save keeps them. It is passed along with
+    // this call, down to storage and on in the messagesDeleted notification. It used to sit in a field that the
+    // calls without it inherited, whatever the last delete had left there.
     public void deleteMessages(ArrayList<Integer> messages, ArrayList<Long> randoms, TLRPC.EncryptedChat encryptedChat, long dialogId, int topicId, boolean forAll, int mode, By whoDeleted) {
-        this.whoDeleted = whoDeleted;
-        deleteMessages(messages, randoms, encryptedChat, dialogId, forAll, mode, false, 0, null, topicId);
+        deleteMessages(messages, randoms, encryptedChat, dialogId, forAll, mode, false, 0, null, topicId, false, 0, whoDeleted);
     }
 
     public void deleteMessages(ArrayList<Integer> messages, ArrayList<Long> randoms, TLRPC.EncryptedChat encryptedChat, long dialogId, int topicId, boolean forAll, int mode, boolean cacheOnly) {
@@ -9315,7 +9315,14 @@ public class MessagesController extends BaseController implements NotificationCe
         deleteMessages(messages, randoms, encryptedChat, dialogId, forAll, mode, cacheOnly, taskId, taskRequest, topicId, false, 0);
     }
 
+    // Fenix delete-save: everything that calls deleteMessages is this app deleting something (the user, a send that
+    // moves a message, a self-destruct timer), so By.Me unless told otherwise. Deletions by others never come here:
+    // they arrive as server updates and go to storage and the notification as By.You.
     public void deleteMessages(ArrayList<Integer> messages, ArrayList<Long> randoms, TLRPC.EncryptedChat encryptedChat, long dialogId, boolean forAll, int mode, boolean cacheOnly, long taskId, TLObject taskRequest, int topicId, boolean movedToScheduled, int movedToScheduledMessageId) {
+        deleteMessages(messages, randoms, encryptedChat, dialogId, forAll, mode, cacheOnly, taskId, taskRequest, topicId, movedToScheduled, movedToScheduledMessageId, By.Me);
+    }
+
+    public void deleteMessages(ArrayList<Integer> messages, ArrayList<Long> randoms, TLRPC.EncryptedChat encryptedChat, long dialogId, boolean forAll, int mode, boolean cacheOnly, long taskId, TLObject taskRequest, int topicId, boolean movedToScheduled, int movedToScheduledMessageId, By whoDeleted) {
         final boolean scheduled = mode == ChatActivity.MODE_SCHEDULED;
         final boolean quickReplies = mode == ChatActivity.MODE_QUICK_REPLIES;
         final boolean welcomeMessages = mode == ChatActivity.MODE_WELCOME_MESSAGES;
@@ -9369,7 +9376,8 @@ public class MessagesController extends BaseController implements NotificationCe
                 getMessagesStorage().markMessagesAsDeleted(dialogId, storageMessages, true, forAll, 0, topicId, false, whoDeleted);
                 getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, channelId, storageMessages, null, true);
             }
-            getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, messages, channelId, scheduled, false, movedToScheduled, movedToScheduledMessageId);
+            // Novagram: args[7] is who deleted them, for ChatActivity's delete-save; args[6] (sent message ids) is not used here.
+            getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, messages, channelId, scheduled, false, movedToScheduled, movedToScheduledMessageId, null, whoDeleted);
         } else {
             if (taskRequest instanceof TLRPC.TL_channels_deleteMessages) {
                 channelId = ((TLRPC.TL_channels_deleteMessages) taskRequest).channel.channel_id;
@@ -9549,7 +9557,8 @@ public class MessagesController extends BaseController implements NotificationCe
         final ArrayList<Integer> storageMessages = new ArrayList<>(messages);
         getMessagesStorage().markMessagesAsDeleted(dialogId, storageMessages, true, true, ephemeralMessage.isWelcomeMessage() ? ChatActivity.MODE_WELCOME_MESSAGES : 0, topicId);
         getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, channelId, storageMessages, null);
-        getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, messages, channelId, false, false, false, 0);
+        // Novagram: an ephemeral message is only ever deleted by the user here (args[7], see deleteMessages).
+        getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, messages, channelId, false, false, false, 0, null, By.Me);
 
         if (ephemeralMessage.isWelcomeMessage() && !ephemeralMessage.isWelcomeAnchored()) {
             final TL_ephemeral.TL_deleteWelcomeMessage req = new TL_ephemeral.TL_deleteWelcomeMessage();

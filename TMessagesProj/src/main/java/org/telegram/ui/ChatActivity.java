@@ -22790,13 +22790,12 @@ public class ChatActivity extends BaseFragment implements
                 scheduleNowDialog.dismiss();
                 scheduleNowDialog = null;
             }
-            // Fenix delete-save: keep deleted messages visible (and tag who deleted them) based on the chosen mode.
-            boolean fenixDeletedBy = DeletedMsg.INSTANCE.getMyDelete();
+            // Fenix delete-save: keep deleted messages visible (and tag who deleted them) based on the chosen mode. Who
+            // deleted them comes with the notification (args[7], set by MessagesController.deleteMessages): this app
+            // deleting something is By.Me, anything without it is a server update, a deletion by others. It used to be
+            // a global one-shot flag, which the first open chat to get the notification took, whichever chat it was.
             int fenixDeletedType = DeletedMsg.INSTANCE.getCheckType();
-            By fenixBy = fenixDeletedBy ? By.Me : By.You;
-            if (fenixDeletedBy) {
-                DeletedMsg.INSTANCE.setMyDelete(false);
-            }
+            By fenixBy = args.length > 7 && args[7] instanceof By ? (By) args[7] : By.You;
             // A message the user is aborting mid-send — pressing X to cancel a still-uploading video — is
             // never a deletion to preserve, so split it out: it is always removed from the chat (never kept
             // or tagged "deleted"), whatever the delete-save mode. The signal is the in-memory send_state,

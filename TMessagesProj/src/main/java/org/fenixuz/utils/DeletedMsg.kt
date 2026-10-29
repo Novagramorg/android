@@ -36,7 +36,6 @@ object DeletedMsg {
         ApplicationLoader.applicationContext.getSharedPreferences("db", Context.MODE_PRIVATE)
     private val editor = sharedPreferences.edit()
     private val gson = Gson()
-    var myDelete = false
 
     var list = ArrayList<MessageObject>()
 
