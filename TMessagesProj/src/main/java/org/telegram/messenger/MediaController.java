@@ -4574,6 +4574,25 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         return audioRecorderPaused;
     }
 
+    /**
+     * Novagram: blocks recordQueue until fileEncodingQueue has run everything posted to it so far, and the UI thread
+     * what those posted to it. The native recorder is one global encoder, also used by the join: writeFrame runs on
+     * fileEncodingQueue, while a pause and a new recording close or replace the encoder on recordQueue. A frame still
+     * queued then hit a closed encoder (SIGSEGV in opus_encode, Play Vitals 1.3.0). The UI part of stopRecordingInternal
+     * reads the message's chat, reply and length from fields a new recording overwrites, so it has to be done first.
+     * Neither fileEncodingQueue nor the UI thread ever waits on recordQueue, so this can't deadlock. No timeout: joining
+     * a long message on a slow phone can take over a minute, and going on early is the crash.
+     */
+    private void waitForFileEncoding() {
+        final CountDownLatch drained = new CountDownLatch(1);
+        fileEncodingQueue.postRunnable(() -> AndroidUtilities.runOnUIThread(drained::countDown));
+        try {
+            drained.await();
+        } catch (InterruptedException e) {
+            FileLog.e(e);
+        }
+    }
+
     private File joinRecord() {
         return joinRecord(recordingPrevAudioFile, recordingAudioFile, recordingAudio);
     }
@@ -4651,10 +4670,11 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 audioRecorder.stop();
                 audioRecorder.release();
                 audioRecorder = null;
-                // Novagram voice changer: this segment's file is closed below on recordQueue, not after the pending
-                // writes, so the effect's last ~30 ms are dropped rather than written after the close.
+                // Novagram voice changer: the effect's last ~30 ms, still inside it, are dropped at a pause.
                 voiceEffect = null;
                 recordQueue.postRunnable(() -> {
+                    // Novagram: the frames already queued are written before the encoder is closed.
+                    waitForFileEncoding();
                     stopRecord();
                     final TLRPC.TL_document audioToSend = recordingAudio;
                     final File recordingAudioFileToSend = joinRecord(recordingPrevAudioFile, recordingAudioFile, audioToSend);
@@ -4749,6 +4769,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 });
                 return;
             }
+
+            // Novagram: the last message may still be writing or joining on the shared encoder, and its UI part still
+            // reads the fields set below.
+            waitForFileEncoding();
 
             setBluetoothScoOn(true);
 
