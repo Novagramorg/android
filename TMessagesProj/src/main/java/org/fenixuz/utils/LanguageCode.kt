@@ -1965,6 +1965,13 @@ object LanguageCode {
             "Yarim tonlarda: + ovozni ingichka, - yo'g'on qiladi.",
             "В полутонах: + делает голос выше, - ниже."))
         titlesLanguages.add(TitleLanguages(495, "sec", "soniya", "сек"))
+        // Description of "Change common password" in Novagram settings, and its tour stop. The row shows the
+        // first sentence; the tour shows all of it, including where a chat gets locked in the first place.
+        // "chat menu" in words: a ⋮ glyph in the tour bubble's font reads as a colon.
+        titlesLanguages.add(TitleLanguages(496,
+            "Change the common password of your locked chats. To lock a chat: chat menu → Novagram Settings.",
+            "Qulflangan suhbatlaringizning umumiy parolini almashtiring. Suhbatni qulflash: suhbat menyusi → Novagram Sozlamalar.",
+            "Смените общий пароль заблокированных чатов. Чтобы заблокировать чат: меню чата → Настройки Novagram."))
     }
 
     /**

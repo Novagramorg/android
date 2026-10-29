@@ -26,6 +26,9 @@ import org.telegram.ui.Components.UniversalRecyclerView
  * same offsets), but where they have a switch it shows the current choice in the value colour. The whole
  * row is one tap target, so the short divider bar NotificationsCheckCell draws before its switch is left out.
  * The fragment handles the tap, normally with a single-choice dialog.
+ *
+ * Without a value it is a row that opens another screen and still explains itself in a description line,
+ * which a plain button row (TextCell) has no room for.
  */
 class ChoiceCell(context: Context, resourcesProvider: Theme.ResourcesProvider?) : FrameLayout(context) {
 
@@ -108,7 +111,11 @@ class ChoiceCell(context: Context, resourcesProvider: Theme.ResourcesProvider?) 
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
         info.className = "android.widget.Button"
-        info.contentDescription = "${titleView.text}, ${valueView.text}\n${descriptionView.text}"
+        info.contentDescription = if (valueView.text.isNullOrEmpty()) {
+            "${titleView.text}\n${descriptionView.text}"
+        } else {
+            "${titleView.text}, ${valueView.text}\n${descriptionView.text}"
+        }
     }
 
     class Factory : UItem.UItemFactory<ChoiceCell>() {
@@ -127,6 +134,9 @@ class ChoiceCell(context: Context, resourcesProvider: Theme.ResourcesProvider?) 
                 item.textValue = value
                 return item
             }
+
+            /** A row that opens another screen: [title] and [description] only, nothing on the right. */
+            fun of(id: Int, title: CharSequence, description: CharSequence): UItem = of(id, title, description, "")
         }
 
         override fun createView(context: Context, listView: RecyclerListView?, currentAccount: Int, classGuid: Int, resourcesProvider: Theme.ResourcesProvider?): ChoiceCell =

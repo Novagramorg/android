@@ -236,8 +236,8 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
      * step that sits out of order makes the list jump backwards mid-tour. Add a step here whenever a row is
      * added above, or the new feature simply never gets explained.
      *
-     * Rows that are only shown conditionally (the voice mic needs a speech recogniser) are listed anyway:
-     * FenixTour skips a stop whose row is not in the list.
+     * Rows that are only shown conditionally (the voice mic needs a speech recogniser, the chat-lock row a
+     * common password) are listed anyway: FenixTour skips a stop whose row is not in the list.
      *
      * The three confirmation toggles share one stop — they differ by a single word, and three
      * near-identical coach marks in a row is worse than one that names all three.
@@ -254,6 +254,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(GHOST_ACTIONBAR_BTN, 342, 343),
         step(SECRET_CHAT, 213, 217),
         step(HIDDEN_ACCOUNTS, 428, 429),
+        step(CHANGE_COMMON_PASSWORD, 251, 496),
         step(STRANGER_SHIELD, 319, 320),
         step(APK_SHIELD, 378, 379),
         step(CONFIRM_STICKER, 190, 386),
@@ -351,15 +352,17 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             UItem.asButtonCheck(SECRET_CHAT, LanguageCode.getMyTitles(213), LanguageCode.getMyTitles(217))
                 .setChecked(SecretPassword.hasPassword())
         )
-        // Hidden accounts: a screen of its own (it lists the accounts and asks for the code first).
-        items.add(UItem.asButton(HIDDEN_ACCOUNTS, LanguageCode.getMyTitles(428)))
+        // Hidden accounts: a screen of its own (it lists the accounts and asks for the code first). A ChoiceCell,
+        // not a plain button, so it has a description line like the switches around it.
+        items.add(ChoiceCell.Factory.of(HIDDEN_ACCOUNTS, LanguageCode.getMyTitles(428), LanguageCode.getMyTitles(429)))
         items.add(UItem.asShadow(null))
 
-        // Chat-lock management — just the "change common password" row. Fingerprint unlock is now
-        // automatic on any biometric device (no toggle needed), so it no longer appears here.
+        // Chat-lock management — just the "change common password" row, with a description like the rest.
+        // Fingerprint unlock is now automatic on any biometric device (no toggle needed), so it no longer
+        // appears here.
         if (Password.hasCommonPassword()) {
             items.add(UItem.asHeader(LanguageCode.getMyTitles(252)))
-            items.add(UItem.asButton(CHANGE_COMMON_PASSWORD, LanguageCode.getMyTitles(251)))
+            items.add(ChoiceCell.Factory.of(CHANGE_COMMON_PASSWORD, LanguageCode.getMyTitles(251), LanguageCode.getMyTitles(496)))
             items.add(UItem.asShadow(null))
         }
 
