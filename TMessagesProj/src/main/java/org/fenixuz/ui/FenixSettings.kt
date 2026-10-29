@@ -140,6 +140,12 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         TIME_SECONDS to "time_seconds"
     )
     private var targetConsumed = false
+    // The link named a row that is on this screen, so the list scrolls to it once it is laid out.
+    private var openedAtLinkedRow = false
+    // The tour took over the list: the link's pending scroll and flash must not pull it back.
+    private var linkedRowCancelled = false
+    // First open: the tour starts when the open animation ends.
+    private var autoTourPending = false
     private var flashAnimator: ValueAnimator? = null
 
     /** True when auto-download is fully stopped (all network presets disabled). */
@@ -187,14 +193,29 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             }
         })
 
-        // First-ever open: auto-play the full tour once, after the list has settled. It covers every feature;
-        // the Skip button lets anyone bail out instantly, and the toolbar "?" lets them replay it later.
-        if (!tourAlreadyShown()) {
-            markTourShown()
-            AndroidUtilities.runOnUIThread({ startTour() }, 350)
-        }
+        // First-ever open: auto-play the full tour once, when the screen has finished opening (see
+        // onTransitionAnimationEnd). It covers every feature; the Skip button lets anyone bail out instantly,
+        // and the toolbar "?" lets them replay it later.
+        // Not when a settings link opened the screen at one of its rows (fillItems already ran, in
+        // super.createView): both would scroll the list, and the tour's spotlight landed on the linked row
+        // instead of its own. The person came for that one setting, so the tour isn't marked as shown and
+        // plays on the next ordinary open.
+        autoTourPending = !openedAtLinkedRow && !tourAlreadyShown()
 
         return view
+    }
+
+    // The tour measures where its row is on screen once, when it spotlights it. It used to start on a fixed
+    // 350 ms timer from createView, and on a slow phone the screen could still be sliding in then: the
+    // spotlight stayed shifted to the right of its row, partly off screen. Every way of opening a fragment
+    // (slide, fade, no animation) ends with this call, so the tour waits for it.
+    override fun onTransitionAnimationEnd(isOpen: Boolean, backward: Boolean) {
+        super.onTransitionAnimationEnd(isOpen, backward)
+        if (isOpen && !backward && autoTourPending) {
+            autoTourPending = false
+            // A moment for the list's first layout after an open without animation.
+            AndroidUtilities.runOnUIThread({ if (startTour()) markTourShown() }, 200)
+        }
     }
 
     private fun tourAlreadyShown(): Boolean =
@@ -249,9 +270,17 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(REMINDER_ENABLED, 270, 271)
     )
 
-    private fun startTour() {
-        val container = fragmentView as? FrameLayout ?: return
+    /** False when the screen is already gone: nothing was started, so the first-open tour is still owed. */
+    private fun startTour(): Boolean {
+        val container = fragmentView as? FrameLayout ?: return false
+        // Left the screen before the delayed auto start ran: the tour tears down when its host detaches, and
+        // one that is already detached never would, so its dim overlay would stay over the app.
+        if (!container.isAttachedToWindow) return false
+        // "?" tapped while a link is still scrolling to its row: the tour owns the list from here on.
+        linkedRowCancelled = true
+        flashAnimator?.cancel()
         FenixTour(container.context, container, listView, fullSteps()).start()
+        return true
     }
 
     // Draw the grey page behind a TRANSPARENT system navigation bar (Telegram's own settings screens do this
@@ -813,19 +842,23 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             return
         }
         targetConsumed = true
+        openedAtLinkedRow = true
         // Let the list finish its first layout pass, then scroll to + flash the row.
         AndroidUtilities.runOnUIThread({ scrollAndFlash(pos, 0) }, 250)
     }
 
     /** Scroll the deep-linked row into view, then flash it. Retries a few times until the row is laid out. */
     private fun scrollAndFlash(pos: Int, attempt: Int) {
+        if (linkedRowCancelled) return
         try {
             listView.layoutManager.scrollToPositionWithOffset(pos, AndroidUtilities.dp(80f))
         } catch (ignore: Exception) {
         }
         AndroidUtilities.runOnUIThread({
             val row = listView.findViewHolderForAdapterPosition(pos)?.itemView
-            if (row != null && row.width > 0 && row.height > 0) {
+            if (linkedRowCancelled) {
+                // The tour started in the meantime.
+            } else if (row != null && row.width > 0 && row.height > 0) {
                 flashRow(row, pos)
             } else if (attempt < 4) {
                 scrollAndFlash(pos, attempt + 1)
