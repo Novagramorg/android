@@ -561,8 +561,8 @@ public class EmojiView extends FrameLayout implements
 
         @Override
         public void sendSticker(TLRPC.Document sticker, String query, Object parent, boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
-            if (ConfirmDialogsPref.INSTANCE.getConfirmSticker() && fragment != null) {
-                ConfirmDialog.INSTANCE.showDialog(fragment, EmojiView.this.getContext(), new Function1<Boolean, Unit>() {
+            if (ConfirmDialogsPref.INSTANCE.getConfirmSticker()) {
+                ConfirmDialog.INSTANCE.showDialog(fragment, EmojiView.this.getContext(), resourcesProvider, new Function1<Boolean, Unit>() {
                     @Override
                     public Unit invoke(Boolean aBoolean) {
                         delegate.onStickerSelected(null, sticker, query, parent, null, notify, scheduleDate, 0);
@@ -2096,7 +2096,7 @@ public class EmojiView extends FrameLayout implements
                         if (position < gifAdapter.recentItemsCount) {
                             if (ConfirmDialogsPref.INSTANCE.getConfirmGif()) {
                                 int p = position;
-                                ConfirmDialog.INSTANCE.showDialog(fragment, context, new Function1<Boolean, Unit>() {
+                                ConfirmDialog.INSTANCE.showDialog(fragment, context, resourcesProvider, new Function1<Boolean, Unit>() {
                                     @Override
                                     public Unit invoke(Boolean aBoolean) {
                                         delegate.onGifSelected(view, recentGifs.get(p), null, "gif", true, 0, 0);
@@ -2122,7 +2122,7 @@ public class EmojiView extends FrameLayout implements
                         }
                         if (ConfirmDialogsPref.INSTANCE.getConfirmGif()) {
                             int p = position;
-                            ConfirmDialog.INSTANCE.showDialog(fragment, context, new Function1<Boolean, Unit>() {
+                            ConfirmDialog.INSTANCE.showDialog(fragment, context, resourcesProvider, new Function1<Boolean, Unit>() {
                                 @Override
                                 public Unit invoke(Boolean aBoolean) {
                                     delegate.onGifSelected(view, gifSearchAdapter.results.get(p), gifSearchAdapter.lastSearchImageString, gifSearchAdapter.bot, true, 0, 0);
@@ -2392,7 +2392,7 @@ public class EmojiView extends FrameLayout implements
                 cell.disable();
                 if (ConfirmDialogsPref.INSTANCE.getConfirmSticker()) {
                     String q = query;
-                    ConfirmDialog.INSTANCE.showDialog(fragment, context, new Function1<Boolean, Unit>() {
+                    ConfirmDialog.INSTANCE.showDialog(fragment, context, resourcesProvider, new Function1<Boolean, Unit>() {
                         @Override
                         public Unit invoke(Boolean aBoolean) {
                             delegate.onStickerSelected(cell, cell.getSticker(), q, cell.getParentObject(), cell.getSendAnimationData(), true, 0, 0);
