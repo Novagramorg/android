@@ -2095,11 +2095,12 @@ public class EmojiView extends FrameLayout implements
                         }
                         if (position < gifAdapter.recentItemsCount) {
                             if (ConfirmDialogsPref.INSTANCE.getConfirmGif()) {
-                                int p = position;
+                                // Novagram: the GIF is taken now, not on OK -- the list may change under the dialog.
+                                TLRPC.Document gif = recentGifs.get(position);
                                 ConfirmDialog.INSTANCE.showDialog(fragment, context, resourcesProvider, new Function1<Boolean, Unit>() {
                                     @Override
                                     public Unit invoke(Boolean aBoolean) {
-                                        delegate.onGifSelected(view, recentGifs.get(p), null, "gif", true, 0, 0);
+                                        delegate.onGifSelected(view, gif, null, "gif", true, 0, 0);
                                         return null;
                                     }
                                 });
@@ -2113,7 +2114,20 @@ public class EmojiView extends FrameLayout implements
                                 resultPos--; // trending section item
                             }
                             if (resultPos >= 0 && resultPos < gifAdapter.results.size()) {
-                                delegate.onGifSelected(view, gifAdapter.results.get(resultPos), null, gifAdapter.bot, true, 0, 0);
+                                TLRPC.BotInlineResult gif = gifAdapter.results.get(resultPos);
+                                TLRPC.User bot = gifAdapter.bot;
+                                // Novagram: trending GIFs ask too, like the recent and the searched ones.
+                                if (ConfirmDialogsPref.INSTANCE.getConfirmGif()) {
+                                    ConfirmDialog.INSTANCE.showDialog(fragment, context, resourcesProvider, new Function1<Boolean, Unit>() {
+                                        @Override
+                                        public Unit invoke(Boolean aBoolean) {
+                                            delegate.onGifSelected(view, gif, null, bot, true, 0, 0);
+                                            return null;
+                                        }
+                                    });
+                                } else {
+                                    delegate.onGifSelected(view, gif, null, bot, true, 0, 0);
+                                }
                             }
                         }
                     } else if (gifGridView.getAdapter() == gifSearchAdapter) {
@@ -2121,11 +2135,13 @@ public class EmojiView extends FrameLayout implements
                             return;
                         }
                         if (ConfirmDialogsPref.INSTANCE.getConfirmGif()) {
-                            int p = position;
+                            TLRPC.BotInlineResult gif = gifSearchAdapter.results.get(position);
+                            String gifQuery = gifSearchAdapter.lastSearchImageString;
+                            TLRPC.User bot = gifSearchAdapter.bot;
                             ConfirmDialog.INSTANCE.showDialog(fragment, context, resourcesProvider, new Function1<Boolean, Unit>() {
                                 @Override
                                 public Unit invoke(Boolean aBoolean) {
-                                    delegate.onGifSelected(view, gifSearchAdapter.results.get(p), gifSearchAdapter.lastSearchImageString, gifSearchAdapter.bot, true, 0, 0);
+                                    delegate.onGifSelected(view, gif, gifQuery, bot, true, 0, 0);
                                     updateRecentGifs();
                                     return null;
                                 }
