@@ -67,7 +67,7 @@ import org.telegram.ui.PhotoViewer
  *  - a single message observer handles the initial load AND live updates (no redundant temp observer);
  *  - the ≤100-item merge/sort runs on the UI thread (trivial cost) instead of bouncing through a
  *    background queue, removing a thread hop and a class of races;
- *  - every observer is unregistered and the message list is cleared on [dismiss] so nothing leaks.
+ *  - every observer is unregistered on [dismiss] so nothing leaks.
  */
 class ChatPreviewBottomSheet(
     context: Context,
@@ -670,8 +670,10 @@ class ChatPreviewBottomSheet(
         nc.removeObserver(messagesDelegate, NotificationCenter.updateInterfaces)
         nc.removeObserver(messagesDelegate, NotificationCenter.chatInfoDidLoad)
         nc.removeObserver(messagesDelegate, NotificationCenter.userInfoDidLoad)
-        messages.clear()
-        messageIds.clear()
+        // The list stays as it is: the sheet still draws it while sliding away, and emptying it without telling the
+        // adapter made a fling still running ask for a gone row (IndexOutOfBoundsException, Play Vitals 1.3.0).
+        // With the observers off nothing changes it any more, and it goes with the sheet.
+        listView.stopScroll()
     }
 
     private companion object {

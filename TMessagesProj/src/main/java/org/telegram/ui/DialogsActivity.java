@@ -8691,6 +8691,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
      * buzzing again there would be felt as a double tick.
      */
     public boolean showChatPreviewAsBottomSheet(DialogCell cell, boolean haptic) {
+        // Novagram: the avatar's long press (DialogCell) comes here without onItemLongClick's check, and a
+        // screen on its way out has no activity: the preview then crashed in its constructor (Play Vitals 1.3.0).
+        if (getParentActivity() == null) {
+            return false;
+        }
         long dialogId = cell.getDialogId();
         if (cell.isDialogFolder() || dialogId == 0 || DialogObject.isEncryptedDialog(dialogId)) {
             return showChatPreview(cell);
@@ -8700,6 +8705,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // The preview opens the moment the code is right and the lock screen closes at once: no chat list in between.
             // Back only closes the lock screen, like for any code prompt over an ordinary screen.
             SecretLockScreenDialog lock = new SecretLockScreenDialog(this, getParentActivity(), org.fenixuz.utils.Password.INSTANCE.credentialFor(dialogId), () -> {
+                // The screen may have gone while the code was typed.
+                if (getParentActivity() == null) {
+                    return;
+                }
                 ChatPreviewBottomSheet sheet = new ChatPreviewBottomSheet(getParentActivity(), dialogId, getParentActivity());
                 showDialog(sheet);
             }, false, SecretLockScreenDialog.UNLOCK_THEN_CLOSE);
