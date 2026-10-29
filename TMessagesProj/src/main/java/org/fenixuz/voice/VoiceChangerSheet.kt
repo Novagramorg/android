@@ -17,12 +17,14 @@ import org.telegram.ui.ActionBar.BottomSheet
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.RadioColorCell
 import org.telegram.ui.Components.LayoutHelper
+import org.telegram.ui.Components.NumberPicker
 
 /**
  * Novagram voice changer: the list of effects, opened from the button above the pause button while a voice message is
  * recorded (as in Graph Messenger), from the call screens, or from the Novagram settings. One radio row per effect, in
- * Graph's order with its emoji; "Record speed" asks for one of four speeds. Voice messages and calls keep a choice each
- * ([forCall]); calls have no speed row, as a live voice can't be played faster or slower.
+ * Graph's order with its emoji; "Record speed" asks for one of four speeds, and Modulation, Echo and Noise for their
+ * settings, which their rows show under the name, as in Graph. Voice messages and calls keep a choice each ([forCall]);
+ * calls have no speed row, as a live voice can't be played faster or slower.
  */
 object VoiceChangerSheet {
 
@@ -73,6 +75,11 @@ object VoiceChangerSheet {
                         refresh(cells, true, forCall)
                         sheet.dismiss()
                     }
+                } else if (VoicePreset.hasSettings(row.id)) {
+                    askSettings(context, resourcesProvider, forCall, row) {
+                        refresh(cells, true, forCall)
+                        sheet.dismiss()
+                    }
                 } else {
                     if (forCall) VoiceChanger.callPresetId = row.id else VoiceChanger.presetId = row.id
                     refresh(cells, true, forCall)
@@ -111,6 +118,7 @@ object VoiceChangerSheet {
      */
     private fun refresh(cells: List<RadioColorCell>, animated: Boolean, forCall: Boolean) {
         val selected = if (forCall) VoiceChanger.callPresetId else VoiceChanger.presetId
+        val params = VoiceChanger.of(forCall).params
         for (cell in cells) {
             val id = cell.tag as Int
             val checked = if (id == VoicePreset.SPEED_ROW) VoicePreset.isSpeed(selected) else id == selected
@@ -119,12 +127,96 @@ object VoiceChangerSheet {
                 continue
             }
             val title = withEmoji(VoicePreset.ROWS.first { it.id == id })
+            val settings = VoicePreset.settingsText(id, params)
             if (id == VoicePreset.SPEED_ROW && checked) {
                 cell.setTextAndText2AndValue(title, LanguageCode.getMyTitles(VoicePreset.byId(selected).titleId), true)
+            } else if (settings != null) {
+                cell.setTextAndText2AndValue(title, settings, checked)
             } else {
                 cell.setTextAndValue(title, checked)
             }
         }
+    }
+
+    /**
+     * The settings of Modulation, Echo or Noise, as number wheels in a small dialog over the list, in Graph's steps.
+     * Done keeps them and picks the effect; Cancel leaves both as they were.
+     */
+    private fun askSettings(
+        context: Context,
+        resourcesProvider: Theme.ResourcesProvider?,
+        forCall: Boolean,
+        row: VoicePreset,
+        onChosen: Runnable,
+    ) {
+        val choice = VoiceChanger.of(forCall)
+        val params = choice.params
+        val wheels = LinearLayout(context)
+        wheels.orientation = LinearLayout.HORIZONTAL
+
+        fun wheel(label: String?, min: Int, max: Int, value: Int, format: (Int) -> String): NumberPicker {
+            val column = LinearLayout(context)
+            column.orientation = LinearLayout.VERTICAL
+            if (label != null) {
+                val text = TextView(context)
+                text.text = label
+                text.gravity = Gravity.CENTER
+                text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14f)
+                text.setTextColor(Theme.getColor(Theme.key_dialogTextGray3, resourcesProvider))
+                column.addView(text, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0f, 8f, 0f, 0f))
+            }
+            val picker = NumberPicker(context, resourcesProvider)
+            picker.setMinValue(min)
+            picker.setMaxValue(max)
+            picker.setValue(value)
+            picker.setWrapSelectorWheel(false)
+            picker.setFormatter { format(it) }
+            column.addView(picker, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT))
+            wheels.addView(column, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f))
+            return picker
+        }
+
+        val content: android.view.View
+        val read: () -> VoiceParams
+        when (row.id) {
+            VoicePreset.MODULATION -> {
+                // NumberPicker takes no negative values, so the wheel runs 0..24 and shows -12..+12.
+                val offset = VoiceParams.TONE_MIN
+                val tone = wheel(null, 0, VoiceParams.TONE_MAX - offset, params.tone - offset) { VoicePreset.toneText(it + offset) }
+                val layout = LinearLayout(context)
+                layout.orientation = LinearLayout.VERTICAL
+                layout.addView(wheels, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT))
+                val hint = TextView(context)
+                hint.text = LanguageCode.getMyTitles(494)
+                hint.gravity = Gravity.CENTER
+                hint.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14f)
+                hint.setTextColor(Theme.getColor(Theme.key_dialogTextGray3, resourcesProvider))
+                layout.addView(hint, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 24f, 4f, 24f, 0f))
+                content = layout
+                read = { params.copy(tone = tone.value + offset) }
+            }
+            VoicePreset.ECHO -> {
+                val delay = wheel(LanguageCode.getMyTitles(492), VoiceParams.STEP_MIN, VoiceParams.STEP_MAX, params.echoDelay) { VoicePreset.secondsText(it) }
+                val volume = wheel(LanguageCode.getMyTitles(493), VoiceParams.STEP_MIN, VoiceParams.STEP_MAX, params.echoVolume) { VoicePreset.percentText(it) }
+                content = wheels
+                read = { params.copy(echoDelay = delay.value, echoVolume = volume.value) }
+            }
+            else -> {
+                val volume = wheel(LanguageCode.getMyTitles(493), VoiceParams.STEP_MIN, VoiceParams.STEP_MAX, params.noiseVolume) { VoicePreset.percentText(it) }
+                content = wheels
+                read = { params.copy(noiseVolume = volume.value) }
+            }
+        }
+        AlertDialog.Builder(context, resourcesProvider)
+            .setTitle(LanguageCode.getMyTitles(row.titleId))
+            .setView(content)
+            .setPositiveButton(LanguageCode.getMyTitles(288)) { _, _ ->
+                choice.params = read()
+                choice.presetId = row.id
+                onChosen.run()
+            }
+            .setNegativeButton(LanguageCode.getMyTitles(80), null)
+            .show()
     }
 
     /** The four tape speeds, as a small dialog over the list. */

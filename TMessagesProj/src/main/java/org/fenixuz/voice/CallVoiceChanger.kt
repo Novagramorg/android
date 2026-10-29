@@ -8,13 +8,14 @@ import java.nio.ByteOrder
  * WebRTC encodes them, for one-to-one and group calls alike. WebRTC needs every buffer back at its own size, but an
  * effect hands back what it has rather than what it was given (the pitch shifters hold some back), so the voice passes
  * through a small queue: it starts once one buffer more than needed is in it, and from then on a buffer out matches a
- * buffer in. The effect follows [VoiceChanger.callPresetId], so a choice made during the call applies at once.
+ * buffer in. The effect follows [VoiceChanger.calls], so a choice made during the call, of an effect or of its
+ * settings, applies at once.
  * One per recording; used from one thread.
  */
 class CallVoiceChanger(private val sampleRate: Int) {
 
     private var effect: VoiceEffect? = null
-    private var effectPresetId = VoicePreset.OFF
+    private var effectPreset: VoicePreset? = null
     private var input = ShortArray(0)
     private var queue = ShortArray(sampleRate / 2)
     private var queued = 0
@@ -22,10 +23,11 @@ class CallVoiceChanger(private val sampleRate: Int) {
 
     /** Changes the first [bytes] bytes of [buffer] (16-bit mono PCM, native byte order) in place. */
     fun process(buffer: ByteBuffer, bytes: Int) {
-        val presetId = VoiceChanger.callPresetId
-        if (presetId != effectPresetId) {
-            effectPresetId = presetId
-            effect = VoiceChanger.newCallEffect(sampleRate)
+        // A new choice is a new object, so comparing the reference is enough (and cheap, every 10 ms).
+        val preset = VoiceChanger.calls.preset
+        if (preset !== effectPreset) {
+            effectPreset = preset
+            effect = if (preset.id == VoicePreset.OFF) null else VoiceEffect(preset, sampleRate)
             queued = 0
             started = false
         }

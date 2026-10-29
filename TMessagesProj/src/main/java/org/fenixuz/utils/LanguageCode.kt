@@ -1958,6 +1958,13 @@ object LanguageCode {
             "Speak in another voice in calls and group calls. During a call, it is also in the button on the call screen.",
             "Qo'ng'iroq va guruh qo'ng'iroqlarida boshqa ovozda gapiring. Qo'ng'iroq paytida qo'ng'iroq oynasidagi tugmada ham bor.",
             "Говорите другим голосом в звонках и групповых звонках. Во время звонка он есть и на кнопке на экране звонка."))
+        titlesLanguages.add(TitleLanguages(492, "Delay", "Kechikish", "Задержка"))
+        titlesLanguages.add(TitleLanguages(493, "Volume", "Balandlik", "Громкость"))
+        titlesLanguages.add(TitleLanguages(494,
+            "In semitones: + makes the voice higher, - lower.",
+            "Yarim tonlarda: + ovozni ingichka, - yo'g'on qiladi.",
+            "В полутонах: + делает голос выше, - ниже."))
+        titlesLanguages.add(TitleLanguages(495, "sec", "soniya", "сек"))
     }
 
     /**

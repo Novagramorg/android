@@ -1,6 +1,7 @@
 package org.fenixuz.voice
 
 import java.nio.ShortBuffer
+import java.util.Locale
 import org.fenixuz.utils.LanguageCode
 import kotlin.math.PI
 import kotlin.math.abs
@@ -18,10 +19,11 @@ import kotlin.math.tanh
 
 /**
  * Novagram voice changer: one preset of the voice changer (the same 15 as Graph Messenger's, in its order). A preset is
- * a pitch shift or a tape-speed change, plus a few simple stages applied after it; every value is fixed, so a preset
- * always sounds the same. [gain] brings each preset back to about the loudness of the voice it was given.
+ * a pitch shift or a tape-speed change, plus a few simple stages applied after it. Modulation, Echo and Noise have
+ * settings, as in Graph ([with], [VoiceParams]); every other preset always sounds the same. [gain] brings each preset
+ * back to about the loudness of the voice it was given.
  */
-class VoicePreset(
+data class VoicePreset(
     /** Stored in the prefs, so never renumber. */
     val id: Int,
     /** [org.fenixuz.utils.LanguageCode] id of the name. */
@@ -50,9 +52,6 @@ class VoicePreset(
     val reverbRoom: Float = 0.5f,
     val reverbDamp: Float = 0.5f,
     val reverbPreDelayMs: Float = 0f,
-    /** Vibrato: a delay line swept by a sine. */
-    val vibratoHz: Float = 0f,
-    val vibratoDepthMs: Float = 0f,
     /** Soft clipping, 0 = none. */
     val drive: Float = 0f,
     /** Hoarseness: [whisper] mixes in the voice turned to breath (spectral, phases randomized), [roughness] a rough flutter. */
@@ -63,8 +62,29 @@ class VoicePreset(
     /** Output level, measured per preset so that switching presets doesn't make the voice jump in loudness. */
     val gain: Float = 1f,
 ) {
+    /** This preset with [params] applied, for the three presets that have settings; any other is returned as it is. */
+    fun with(params: VoiceParams): VoicePreset = when (id) {
+        // A pitch the user picks, as in Graph. The formants go half as far, between a cartoon voice (all the way) and
+        // another person's (not at all); at 0 the voice passes as it is.
+        MODULATION -> if (params.tone == 0) {
+            copy(semitones = 0f, formant = null)
+        } else {
+            copy(semitones = params.tone.toFloat(), formant = params.tone / 2f)
+        }
+        ECHO -> {
+            val volume = params.echoVolume / 10f
+            val mix = volume * 0.8f
+            copy(echoMs = params.echoDelay * 100f, echoMix = mix, echoFeedback = 0.25f + 0.3f * volume, gain = 1f / (1f + 0.35f * mix))
+        }
+        NOISE -> copy(noise = 0.03f * params.noiseVolume / 10f)
+        else -> this
+    }
+
     companion object {
         const val OFF = 0
+        const val MODULATION = 14
+        const val ECHO = 10
+        const val NOISE = 15
 
         /** The picker's "Record speed" row: its four speeds are presets of their own (ids 16..19, names 484..487). */
         const val SPEED_ROW = -1
@@ -91,8 +111,8 @@ class VoicePreset(
             VoicePreset(9, 477, "\uD83D\uDC7D", semitones = 4f, ringHz = 140f, ringMix = 0.6f, gain = 1.6f),
             // hoarseness
             VoicePreset(13, 481, "\uD83D\uDDE3\uFE0F", whisper = 0.5f, roughness = 0.15f, drive = 1.3f),
-            // modulation
-            VoicePreset(14, 482, "\uD83C\uDF9B\uFE0F", vibratoHz = 6f, vibratoDepthMs = 2.5f),
+            // modulation: a pitch of the user's choice
+            VoicePreset(MODULATION, 482, "\uD83C\uDF9B\uFE0F").with(VoiceParams.DEFAULT),
             // child
             VoicePreset(1, 469, "\uD83E\uDDD2", semitones = 12f, formant = 5.5f, gain = 1.1f),
             // mouse
@@ -104,9 +124,9 @@ class VoicePreset(
             // monster
             VoicePreset(6, 474, "\uD83D\uDC7A", semitones = -8f, formant = -5f, drive = 2.5f, ringHz = 30f, ringMix = 0.25f, gain = 0.54f),
             // echo
-            VoicePreset(10, 478, "\uD83C\uDF99\uFE0F", echoMs = 300f, echoFeedback = 0.45f, echoMix = 0.5f, gain = 0.85f),
+            VoicePreset(ECHO, 478, "\uD83C\uDF99\uFE0F").with(VoiceParams.DEFAULT),
             // noise
-            VoicePreset(15, 483, "\uD83D\uDCA5", noise = 0.02f),
+            VoicePreset(NOISE, 483, "\uD83D\uDCA5").with(VoiceParams.DEFAULT),
             // helium: as in the real gas, mostly the formants go up (sound is faster in it), the pitch only a little
             VoicePreset(4, 472, "\uD83C\uDF88", semitones = 3f, formant = 9f, gain = 0.95f),
             // hexafluoride: the other way, a heavy gas
@@ -121,6 +141,41 @@ class VoicePreset(
 
         @JvmStatic
         fun isSpeed(id: Int): Boolean = SPEEDS.any { it.id == id }
+
+        @JvmStatic
+        fun hasSettings(id: Int): Boolean = id == MODULATION || id == ECHO || id == NOISE
+
+        /** A preset's settings as its row shows them under the name, as in Graph: "+5", "70%, 0.5 sec", "70%". */
+        @JvmStatic
+        fun settingsText(id: Int, params: VoiceParams): String? = when (id) {
+            MODULATION -> toneText(params.tone)
+            ECHO -> percentText(params.echoVolume) + ", " + secondsText(params.echoDelay)
+            NOISE -> percentText(params.noiseVolume)
+            else -> null
+        }
+
+        fun toneText(tone: Int): String = if (tone > 0) "+$tone" else tone.toString()
+
+        fun percentText(step: Int): String = "${step * 10}%"
+
+        fun secondsText(step: Int): String = String.format(Locale.US, "%.1f", step / 10f) + " " + LanguageCode.getMyTitles(495)
+    }
+}
+
+/**
+ * What the user sets for the three presets that have settings, in the steps Graph Messenger offers: Modulation's pitch
+ * in semitones, Echo's delay in tenths of a second and its volume in tenths, Noise's volume in tenths.
+ */
+data class VoiceParams(val tone: Int, val echoDelay: Int, val echoVolume: Int, val noiseVolume: Int) {
+    companion object {
+        const val TONE_MIN = -12
+        const val TONE_MAX = 12
+        const val STEP_MIN = 1
+        const val STEP_MAX = 10
+
+        /** Graph's defaults: +5 semitones; an echo at 70 % after 0.5 s; noise at 70 %. */
+        @JvmField
+        val DEFAULT = VoiceParams(tone = 5, echoDelay = 5, echoVolume = 7, noiseVolume = 7)
     }
 }
 
@@ -166,11 +221,6 @@ class VoiceEffect(val preset: VoicePreset, private val sampleRate: Int) {
     /** What [drain] adds after the voice: the spectral stage's lag, then a second for an echo or a reverb to fade. */
     private val spectralLag = spectral?.size ?: 0
     private val fadeLength = if (echo != null || reverb != null) sampleRate else 0
-
-    private val vibrato = if (preset.vibratoHz > 0f) FloatArray(msToSamples(preset.vibratoDepthMs * 2f + 10f)) else null
-    private var vibratoPos = 0
-    private val vibratoStep = 2.0 * PI * preset.vibratoHz / sampleRate
-    private var vibratoPhase = 0.0
 
     private var roughPhase = 0.0
     private var noiseLow = 0f
@@ -232,15 +282,6 @@ class VoiceEffect(val preset: VoicePreset, private val sampleRate: Int) {
                 ringPhase += ringStep
                 if (ringPhase > 2.0 * PI) ringPhase -= 2.0 * PI
             }
-            if (vibrato != null) {
-                vibrato[vibratoPos] = x
-                val center = msToSamples(preset.vibratoDepthMs + 5f).toFloat()
-                val offset = center + sin(vibratoPhase).toFloat() * msToSamples(preset.vibratoDepthMs)
-                x = readFractional(vibrato, vibratoPos, offset)
-                vibratoPos = (vibratoPos + 1) % vibrato.size
-                vibratoPhase += vibratoStep
-                if (vibratoPhase > 2.0 * PI) vibratoPhase -= 2.0 * PI
-            }
             if (preset.roughness > 0f) {
                 // Roughness: an irregular 30..50 Hz flutter of the loudness, like a strained throat.
                 roughPhase += 2.0 * PI * (40.0 + 10.0 * nextNoise()) / sampleRate
@@ -278,16 +319,6 @@ class VoiceEffect(val preset: VoicePreset, private val sampleRate: Int) {
         if (a <= 0.9f) return x
         val bent = 0.9f + 0.1f * tanh(((a - 0.9f) / 0.1f).toDouble()).toFloat()
         return if (x < 0) -bent else bent
-    }
-
-    /** Linear interpolation [offset] samples back from [writePos] in a circular buffer. */
-    private fun readFractional(line: FloatArray, writePos: Int, offset: Float): Float {
-        val back = offset.coerceIn(1f, line.size - 2f)
-        val whole = back.toInt()
-        val frac = back - whole
-        val a = line[(writePos - whole + line.size) % line.size]
-        val b = line[(writePos - whole - 1 + line.size) % line.size]
-        return a + (b - a) * frac
     }
 
     private fun nextNoise(): Float {
@@ -610,77 +641,126 @@ private class Freeverb(sampleRate: Int, preset: VoicePreset) {
     }
 }
 
-/** The voice changer's state: the chosen preset (kept across recordings, like in Graph). */
+/**
+ * The voice changer's state, kept across recordings and calls (as in Graph): a [Choice] for voice messages and one for
+ * calls, each an effect with its own settings.
+ */
 object VoiceChanger {
 
     private const val PREFS = "novagram_voice_changer"
-    private const val KEY_PRESET = "preset"
-    private const val KEY_CALL_PRESET = "call_preset"
 
-    private val prefs
+    internal val prefs: android.content.SharedPreferences
         get() = org.telegram.messenger.ApplicationLoader.applicationContext
             .getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
 
-    // Read from the prefs once: the recording button asks on every frame it draws.
-    @Volatile
-    private var current: VoicePreset? = null
+    /** Voice messages, under the keys "preset", "tone", "echo_delay", "echo_volume" and "noise_volume". */
+    @JvmField
+    val messages = Choice("", allowSpeed = true)
 
-    private fun current(): VoicePreset =
-        current ?: VoicePreset.byId(prefs.getInt(KEY_PRESET, VoicePreset.OFF)).also { current = it }
+    /** Calls, under the same keys with "call_" in front. A tape speed can't change a live voice, so it is never one. */
+    @JvmField
+    val calls = Choice("call_", allowSpeed = false)
 
-    // Calls keep a choice of their own, as in Graph. A tape speed can't change a live voice, so it never is one.
-    @Volatile
-    private var currentCall: VoicePreset? = null
+    @JvmStatic
+    fun of(forCall: Boolean): Choice = if (forCall) calls else messages
 
-    private fun currentCall(): VoicePreset =
-        currentCall ?: forCall(prefs.getInt(KEY_CALL_PRESET, VoicePreset.OFF)).also { currentCall = it }
-
-    private fun forCall(id: Int): VoicePreset = if (VoicePreset.isSpeed(id)) VoicePreset.byId(VoicePreset.OFF) else VoicePreset.byId(id)
-
-    /** The chosen preset's id; [VoicePreset.OFF] records the voice as it is, and so does an id no preset has any more. */
+    /** The voice messages' preset id; [VoicePreset.OFF] records the voice as it is. */
     @JvmStatic
     var presetId: Int
-        get() = current().id
+        get() = messages.presetId
         set(value) {
-            current = VoicePreset.byId(value)
-            prefs.edit().putInt(KEY_PRESET, value).apply()
+            messages.presetId = value
         }
 
     @JvmStatic
     val isOn: Boolean
-        get() = current().id != VoicePreset.OFF
+        get() = messages.isOn
 
-    /** The chosen effect's name, as the settings row shows it: a speed by its own name ("Thick"), none as "Off". */
+    /** The voice messages' effect name, as the settings row shows it: a speed by its own name ("Thick"), none as "Off". */
     @JvmStatic
-    fun currentTitle(): String = LanguageCode.getMyTitles(current().titleId)
+    fun currentTitle(): String = messages.title()
 
     /** A new effect for one recording, or null when the voice changer is off. */
     @JvmStatic
-    fun newEffect(sampleRate: Int): VoiceEffect? {
-        val preset = current()
-        return if (preset.id == VoicePreset.OFF) null else VoiceEffect(preset, sampleRate)
-    }
+    fun newEffect(sampleRate: Int): VoiceEffect? = messages.newEffect(sampleRate)
 
-    /** The preset for calls; read by the call's audio thread every 10 ms, so it is cached. */
     @JvmStatic
     var callPresetId: Int
-        get() = currentCall().id
+        get() = calls.presetId
         set(value) {
-            currentCall = forCall(value)
-            prefs.edit().putInt(KEY_CALL_PRESET, value).apply()
+            calls.presetId = value
         }
 
     @JvmStatic
     val isCallOn: Boolean
-        get() = currentCall().id != VoicePreset.OFF
+        get() = calls.isOn
 
     @JvmStatic
-    fun callTitle(): String = LanguageCode.getMyTitles(currentCall().titleId)
+    fun callTitle(): String = calls.title()
+}
 
-    /** A new effect for a call, or null when the voice changer is off for calls. */
-    @JvmStatic
-    fun newCallEffect(sampleRate: Int): VoiceEffect? {
-        val preset = currentCall()
+/** One choice of effect and its settings, kept in the prefs under [prefix]. */
+class Choice internal constructor(private val prefix: String, private val allowSpeed: Boolean) {
+
+    // The recording button asks on every frame it draws and a call's audio every 10 ms, so the result is cached; it is
+    // replaced (never changed) when the choice changes, which is how CallVoiceChanger notices.
+    @Volatile
+    private var resolved: VoicePreset? = null
+
+    /** The chosen preset with its settings applied; an id no preset has any more reads as off. */
+    val preset: VoicePreset
+        get() = resolved ?: resolve().also { resolved = it }
+
+    var presetId: Int
+        get() = preset.id
+        set(value) {
+            VoiceChanger.prefs.edit().putInt(prefix + KEY_PRESET, value).apply()
+            resolved = resolve()
+        }
+
+    var params: VoiceParams
+        get() {
+            val prefs = VoiceChanger.prefs
+            val default = VoiceParams.DEFAULT
+            return VoiceParams(
+                tone = prefs.getInt(prefix + KEY_TONE, default.tone).coerceIn(VoiceParams.TONE_MIN, VoiceParams.TONE_MAX),
+                echoDelay = prefs.getInt(prefix + KEY_ECHO_DELAY, default.echoDelay).coerceIn(VoiceParams.STEP_MIN, VoiceParams.STEP_MAX),
+                echoVolume = prefs.getInt(prefix + KEY_ECHO_VOLUME, default.echoVolume).coerceIn(VoiceParams.STEP_MIN, VoiceParams.STEP_MAX),
+                noiseVolume = prefs.getInt(prefix + KEY_NOISE_VOLUME, default.noiseVolume).coerceIn(VoiceParams.STEP_MIN, VoiceParams.STEP_MAX),
+            )
+        }
+        set(value) {
+            VoiceChanger.prefs.edit()
+                .putInt(prefix + KEY_TONE, value.tone)
+                .putInt(prefix + KEY_ECHO_DELAY, value.echoDelay)
+                .putInt(prefix + KEY_ECHO_VOLUME, value.echoVolume)
+                .putInt(prefix + KEY_NOISE_VOLUME, value.noiseVolume)
+                .apply()
+            resolved = resolve()
+        }
+
+    val isOn: Boolean
+        get() = preset.id != VoicePreset.OFF
+
+    fun title(): String = LanguageCode.getMyTitles(preset.titleId)
+
+    /** A new effect, or null when this choice is off. */
+    fun newEffect(sampleRate: Int): VoiceEffect? {
+        val preset = preset
         return if (preset.id == VoicePreset.OFF) null else VoiceEffect(preset, sampleRate)
+    }
+
+    private fun resolve(): VoicePreset {
+        val id = VoiceChanger.prefs.getInt(prefix + KEY_PRESET, VoicePreset.OFF)
+        val base = if (!allowSpeed && VoicePreset.isSpeed(id)) VoicePreset.byId(VoicePreset.OFF) else VoicePreset.byId(id)
+        return base.with(params)
+    }
+
+    private companion object {
+        const val KEY_PRESET = "preset"
+        const val KEY_TONE = "tone"
+        const val KEY_ECHO_DELAY = "echo_delay"
+        const val KEY_ECHO_VOLUME = "echo_volume"
+        const val KEY_NOISE_VOLUME = "noise_volume"
     }
 }
