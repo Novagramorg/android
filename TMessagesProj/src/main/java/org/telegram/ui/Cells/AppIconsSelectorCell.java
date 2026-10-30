@@ -207,7 +207,10 @@ public class AppIconsSelectorCell extends RecyclerListView implements Notificati
 
             setWillNotDraw(false);
             iconView = new AdaptiveIconImageView(context);
-            iconView.setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8));
+            // Novagram: a 45dp circle instead of 42dp, and the logo grown with it (outer padding 5 -> 7.5dp), so the
+            // icons fill their tiles a little more. The app-icon bulletin keeps Telegram's sizes.
+            iconView.setPadding(AndroidUtilities.dp(6.5f), AndroidUtilities.dp(6.5f), AndroidUtilities.dp(6.5f), AndroidUtilities.dp(6.5f));
+            iconView.setOuterPadding(AndroidUtilities.dp(7.5f));
             addView(iconView, LayoutHelper.createLinear(58, 58, Gravity.CENTER_HORIZONTAL));
 
             titleView = new TextView(context);

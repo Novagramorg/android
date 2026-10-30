@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Background layer of the violet launcher icon, the colour behind the white logo (ic_launcher_logo). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:startColor="#FF37A1"
+        android:endColor="#C2256D" />
+</shape>

@@ -37,14 +37,16 @@ public class LauncherIconController {
     }
 
     public enum LauncherIcon {
-        // Novagram brand icon + color variants. Each maps to an <activity-alias> in AndroidManifest;
-        // background is always white (the adaptive bg), foreground is that variant's padded squircle.
-        DEFAULT("DefaultIcon", R.drawable.bg_white, R.mipmap.ic_launcher_foreground, R.string.AppIconDefault),
-        AMETHYST("AmethystIcon", R.drawable.bg_white, R.mipmap.ic_launcher_amethyst_foreground, R.string.AppIconAmethyst),
-        EMERALD("EmeraldIcon", R.drawable.bg_white, R.mipmap.ic_launcher_emerald_foreground, R.string.AppIconEmerald),
-        CRIMSON("CrimsonIcon", R.drawable.bg_white, R.mipmap.ic_launcher_crimson_foreground, R.string.AppIconCrimson),
-        MINT("MintIcon", R.drawable.bg_white, R.mipmap.ic_launcher_mint_foreground, R.string.AppIconMint),
-        VIOLET("VioletIcon", R.drawable.bg_white, R.mipmap.ic_launcher_violet_foreground, R.string.AppIconViolet);
+        // Novagram brand icon + color variants. Each maps to an <activity-alias> in AndroidManifest.
+        // As in Telegram, the picker clips the background (the variant's gradient) to a circle and draws the
+        // foreground over it: the white logo, here 15% smaller than on the home screen (ic_launcher_logo) so
+        // it sits inside the circle.
+        DEFAULT("DefaultIcon", R.drawable.ic_launcher_bg_default, R.drawable.app_icon_picker_logo, R.string.AppIconDefault),
+        AMETHYST("AmethystIcon", R.drawable.ic_launcher_bg_amethyst, R.drawable.app_icon_picker_logo, R.string.AppIconAmethyst),
+        EMERALD("EmeraldIcon", R.drawable.ic_launcher_bg_emerald, R.drawable.app_icon_picker_logo, R.string.AppIconEmerald),
+        CRIMSON("CrimsonIcon", R.drawable.ic_launcher_bg_crimson, R.drawable.app_icon_picker_logo, R.string.AppIconCrimson),
+        MINT("MintIcon", R.drawable.ic_launcher_bg_mint, R.drawable.app_icon_picker_logo, R.string.AppIconMint),
+        VIOLET("VioletIcon", R.drawable.ic_launcher_bg_violet, R.drawable.app_icon_picker_logo, R.string.AppIconViolet);
 
         public final String key;
         public final int background;
