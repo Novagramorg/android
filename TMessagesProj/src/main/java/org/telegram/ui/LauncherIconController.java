@@ -50,7 +50,11 @@ public class LauncherIconController {
         EMERALD("EmeraldIcon", R.drawable.ic_launcher_bg_emerald, 0, 498),
         CRIMSON("CrimsonIcon", R.drawable.ic_launcher_bg_crimson, 0, 499),
         MINT("MintIcon", R.drawable.ic_launcher_bg_mint, 0, 500),
-        VIOLET("VioletIcon", R.drawable.ic_launcher_bg_violet, 0, 501);
+        VIOLET("VioletIcon", R.drawable.ic_launcher_bg_violet, 0, 501),
+        BLACK("BlackIcon", R.drawable.ic_launcher_bg_black, 0, 502),
+        GREEN("GreenIcon", R.drawable.ic_launcher_bg_green, 0, 503),
+        SUNSET("SunsetIcon", R.drawable.ic_launcher_bg_sunset, 0, 504),
+        COFFEE("CoffeeIcon", R.drawable.ic_launcher_bg_coffee, 0, 505);
 
         public final String key;
         public final int background;

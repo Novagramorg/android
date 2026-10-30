@@ -1979,6 +1979,10 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(499, "Red", "Qizil", "Красная"))
         titlesLanguages.add(TitleLanguages(500, "Orange", "To'q sariq", "Оранжевая"))
         titlesLanguages.add(TitleLanguages(501, "Pink", "Pushti", "Розовая"))
+        titlesLanguages.add(TitleLanguages(502, "Black", "Qora", "Чёрная"))
+        titlesLanguages.add(TitleLanguages(503, "Green", "Yashil", "Зелёная"))
+        titlesLanguages.add(TitleLanguages(504, "Sunset", "Shafaq", "Закат"))
+        titlesLanguages.add(TitleLanguages(505, "Coffee", "Kofe", "Кофейная"))
     }
 
     /**
