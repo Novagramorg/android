@@ -266,7 +266,7 @@ public class AppIconsSelectorCell extends RecyclerListView implements Notificati
 
             MarginLayoutParams params = (MarginLayoutParams) titleView.getLayoutParams();
             params.rightMargin = 0;
-            titleView.setText(LocaleController.getString(icon.title));
+            titleView.setText(icon.getTitle());
             setSelected(LauncherIconController.isEnabled(icon), false);
         }
     }

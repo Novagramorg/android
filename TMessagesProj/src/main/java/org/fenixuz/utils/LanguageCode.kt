@@ -1972,6 +1972,13 @@ object LanguageCode {
             "Change the common password of your locked chats. To lock a chat: chat menu → Novagram Settings.",
             "Qulflangan suhbatlaringizning umumiy parolini almashtiring. Suhbatni qulflash: suhbat menyusi → Novagram Sozlamalar.",
             "Смените общий пароль заблокированных чатов. Чтобы заблокировать чат: меню чата → Настройки Novagram."))
+        // Names of the app icon colours (Settings → Chat settings → App icon). Telegram's cloud packs
+        // don't have them, so outside English and Arabic they used to show in English.
+        titlesLanguages.add(TitleLanguages(497, "Purple", "Binafsha", "Фиолетовая"))
+        titlesLanguages.add(TitleLanguages(498, "Teal", "Firuza", "Бирюзовая"))
+        titlesLanguages.add(TitleLanguages(499, "Red", "Qizil", "Красная"))
+        titlesLanguages.add(TitleLanguages(500, "Orange", "To'q sariq", "Оранжевая"))
+        titlesLanguages.add(TitleLanguages(501, "Pink", "Pushti", "Розовая"))
     }
 
     /**

@@ -4,7 +4,9 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.PackageManager;
 
+import org.fenixuz.utils.LanguageCode;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 
 public class LauncherIconController {
@@ -41,17 +43,20 @@ public class LauncherIconController {
         // As in Telegram, the picker clips the background (the variant's gradient) to a circle and draws the
         // foreground over it: the white logo, here 15% smaller than on the home screen (ic_launcher_logo) so
         // it sits inside the circle.
-        DEFAULT("DefaultIcon", R.drawable.ic_launcher_bg_default, R.drawable.app_icon_picker_logo, R.string.AppIconDefault),
-        AMETHYST("AmethystIcon", R.drawable.ic_launcher_bg_amethyst, R.drawable.app_icon_picker_logo, R.string.AppIconAmethyst),
-        EMERALD("EmeraldIcon", R.drawable.ic_launcher_bg_emerald, R.drawable.app_icon_picker_logo, R.string.AppIconEmerald),
-        CRIMSON("CrimsonIcon", R.drawable.ic_launcher_bg_crimson, R.drawable.app_icon_picker_logo, R.string.AppIconCrimson),
-        MINT("MintIcon", R.drawable.ic_launcher_bg_mint, R.drawable.app_icon_picker_logo, R.string.AppIconMint),
-        VIOLET("VioletIcon", R.drawable.ic_launcher_bg_violet, R.drawable.app_icon_picker_logo, R.string.AppIconViolet);
+        // The name comes from Telegram's own string for Default, and from LanguageCode for our colours, which
+        // Telegram's cloud packs don't have.
+        DEFAULT("DefaultIcon", R.drawable.ic_launcher_bg_default, R.string.AppIconDefault, 0),
+        AMETHYST("AmethystIcon", R.drawable.ic_launcher_bg_amethyst, 0, 497),
+        EMERALD("EmeraldIcon", R.drawable.ic_launcher_bg_emerald, 0, 498),
+        CRIMSON("CrimsonIcon", R.drawable.ic_launcher_bg_crimson, 0, 499),
+        MINT("MintIcon", R.drawable.ic_launcher_bg_mint, 0, 500),
+        VIOLET("VioletIcon", R.drawable.ic_launcher_bg_violet, 0, 501);
 
         public final String key;
         public final int background;
         public final int foreground;
         public final int title;
+        public final int titleCode;
         public final boolean premium;
 
         private ComponentName componentName;
@@ -63,16 +68,18 @@ public class LauncherIconController {
             return componentName;
         }
 
-        LauncherIcon(String key, int background, int foreground, int title) {
-            this(key, background, foreground, title, false);
+        /** The colour's name in the app's language. */
+        public String getTitle() {
+            return titleCode != 0 ? LanguageCode.INSTANCE.getMyTitles(titleCode) : LocaleController.getString(title);
         }
 
-        LauncherIcon(String key, int background, int foreground, int title, boolean premium) {
+        LauncherIcon(String key, int background, int title, int titleCode) {
             this.key = key;
             this.background = background;
-            this.foreground = foreground;
+            this.foreground = R.drawable.app_icon_picker_logo;
             this.title = title;
-            this.premium = premium;
+            this.titleCode = titleCode;
+            this.premium = false;
         }
     }
 }

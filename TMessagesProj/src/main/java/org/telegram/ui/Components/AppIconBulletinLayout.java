@@ -38,6 +38,6 @@ public class AppIconBulletinLayout extends Bulletin.ButtonLayout {
         imageView.setOuterPadding(AndroidUtilities.dp(8));
         imageView.setBackgroundOuterPadding(AndroidUtilities.dp(24));
         imageView.setForeground(icon.foreground);
-        textView.setText(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.AppIconChangedTo, LocaleController.getString(icon.title))));
+        textView.setText(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.AppIconChangedTo, icon.getTitle())));
     }
 }

@@ -1245,9 +1245,4 @@
     <string name="RemindDayYearAt">\'ذكّرني بتاريخ\' d MMM yyyy \'عند\' HH:mm</string>
     <!-- Novagram: the extra app icons. Telegram's language pack has no such keys, so without these the names
          stay English in Arabic. Feminine adjectives with the article, like Telegram's own (الأساسية، التقليدية). -->
-    <string name="AppIconAmethyst">البنفسجية</string>
-    <string name="AppIconEmerald">الفيروزية</string>
-    <string name="AppIconCrimson">الحمراء</string>
-    <string name="AppIconMint">البرتقالية</string>
-    <string name="AppIconViolet">الوردية</string>
 </resources>
