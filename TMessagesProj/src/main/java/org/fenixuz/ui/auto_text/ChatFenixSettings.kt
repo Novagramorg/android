@@ -30,6 +30,7 @@ ChatFenixSettings(
     private val AUTO_TEXT = 2
     private val AUTO_TEXT_EDIT = 3
     private val LOCK = 4
+    private val CHANGE_CODE = 5
 
     private val TOUR_SHOWN_KEY = "fenix_chat_settings_tour_shown"
     private val HELP_BUTTON = 1001
@@ -101,7 +102,13 @@ ChatFenixSettings(
         items.add(UItem.asButton(AUTO_TEXT_EDIT, LanguageCode.getMyTitles(302)))
         items.add(UItem.asShadow(null))
 
-        items.add(UItem.asButton(LOCK, LanguageCode.getMyTitles(if (Password.isLocked(dialogId)) 247 else 246)))
+        val locked = Password.isLocked(dialogId)
+        items.add(UItem.asButton(LOCK, LanguageCode.getMyTitles(if (locked) 247 else 246)))
+        // Only a chat on its own code: the common password is changed in the Novagram settings (Chat lock), as it
+        // opens every chat on it.
+        if (locked && Password.isIndividual(dialogId)) {
+            items.add(UItem.asButton(CHANGE_CODE, LanguageCode.getMyTitles(511)))
+        }
         items.add(UItem.asShadow(null))
     }
 
@@ -117,6 +124,9 @@ ChatFenixSettings(
             }
             AUTO_TEXT_EDIT -> presentFragment(AutoTextEditor(dialogId))
             LOCK -> lockFlow()
+            // Straight to the new code, which is saved only after it is entered twice: the chat's code was already
+            // given to open it.
+            CHANGE_CODE -> presentFragment(SecretPasscodeScreen(Password.editorForIndividualLock(dialogId), SecretPasswordType.SET_NEW))
         }
     }
 

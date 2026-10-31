@@ -2002,6 +2002,8 @@ object LanguageCode {
             "To lock a chat: chat menu → Novagram Settings → Lock chat. The common password and fingerprint unlock set here apply to every locked chat.",
             "Suhbatni qulflash: suhbat menyusi → Novagram Sozlamalar → Suhbatni qulflash. Bu yerdagi umumiy parol va barmoq izi sozlamasi barcha qulflangan suhbatlarga tegishli.",
             "Чтобы заблокировать чат: меню чата → Настройки Novagram → Заблокировать чат. Общий пароль и вход по отпечатку здесь действуют на все заблокированные чаты."))
+        // A chat's Novagram settings, for a chat locked with its own code.
+        titlesLanguages.add(TitleLanguages(511, "Change this chat's code", "Bu suhbat kodini o'zgartirish", "Изменить код этого чата"))
     }
 
     /**
