@@ -50,6 +50,18 @@ class SecretLockScreenDialog @JvmOverloads constructor(
          * lock screen, so the lock screen closes at once instead.
          */
         const val UNLOCK_THEN_CLOSE = 2
+
+        /**
+         * Asks for [credential]'s code over [fragment] and runs [onAccepted] once it is right ([unlockMode] says when).
+         * Back closes only the lock screen. Fingerprint is offered only when [credential] allows it.
+         */
+        @JvmStatic
+        fun askCode(fragment: BaseFragment, credential: LockCredential, unlockMode: Int, onAccepted: Runnable) {
+            val activity = fragment.parentActivity ?: return
+            val dialog = SecretLockScreenDialog(fragment, activity, credential, onAccepted, false, unlockMode)
+            dialog.show()
+            dialog.secretLockScreen.onShow(credential.fingerPrint, true, -1, -1, null, null)
+        }
     }
 
     private val windowView: FrameLayout = FrameLayout(context)

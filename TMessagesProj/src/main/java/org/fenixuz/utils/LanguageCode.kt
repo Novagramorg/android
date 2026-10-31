@@ -1983,6 +1983,25 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(503, "Green", "Yashil", "Зелёная"))
         titlesLanguages.add(TitleLanguages(504, "Sunset", "Shafaq", "Закат"))
         titlesLanguages.add(TitleLanguages(505, "Coffee", "Kofe", "Кофейная"))
+        // Under "Unlock with fingerprint" (439) on the Secret Chat and Chat lock screens: whose finger opens it, which
+        // is why someone sharing the phone turns it off.
+        titlesLanguages.add(TitleLanguages(506,
+            "Fingerprint unlock accepts any fingerprint saved on this phone.",
+            "Barmoq izi bilan ochishda telefonga qo'shilgan istalgan barmoq izi qabul qilinadi.",
+            "Для входа подойдёт любой отпечаток, сохранённый на этом телефоне."))
+        // Secret Chat screen: the red "Turn off" button (and its dialog's title), then the dialog's text.
+        titlesLanguages.add(TitleLanguages(507, "Turn off Secret Chat", "Yashirin suhbatni o'chirish", "Отключить «Секретный чат»"))
+        titlesLanguages.add(TitleLanguages(508,
+            "The code will be removed and every chat in Secret Chat will return to the chat list.",
+            "Kod o'chiriladi va yashirin suhbatdagi barcha chatlar oddiy ro'yxatga qaytadi.",
+            "Код будет удалён, а все чаты из «Секретного чата» вернутся в список чатов."))
+        // "Chat lock" row in Novagram settings, then the top of its screen (also its tour stop). "Chat menu" in words:
+        // a ⋮ glyph in the tour bubble's font reads as a colon.
+        titlesLanguages.add(TitleLanguages(509, "Lock chats with a code", "Suhbatlarni kod bilan qulflash", "Блокировка чатов кодом"))
+        titlesLanguages.add(TitleLanguages(510,
+            "To lock a chat: chat menu → Novagram Settings → Lock chat. The common password and fingerprint unlock set here apply to every locked chat.",
+            "Suhbatni qulflash: suhbat menyusi → Novagram Sozlamalar → Suhbatni qulflash. Bu yerdagi umumiy parol va barmoq izi sozlamasi barcha qulflangan suhbatlarga tegishli.",
+            "Чтобы заблокировать чат: меню чата → Настройки Novagram → Заблокировать чат. Общий пароль и вход по отпечатку здесь действуют на все заблокированные чаты."))
     }
 
     /**

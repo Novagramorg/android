@@ -37,9 +37,8 @@ import org.fenixuz.utils.EditMessage
 import org.fenixuz.utils.DeletedMsg
 import org.fenixuz.utils.GhostVariable
 import org.fenixuz.utils.Password
-import org.fenixuz.ui.secret_chat.SecretPassword
-import org.fenixuz.ui.secret_chat.SecretPasscodeScreen
-import org.fenixuz.ui.secret_chat.SecretPasswordType
+import org.fenixuz.ui.lock.ChatLockScreen
+import org.fenixuz.ui.secret_chat.SecretChatScreen
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.DownloadController
@@ -91,7 +90,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val DELETE_SAVE = 21
     private val GHOST_MODE = 22
     private val SECRET_CHAT = 23
-    private val CHANGE_COMMON_PASSWORD = 24
+    private val CHAT_LOCK = 24
     private val GHOST_ACTIONBAR_BTN = 26
     private val ROUND_CAMERA = 27
     private val APK_SHIELD = 28
@@ -236,8 +235,8 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
      * step that sits out of order makes the list jump backwards mid-tour. Add a step here whenever a row is
      * added above, or the new feature simply never gets explained.
      *
-     * Rows that are only shown conditionally (the voice mic needs a speech recogniser, the chat-lock row a
-     * common password) are listed anyway: FenixTour skips a stop whose row is not in the list.
+     * Rows that are only shown conditionally (the voice mic needs a speech recogniser) are listed anyway:
+     * FenixTour skips a stop whose row is not in the list.
      *
      * The three confirmation toggles share one stop — they differ by a single word, and three
      * near-identical coach marks in a row is worse than one that names all three.
@@ -254,7 +253,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(GHOST_ACTIONBAR_BTN, 342, 343),
         step(SECRET_CHAT, 213, 217),
         step(HIDDEN_ACCOUNTS, 428, 429),
-        step(CHANGE_COMMON_PASSWORD, 251, 496),
+        step(CHAT_LOCK, 252, 510),
         step(STRANGER_SHIELD, 319, 320),
         step(APK_SHIELD, 378, 379),
         step(CONFIRM_STICKER, 190, 386),
@@ -348,25 +347,15 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             UItem.asButtonCheck(GHOST_ACTIONBAR_BTN, LanguageCode.getMyTitles(342), LanguageCode.getMyTitles(343))
                 .setChecked(GhostVariable.ghostMenuVisibilityOnActionBar)
         )
-        items.add(
-            UItem.asButtonCheck(SECRET_CHAT, LanguageCode.getMyTitles(213), LanguageCode.getMyTitles(217))
-                .setChecked(SecretPassword.hasPassword())
-        )
-        // Hidden accounts: a screen of its own (it lists the accounts and asks for the code first). A ChoiceCell,
-        // not a plain button, so it has a description line like the switches around it.
+        // The three code-protected features (Secret Chat, Hidden accounts, Chat lock) are screens of their own, like
+        // Telegram's passcode settings: once a code is set, opening one asks for it. ChoiceCells, not plain buttons, so
+        // they have a description line like the switches around them.
+        items.add(ChoiceCell.Factory.of(SECRET_CHAT, LanguageCode.getMyTitles(213), LanguageCode.getMyTitles(217)))
         items.add(ChoiceCell.Factory.of(HIDDEN_ACCOUNTS, LanguageCode.getMyTitles(428), LanguageCode.getMyTitles(429)))
+        items.add(ChoiceCell.Factory.of(CHAT_LOCK, LanguageCode.getMyTitles(252), LanguageCode.getMyTitles(509)))
         items.add(UItem.asShadow(null))
 
-        // Chat-lock management — just the "change common password" row, with a description like the rest.
-        // Fingerprint unlock is now automatic on any biometric device (no toggle needed), so it no longer
-        // appears here.
-        if (Password.hasCommonPassword()) {
-            items.add(UItem.asHeader(LanguageCode.getMyTitles(252)))
-            items.add(ChoiceCell.Factory.of(CHANGE_COMMON_PASSWORD, LanguageCode.getMyTitles(251), LanguageCode.getMyTitles(496)))
-            items.add(UItem.asShadow(null))
-        }
-
-        // Security sits right after Privacy and Chat lock: all three are "protect me" settings.
+        // Security sits right after Privacy: both are "protect me" settings.
         items.add(UItem.asHeader(LanguageCode.getMyTitles(318)))
         items.add(
             UItem.asButtonCheck(STRANGER_SHIELD, LanguageCode.getMyTitles(319), LanguageCode.getMyTitles(320))
@@ -537,18 +526,8 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
                 GhostVariable.changeGhostModeVisibilityOnActionBar()
                 (view as NotificationsCheckCell).setChecked(GhostVariable.ghostMenuVisibilityOnActionBar)
             }
-            SECRET_CHAT -> {
-                // Secure switch: ON asks to create a passcode, OFF asks to confirm before removing.
-                // Checked state follows SecretPassword.hasPassword(), refreshed in onResume after the flow.
-                if (SecretPassword.hasPassword()) {
-                    presentFragment(SecretPasscodeScreen(SecretPassword.editor(), SecretPasswordType.CHANGE))
-                } else {
-                    presentFragment(SecretPasscodeScreen(SecretPassword.editor(), SecretPasswordType.SET_NEW))
-                }
-            }
-            CHANGE_COMMON_PASSWORD -> {
-                presentFragment(SecretPasscodeScreen(Password.editorForCommonPassword(), SecretPasswordType.SET_NEW))
-            }
+            SECRET_CHAT -> SecretChatScreen.open(this)
+            CHAT_LOCK -> ChatLockScreen.open(this)
             HIDDEN_ACCOUNTS -> {
                 org.fenixuz.hidden.HiddenAccountsScreen.open(this)
             }

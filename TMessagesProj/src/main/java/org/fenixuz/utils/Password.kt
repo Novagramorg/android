@@ -28,6 +28,9 @@ object Password {
     private const val PASSWORD_LOCATE = "chat_lock_password"      // the shared/common passcode
     private const val IDS_LOCATE = "chat_lock_ids"                // ids locked with the common passcode
     private const val INDIVIDUAL_LOCATE = "chat_lock_individual"  // id -> its own passcode
+    // Not "chat_lock_fingerprint": the old opt-in switch stored false there, and that would turn it off again.
+    private const val FINGERPRINT_UNLOCK_LOCATE = "chat_lock_biometric"
+    private const val VIBRATE_LOCATE = "chat_lock_vibrate"
 
     private val sharedPreferences =
         ApplicationLoader.applicationContext.getSharedPreferences("db", Context.MODE_PRIVATE)
@@ -88,7 +91,24 @@ object Password {
 
     // endregion
 
-    // region fingerprint (automatic — offered on every locked chat when the device supports biometrics)
+    // region fingerprint (offered on every locked chat when the device supports biometrics, unless turned off)
+
+    /**
+     * Whether locked chats also open with a fingerprint. On unless the user turns it off: any finger saved on the phone
+     * opens them, so whoever shares the phone may want the code alone.
+     */
+    var fingerprintUnlock: Boolean
+        get() = sharedPreferences.getBoolean(FINGERPRINT_UNLOCK_LOCATE, true)
+        set(value) {
+            sharedPreferences.edit().putBoolean(FINGERPRINT_UNLOCK_LOCATE, value).apply()
+        }
+
+    /** Whether the locked chats' code screen vibrates on key presses and on a wrong code. On unless turned off. */
+    var vibrate: Boolean
+        get() = sharedPreferences.getBoolean(VIBRATE_LOCATE, true)
+        set(value) {
+            sharedPreferences.edit().putBoolean(VIBRATE_LOCATE, value).apply()
+        }
 
     /** Whether the device can actually do strong biometric auth — drives whether fingerprint is offered. */
     fun isFingerprintHardwareAvailable(): Boolean {
@@ -186,19 +206,42 @@ object Password {
         return if (individual != null) {
             object : LockCredential {
                 override val type: Int? get() = individual.type
-                // Biometric unlock is automatic: offered whenever the device supports strong biometrics.
-                // No per-chat or global opt-in — the passcode always remains as the fallback.
-                override val fingerPrint: Boolean get() = isFingerprintHardwareAvailable()
+                // Fingerprint is offered whenever the device supports strong biometrics, unless the user turned it
+                // off for all locked chats ([fingerprintUnlock]). The passcode always remains as the fallback.
+                override val fingerPrint: Boolean get() = fingerprintUnlock && isFingerprintHardwareAvailable()
                 override fun check(input: String): Boolean = individual.password == input
+                override val vibrate: Boolean get() = Password.vibrate
                 override val texts: LockTexts get() = lockTexts(individual = true)
             }
         } else {
             object : LockCredential {
                 override val type: Int? get() = getCommonPassword()?.type
-                override val fingerPrint: Boolean get() = isFingerprintHardwareAvailable()
+                override val fingerPrint: Boolean get() = fingerprintUnlock && isFingerprintHardwareAvailable()
                 override fun check(input: String): Boolean = checkCommon(input)
+                override val vibrate: Boolean get() = Password.vibrate
                 override val texts: LockTexts get() = lockTexts(individual = false)
             }
+        }
+    }
+
+    /**
+     * Asks for a chat-lock code and never offers the fingerprint: for opening the chat-lock settings, which change what
+     * the locks accept, and a finger saved on the phone must not be enough for that. The common password when there is
+     * one, else the code of any chat locked on its own. Null when no code is set.
+     */
+    fun codeCredential(): LockCredential? {
+        val common = getCommonPassword()
+        val individual = individualPasswords.values.toList()
+        if (common == null && individual.isEmpty()) {
+            return null
+        }
+        return object : LockCredential {
+            override val type: Int? get() = common?.type ?: individual.first().type
+            override val fingerPrint: Boolean get() = false
+            override fun check(input: String): Boolean =
+                if (common != null) common.password == input else individual.any { it.password == input }
+            override val vibrate: Boolean get() = Password.vibrate
+            override val texts: LockTexts get() = lockTexts(individual = false, title = 252)
         }
     }
 
@@ -257,9 +300,10 @@ object Password {
     /**
      * The lock screens' wording for locked chats: Telegram's speaks of unlocking the app and of reinstalling it. A chat
      * on its own code ([individual]) is "this chat" when the code is created; the shared code opens all the others.
+     * [title] is "Chat is locked" over a locked chat, "Chat lock" over the settings that ask for the code.
      */
-    private fun lockTexts(individual: Boolean) = LockTexts(
-        title = LanguageCode.getMyTitles(457),
+    private fun lockTexts(individual: Boolean, title: Int = 457) = LockTexts(
+        title = LanguageCode.getMyTitles(title),
         enterCode = LanguageCode.getMyTitles(450),
         enterCodeOrFingerprint = LanguageCode.getMyTitles(451),
         createPin = LanguageCode.getMyTitles(if (individual) 460 else 458),

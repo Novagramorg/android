@@ -27,6 +27,8 @@ object SecretPassword {
     const val SECRET_FOLDER_ID = 100
     private const val SECRET_PASSWORD_LOCATE = "secret_password"
     private const val SECRET_IDS_LOCATE = "secret_dialog_ids"
+    private const val FINGERPRINT_UNLOCK_LOCATE = "secret_biometric"
+    private const val VIBRATE_LOCATE = "secret_vibrate"
 
     private val sharedPreferences =
         ApplicationLoader.applicationContext.getSharedPreferences("db", Context.MODE_PRIVATE)
@@ -71,14 +73,33 @@ object SecretPassword {
         resetAllSecretDialogs()
     }
 
+    /**
+     * Whether the folder also opens with a fingerprint. On unless the user turns it off: any finger saved on the phone
+     * opens it, so whoever shares the phone may want the code alone.
+     */
+    var fingerprintUnlock: Boolean
+        get() = sharedPreferences.getBoolean(FINGERPRINT_UNLOCK_LOCATE, true)
+        set(value) {
+            sharedPreferences.edit().putBoolean(FINGERPRINT_UNLOCK_LOCATE, value).apply()
+        }
+
+    /** Whether the folder's code screen vibrates on key presses and on a wrong code. On unless the user turns it off. */
+    var vibrate: Boolean
+        get() = sharedPreferences.getBoolean(VIBRATE_LOCATE, true)
+        set(value) {
+            sharedPreferences.edit().putBoolean(VIBRATE_LOCATE, value).apply()
+        }
+
     /** Adapts this store to the shared lock screen. */
     fun credential(): LockCredential = object : LockCredential {
         override val type: Int? get() = getPassword()?.type
-        // Biometric unlock is automatic, same as the per-chat lock: offered whenever the device supports
-        // strong biometrics (the passcode always remains as the fallback). Previously this read the stored
-        // per-setup flag, which stayed false, so the secret folder never showed fingerprint at all.
-        override val fingerPrint: Boolean get() = org.fenixuz.utils.Password.isFingerprintHardwareAvailable()
+        // Fingerprint is offered whenever the device supports strong biometrics, unless the user turned it off
+        // ([fingerprintUnlock]); the passcode always remains as the fallback. Not the stored per-setup flag: that
+        // one stayed false, so the secret folder never showed fingerprint at all.
+        override val fingerPrint: Boolean
+            get() = fingerprintUnlock && org.fenixuz.utils.Password.isFingerprintHardwareAvailable()
         override fun check(input: String): Boolean = checkPassword(input)
+        override val vibrate: Boolean get() = SecretPassword.vibrate
         override val texts: LockTexts get() = lockTexts()
     }
 

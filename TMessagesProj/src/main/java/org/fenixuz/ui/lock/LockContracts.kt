@@ -29,6 +29,21 @@ interface LockCredential {
 }
 
 /**
+ * This credential without fingerprint unlock: for changing what a lock accepts (its code, fingerprint unlock, the lock
+ * itself), which a finger saved on the phone must not be enough for.
+ */
+fun LockCredential.codeOnly(): LockCredential {
+    val base = this
+    return object : LockCredential {
+        override val type: Int? get() = base.type
+        override val fingerPrint: Boolean get() = false
+        override fun check(input: String): Boolean = base.check(input)
+        override val vibrate: Boolean get() = base.vibrate
+        override val texts: LockTexts? get() = base.texts
+    }
+}
+
+/**
  * A feature's own wording for the lock screens, instead of Telegram's app-lock texts ("Unlock to use Novagram",
  * "you'll need to reinstall the app"…), which are wrong for a lock inside the app.
  */
