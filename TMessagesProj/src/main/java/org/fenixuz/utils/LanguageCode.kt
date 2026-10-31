@@ -1851,7 +1851,8 @@ object LanguageCode {
             "Akkauntlarni ro'yxatdan yashiring. Ularni faqat kodingiz bilan ochish mumkin.",
             "Скрывайте аккаунты из списка. Открыть их можно только вашим кодом."))
         titlesLanguages.add(TitleLanguages(438, "Turn on", "Yoqish", "Включить"))
-        titlesLanguages.add(TitleLanguages(439, "Unlock with fingerprint", "Barmoq izi bilan ochish", "Разблокировка отпечатком пальца"))
+        // Russian is shorter than Telegram's "Разблокировка отпечатком пальца", which was cut next to the switch.
+        titlesLanguages.add(TitleLanguages(439, "Unlock with fingerprint", "Barmoq izi bilan ochish", "Вход по отпечатку пальца"))
         titlesLanguages.add(TitleLanguages(440, "Turn off hidden accounts", "Yashirin akkauntlarni o'chirish", "Отключить скрытые аккаунты"))
         titlesLanguages.add(TitleLanguages(441, "Hide", "Yashirish", "Скрыть"))
         titlesLanguages.add(TitleLanguages(442, "Show", "Ko'rsatish", "Показать"))
