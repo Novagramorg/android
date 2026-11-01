@@ -187,6 +187,26 @@ object HistoryDb {
     }
 
     /**
+     * The kept messages of [dialogId] in the account [uid], newest first, with their saved copies: also those Telegram
+     * has since dropped from its cache. Off the UI thread.
+     */
+    fun deletedIn(uid: Long, dialogId: Long): ArrayList<Stored> {
+        val out = ArrayList<Stored>()
+        if (uid == 0L) return out
+        try {
+            db.rawQuery(
+                "SELECT msg_id, who, data FROM deleted_messages WHERE account_uid = ? AND dialog_id = ? ORDER BY msg_id DESC",
+                arrayOf(uid.toString(), dialogId.toString())
+            ).use { c ->
+                while (c.moveToNext()) out.add(Stored(c.getInt(0), c.getInt(1), if (c.isNull(2)) null else c.getBlob(2)))
+            }
+        } catch (e: Exception) {
+            FileLog.e(e)
+        }
+        return out
+    }
+
+    /**
      * Kept messages of [dialogId] in the account [uid] with ids strictly between [low] and [high], newest first, at most
      * [limit]: those a loaded page of the chat covers. Off the UI thread.
      */
@@ -205,6 +225,33 @@ object HistoryDb {
             FileLog.e(e)
         }
         return out
+    }
+
+    /** How many messages of [dialogId] the account [uid] keeps as deleted. Off the UI thread. */
+    fun countIn(uid: Long, dialogId: Long): Int {
+        if (uid == 0L) return 0
+        return try {
+            db.rawQuery(
+                "SELECT COUNT(*) FROM deleted_messages WHERE account_uid = ? AND dialog_id = ?",
+                arrayOf(uid.toString(), dialogId.toString())
+            ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+        } catch (e: Exception) {
+            FileLog.e(e)
+            0
+        }
+    }
+
+    /**
+     * Removes kept [msgIds] of [dialogId] for good, in account slot [slot]: from the chat (this phone only, nothing is
+     * sent) and from the saved history, also when Telegram's cache no longer has them. UI thread; [onDone] runs on it.
+     */
+    fun forget(slot: Int, dialogId: Long, msgIds: List<Int>, onDone: Runnable) {
+        val uid = UserConfig.getInstance(slot).getClientUserId()
+        dropFromChat(slot, dialogId, msgIds)
+        afterStorage(listOf(slot)) {
+            removeDeleted(uid, msgIds.map { Kept(dialogId, it, WHO_YOU, null) })
+            AndroidUtilities.runOnUIThread(onDone)
+        }
     }
 
     /** Deletes [msgIds] of [dialogId] from [slot]'s cache and open chats, as the user's own local delete. UI thread. */

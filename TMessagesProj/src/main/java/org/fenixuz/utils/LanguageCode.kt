@@ -2018,6 +2018,27 @@ object LanguageCode {
             "How much space this account's kept deleted messages and edit history take on this phone. Nothing is removed automatically: clear it here when you want. Each account clears its own.",
             "Bu akkauntning saqlangan o'chirilgan xabarlari va tahrir tarixi telefonda qancha joy egallashi. Hech narsa o'z-o'zidan o'chmaydi: xohlaganingizda shu yerdan tozalaysiz. Har bir akkaunt o'zinikini tozalaydi.",
             "Сколько места на телефоне занимают сохранённые удалённые сообщения и история правок этого аккаунта. Ничего не удаляется само: очистить можно здесь. Каждый аккаунт очищает только своё."))
+        // A chat's "Deleted messages" list (chat menu → Novagram Settings): the row and its tour stop, the empty list,
+        // "Clear all" with its question, and deleting one message for good.
+        titlesLanguages.add(TitleLanguages(516, "Deleted messages", "O'chirilgan xabarlar", "Удалённые сообщения"))
+        titlesLanguages.add(TitleLanguages(517,
+            "Messages others deleted in this chat, saved on this phone, including those that no longer show in the chat.",
+            "Bu chatda boshqalar o'chirgan va telefoningizda saqlangan xabarlar, chatda endi ko'rinmaydiganlari ham.",
+            "Сообщения, удалённые другими в этом чате и сохранённые на телефоне, в том числе те, что больше не видны в чате."))
+        titlesLanguages.add(TitleLanguages(518, "No deleted messages yet", "Hozircha o'chirilgan xabarlar yo'q", "Удалённых сообщений пока нет"))
+        titlesLanguages.add(TitleLanguages(519,
+            "While “Save deleted messages” is on, messages others delete in this chat appear here.",
+            "“O'chirilgan xabarlarni saqlash” yoqilgan paytda bu chatda boshqalar o'chirgan xabarlar shu yerda chiqadi.",
+            "Пока включено «Сохранить удалённые сообщения», здесь появляются сообщения, удалённые другими в этом чате."))
+        titlesLanguages.add(TitleLanguages(520, "Clear all", "Hammasini tozalash", "Очистить всё"))
+        titlesLanguages.add(TitleLanguages(521,
+            "The saved deleted messages of this chat will be removed from this phone. This can't be undone.",
+            "Bu chatning saqlangan o'chirilgan xabarlari telefoningizdan olib tashlanadi. Buni qaytarib bo'lmaydi.",
+            "Сохранённые удалённые сообщения этого чата будут удалены с телефона. Это нельзя отменить."))
+        titlesLanguages.add(TitleLanguages(522,
+            "Remove this message from the chat and the saved history for good?",
+            "Bu xabar chatdan va saqlangan tarixdan butunlay o'chirilsinmi?",
+            "Удалить это сообщение из чата и сохранённой истории навсегда?"))
     }
 
     /**

@@ -3,7 +3,11 @@ package org.fenixuz.ui.auto_text
 import android.content.Context
 import android.view.View
 import android.widget.FrameLayout
+import org.fenixuz.ui.message_history.DeletedMessagesScreen
 import org.fenixuz.ui.onboarding.FenixTour
+import org.fenixuz.utils.HistoryDb
+import org.telegram.messenger.UserConfig
+import org.telegram.messenger.Utilities
 import org.fenixuz.ui.secret_chat.SecretPasscodeScreen
 import org.fenixuz.ui.secret_chat.SecretPasswordType
 import org.fenixuz.utils.AutoTextAppender
@@ -31,6 +35,10 @@ ChatFenixSettings(
     private val AUTO_TEXT_EDIT = 3
     private val LOCK = 4
     private val CHANGE_CODE = 5
+    private val DELETED = 6
+
+    /** How many messages of this chat are kept as deleted, counted off the UI thread; null until then. */
+    private var deletedCount: String? = null
 
     private val TOUR_SHOWN_KEY = "fenix_chat_settings_tour_shown"
     private val HELP_BUTTON = 1001
@@ -73,6 +81,7 @@ ChatFenixSettings(
     private fun tourSteps(): List<FenixTour.Step> = listOf(
         step(ONE_TIME, 306, 307),
         step(AUTO_TEXT, 300, 301),
+        step(DELETED, 516, 517),
         step(LOCK, 246, 341)
     )
 
@@ -85,6 +94,14 @@ ChatFenixSettings(
         super.onResume()
         // Returning from the composer / passcode screen may have changed state — re-read it.
         listView?.adapter?.update(true)
+        val uid = UserConfig.getInstance(currentAccount).getClientUserId()
+        Utilities.globalQueue.postRunnable {
+            val count = HistoryDb.countIn(uid, dialogId).toString()
+            AndroidUtilities.runOnUIThread {
+                deletedCount = count
+                listView?.adapter?.update(true)
+            }
+        }
     }
 
     override fun fillItems(items: ArrayList<UItem>, adapter: UniversalAdapter) {
@@ -100,6 +117,10 @@ ChatFenixSettings(
                 .setChecked(AutoTextAppender.isActive(dialogId))
         )
         items.add(UItem.asButton(AUTO_TEXT_EDIT, LanguageCode.getMyTitles(302)))
+        items.add(UItem.asShadow(null))
+
+        // What others deleted in this chat, kept on this phone: also what Telegram has since dropped from the chat.
+        items.add(UItem.asButton(DELETED, LanguageCode.getMyTitles(516), deletedCount ?: "…"))
         items.add(UItem.asShadow(null))
 
         val locked = Password.isLocked(dialogId)
@@ -123,6 +144,7 @@ ChatFenixSettings(
                 (view as NotificationsCheckCell).isChecked = AutoTextAppender.isActive(dialogId)
             }
             AUTO_TEXT_EDIT -> presentFragment(AutoTextEditor(dialogId))
+            DELETED -> presentFragment(DeletedMessagesScreen(dialogId))
             LOCK -> lockFlow()
             // Straight to the new code, which is saved only after it is entered twice: the chat's code was already
             // given to open it.
