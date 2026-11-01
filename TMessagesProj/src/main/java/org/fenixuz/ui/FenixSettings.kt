@@ -36,7 +36,10 @@ import org.fenixuz.voice.VoiceChangerSheet
 import org.fenixuz.utils.EditMessage
 import org.fenixuz.utils.DeletedMsg
 import org.fenixuz.utils.GhostVariable
+import org.fenixuz.utils.HistoryDb
 import org.fenixuz.utils.Password
+import org.telegram.messenger.LocaleController
+import org.telegram.messenger.Utilities
 import org.fenixuz.ui.lock.ChatLockScreen
 import org.fenixuz.ui.secret_chat.SecretChatScreen
 import org.telegram.messenger.AndroidUtilities
@@ -102,6 +105,10 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val HIDDEN_ACCOUNTS = 34
     private val VOICE_CHANGER = 35
     private val VOICE_CHANGER_CALL = 36
+    private val HISTORY_CLEAR = 37
+
+    /** Size of this account's saved deleted messages and edit history, measured off the UI thread; null until then. */
+    private var historySize: String? = null
 
     // Onboarding: a toolbar "?" replays the full feature tour; the short tour auto-runs once on first open.
     private val HELP_BUTTON = 1001
@@ -247,6 +254,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         step(STORY_DOWNLOAD, 297, 298),
         step(EDIT_SAVE, 23, 72),
         step(DELETE_SAVE, 31, 235),
+        step(HISTORY_CLEAR, 512, 515),
         step(DOWNLOAD_STOP, 183, 196),
         step(AUTO_ANSWER_ACTIVE, 228, 239),
         step(GHOST_MODE, 32, 245),
@@ -321,6 +329,8 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             UItem.asButtonCheck(DELETE_SAVE, LanguageCode.getMyTitles(31), LanguageCode.getMyTitles(235))
                 .setChecked(DeletedMsg.getCheckType() != DeletedMsg.SIMPLE)
         )
+        // The space the saved history takes, and clearing it: nothing is dropped automatically (as in AyuGram).
+        items.add(UItem.asButton(HISTORY_CLEAR, LanguageCode.getMyTitles(512), historySize ?: "…"))
         items.add(UItem.asShadow(null))
 
         items.add(UItem.asHeader(LanguageCode.getMyTitles(237)))
@@ -476,6 +486,37 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         resolveTargetPosition(items)
     }
 
+    /** Measures this account's saved history off the UI thread and shows it on its row. */
+    private fun refreshHistorySize() {
+        val uid = userConfig.getClientUserId()
+        Utilities.globalQueue.postRunnable {
+            val size = AndroidUtilities.formatFileSize(HistoryDb.sizeOf(uid))
+            AndroidUtilities.runOnUIThread {
+                historySize = size
+                listView?.adapter?.update(true)
+            }
+        }
+    }
+
+    /**
+     * Clearing removes this account's kept messages from its chats too (on this phone only) and its edit history; the
+     * other accounts keep theirs. It can't be undone, so it asks first.
+     */
+    private fun confirmClearHistory() {
+        val context = parentActivity ?: return
+        val dialog = AlertDialog.Builder(context, resourceProvider)
+            .setTitle(LanguageCode.getMyTitles(512))
+            .setMessage(LanguageCode.getMyTitles(513))
+            .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+            .setPositiveButton(LanguageCode.getMyTitles(514)) { _, _ ->
+                HistoryDb.clearAccount(currentAccount) { refreshHistorySize() }
+            }
+            .create()
+        showDialog(dialog)
+        (dialog.getButton(AlertDialog.BUTTON_POSITIVE) as? android.widget.TextView)
+            ?.setTextColor(Theme.getColor(Theme.key_text_RedBold, resourceProvider))
+    }
+
     private fun reminderDelayLabel(): String =
         LanguageCode.getMyTitles(272) + ": " + MessageReminder.getDelayMin() + " " + LanguageCode.getMyTitles(273)
 
@@ -526,6 +567,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
                 GhostVariable.changeGhostModeVisibilityOnActionBar()
                 (view as NotificationsCheckCell).setChecked(GhostVariable.ghostMenuVisibilityOnActionBar)
             }
+            HISTORY_CLEAR -> confirmClearHistory()
             SECRET_CHAT -> SecretChatScreen.open(this)
             CHAT_LOCK -> ChatLockScreen.open(this)
             HIDDEN_ACCOUNTS -> {
@@ -782,6 +824,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         if (listView != null) {
             listView.adapter.update(true)
         }
+        refreshHistorySize()
     }
 
     override fun onLongClick(item: UItem, view: View, position: Int, x: Float, y: Float): Boolean {

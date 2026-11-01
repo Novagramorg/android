@@ -7,6 +7,7 @@ import org.fenixuz.ui.message_history.MessageHistoryModule
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.FileLog
+import org.telegram.messenger.MessagesController
 import org.telegram.messenger.MessagesStorage
 import org.telegram.messenger.NotificationCenter
 import org.telegram.messenger.UserConfig
@@ -15,6 +16,7 @@ import org.telegram.tgnet.TLRPC
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Novagram's own store for kept deleted messages and edit history: `novagram_history.db`, apart from Telegram's
@@ -205,6 +207,32 @@ object HistoryDb {
         return out
     }
 
+    /** Deletes [msgIds] of [dialogId] from [slot]'s cache and open chats, as the user's own local delete. UI thread. */
+    private fun dropFromChat(slot: Int, dialogId: Long, msgIds: List<Int>) {
+        val controller = MessagesController.getInstance(slot)
+        for (chunk in msgIds.chunked(100)) {
+            controller.deleteMessages(ArrayList(chunk), null, null, dialogId, 0, false, 0, true)
+        }
+    }
+
+    /**
+     * Runs [block] on [io] once the storage queues of [slots] are through with what was posted to them so far: the
+     * deletes [dropFromChat] queued there. In the "all" mode storage keeps a message the user deletes unless it finds it
+     * kept already, so the saved copy may only go after storage looked; gone earlier, the message was kept again.
+     */
+    private fun afterStorage(slots: Collection<Int>, block: () -> Unit) {
+        if (slots.isEmpty()) {
+            io.execute(block)
+            return
+        }
+        val left = AtomicInteger(slots.size)
+        for (slot in slots) {
+            MessagesStorage.getInstance(slot).storageQueue.postRunnable {
+                if (left.decrementAndGet() == 0) io.execute(block)
+            }
+        }
+    }
+
     /** Forgets [rows] in the account [uid]: the user deleted them themselves, which removes them for good. */
     fun removeDeleted(uid: Long, rows: List<Kept>) {
         if (uid == 0L || rows.isEmpty()) return
@@ -300,6 +328,86 @@ object HistoryDb {
             FileLog.e(e)
         }
         return out
+    }
+
+    // endregion
+
+    // region size and "Clear saved history"
+
+    /** Per row, roughly what SQLite keeps besides the row's own bytes (keys, indexes, page space). */
+    private const val ROW_OVERHEAD = 48
+
+    /**
+     * About how much space the saved history of the account [uid] takes on the phone: its rows' bytes plus a rough
+     * per-row overhead (the file is shared by all accounts, so its size would show the others' history too, a hidden
+     * account's included). There is no automatic limit, as in AyuGram: dropping old copies silently would break the
+     * promise that a deleted message stays; the user sees the size and clears it. Background thread.
+     */
+    fun sizeOf(uid: Long): Long {
+        if (uid == 0L) return 0L
+        return try {
+            val args = arrayOf(uid.toString())
+            val kept = db.rawQuery(
+                "SELECT COALESCE(SUM(LENGTH(data)), 0) + COUNT(*) * $ROW_OVERHEAD FROM deleted_messages WHERE account_uid = ?", args
+            ).use { c -> if (c.moveToFirst()) c.getLong(0) else 0L }
+            val edits = db.rawQuery(
+                "SELECT COALESCE(SUM(LENGTH(CAST(text AS BLOB))), 0) + COUNT(*) * $ROW_OVERHEAD FROM edit_history WHERE account_uid = ?", args
+            ).use { c -> if (c.moveToFirst()) c.getLong(0) else 0L }
+            kept + edits
+        } catch (e: Exception) {
+            FileLog.e(e)
+            0L
+        }
+    }
+
+    /**
+     * "Clear saved history" of the account in slot [slot]: removes its kept messages from its chats (on this phone
+     * only; nothing is sent) and empties its saved history, edits included. Other accounts keep theirs: a hidden
+     * account's history can't be wiped from the settings of the account on show. The kept messages live in Telegram's
+     * cache too, so emptying only this store would leave them in the chats looking like ordinary messages. UI thread;
+     * [onDone] runs on it.
+     */
+    fun clearAccount(slot: Int, onDone: Runnable) {
+        val uid = UserConfig.getInstance(slot).getClientUserId()
+        if (uid == 0L) {
+            onDone.run()
+            return
+        }
+        io.execute {
+            val kept = HashMap<Long, ArrayList<Int>>()
+            try {
+                db.rawQuery("SELECT dialog_id, msg_id FROM deleted_messages WHERE account_uid = ?", arrayOf(uid.toString())).use { c ->
+                    while (c.moveToNext()) kept.getOrPut(c.getLong(0)) { ArrayList() }.add(c.getInt(1))
+                }
+            } catch (e: Exception) {
+                FileLog.e(e)
+            }
+            AndroidUtilities.runOnUIThread {
+                for ((dialogId, ids) in kept) dropFromChat(slot, dialogId, ids)
+                afterStorage(listOf(slot)) {
+                    try {
+                        val args = arrayOf<Any>(uid)
+                        db.execSQL("DELETE FROM deleted_messages WHERE account_uid = ?", args)
+                        db.execSQL("DELETE FROM edit_history WHERE account_uid = ?", args)
+                        // Old edits the migration could give to no account: never shown, so nobody's to keep.
+                        db.execSQL("DELETE FROM edit_history WHERE account_uid = 0")
+                        // An old mark still waiting for the server must not come back to this account afterwards.
+                        db.execSQL("INSERT OR REPLACE INTO meta(key, value) VALUES(?, '1')", arrayOf<Any>("cleared_$uid"))
+                        db.execSQL("VACUUM")
+                        // In WAL mode VACUUM writes the shrunk database into the WAL, which keeps its size: without a
+                        // truncating checkpoint the space doesn't come back.
+                        db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+                    } catch (e: Exception) {
+                        FileLog.e(e)
+                    }
+                    // A chat's marks still loading are queued behind this on io and read the emptied table.
+                    synchronized(marks) {
+                        marks.keys.removeAll { it.uid == uid }
+                    }
+                    AndroidUtilities.runOnUIThread(onDone)
+                }
+            }
+        }
     }
 
     // endregion
@@ -572,6 +680,8 @@ object HistoryDb {
         if (accounts.isEmpty()) return
         val unanswered = HashSet<Pair<Long, Int>>()
         for (a in accounts) {
+            // The account cleared its saved history since: its old marks go with it.
+            if (meta("cleared_${a.uid}") != null) continue
             val found = existing(a.slot, pending.keys) ?: return
             if (found.isEmpty()) continue
             val keep = ArrayList<Kept>()

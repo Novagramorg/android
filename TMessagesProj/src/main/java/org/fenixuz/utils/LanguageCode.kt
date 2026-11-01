@@ -2005,6 +2005,19 @@ object LanguageCode {
             "Чтобы заблокировать чат: меню чата → Настройки Novagram → Заблокировать чат. Общий пароль и вход по отпечатку здесь действуют на все заблокированные чаты."))
         // A chat's Novagram settings, for a chat locked with its own code.
         titlesLanguages.add(TitleLanguages(511, "Change this chat's code", "Bu suhbat kodini o'zgartirish", "Изменить код этого чата"))
+        // Novagram settings, under "Save deleted messages": the size of the current account's saved history and
+        // clearing it (row, the confirmation's text and button, the tour stop). Each account clears its own; nothing
+        // is dropped automatically.
+        titlesLanguages.add(TitleLanguages(512, "Clear saved history", "Saqlangan tarixni tozalash", "Очистить сохранённую историю"))
+        titlesLanguages.add(TitleLanguages(513,
+            "This account's kept deleted messages will be removed from its chats on this phone, and its edit history erased. Other accounts keep theirs. This can't be undone.",
+            "Bu akkauntda saqlangan o'chirilgan xabarlar shu telefondagi chatlardan olib tashlanadi, tahrir tarixi ham o'chiriladi. Boshqa akkauntlarga tegilmaydi. Buni qaytarib bo'lmaydi.",
+            "Сохранённые удалённые сообщения этого аккаунта будут убраны из его чатов на этом телефоне, а история правок стёрта. Другие аккаунты не затрагиваются. Это нельзя отменить."))
+        titlesLanguages.add(TitleLanguages(514, "Clear", "Tozalash", "Очистить"))
+        titlesLanguages.add(TitleLanguages(515,
+            "How much space this account's kept deleted messages and edit history take on this phone. Nothing is removed automatically: clear it here when you want. Each account clears its own.",
+            "Bu akkauntning saqlangan o'chirilgan xabarlari va tahrir tarixi telefonda qancha joy egallashi. Hech narsa o'z-o'zidan o'chmaydi: xohlaganingizda shu yerdan tozalaysiz. Har bir akkaunt o'zinikini tozalaydi.",
+            "Сколько места на телефоне занимают сохранённые удалённые сообщения и история правок этого аккаунта. Ничего не удаляется само: очистить можно здесь. Каждый аккаунт очищает только своё."))
     }
 
     /**
