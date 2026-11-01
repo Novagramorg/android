@@ -12164,6 +12164,12 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
             }
         }
+        // Novagram delete-save: kept messages Telegram no longer has (its cache was wiped, or this page came from the
+        // server) join the page in their place, from the saved history. Only the ordinary chat view; Telegram has already
+        // stored the page above, so they are not written back into its cache.
+        if (needProcess && mode == ChatActivity.MODE_DEFAULT && threadMessageId == 0 && !isTopic && mergeDialogId == 0 && !DialogObject.isEncryptedDialog(dialogId)) {
+            org.fenixuz.utils.KeptInChat.addTo(currentAccount, dialogId, messagesRes.messages, objects, load_type, count, max_id, offset_date, last_message_id, isEnd, isCache, usersDict, chatsDict);
+        }
         getFileLoader().checkMediaExistance(objects);
         if (MessageObject.canCreateStripedThubms()) {
             for (int i = 0; i < objects.size(); i++) {

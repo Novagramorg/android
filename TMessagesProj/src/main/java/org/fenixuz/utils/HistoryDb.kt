@@ -43,6 +43,9 @@ object HistoryDb {
     /** A message to keep as deleted: [data] is Telegram's stored row for it (null when it couldn't be read). */
     class Kept(val dialogId: Long, val msgId: Int, val who: Int, val data: ByteArray?)
 
+    /** A kept message of one chat with its saved copy: for the chat itself and its "Deleted messages" list. */
+    class Stored(val msgId: Int, val who: Int, val data: ByteArray?)
+
     private class Helper(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) {
         init {
             setWriteAheadLoggingEnabled(true)
@@ -174,6 +177,27 @@ object HistoryDb {
                     }
                     chunk.filterTo(out) { it.msgId in kept }
                 }
+            }
+        } catch (e: Exception) {
+            FileLog.e(e)
+        }
+        return out
+    }
+
+    /**
+     * Kept messages of [dialogId] in the account [uid] with ids strictly between [low] and [high], newest first, at most
+     * [limit]: those a loaded page of the chat covers. Off the UI thread.
+     */
+    fun deletedBetween(uid: Long, dialogId: Long, low: Long, high: Long, limit: Int): ArrayList<Stored> {
+        val out = ArrayList<Stored>()
+        if (uid == 0L) return out
+        try {
+            db.rawQuery(
+                "SELECT msg_id, who, data FROM deleted_messages WHERE account_uid = ? AND dialog_id = ? AND msg_id > ? " +
+                    "AND msg_id < ? AND data IS NOT NULL ORDER BY msg_id DESC LIMIT $limit",
+                arrayOf(uid.toString(), dialogId.toString(), low.toString(), high.toString())
+            ).use { c ->
+                while (c.moveToNext()) out.add(Stored(c.getInt(0), c.getInt(1), c.getBlob(2)))
             }
         } catch (e: Exception) {
             FileLog.e(e)
