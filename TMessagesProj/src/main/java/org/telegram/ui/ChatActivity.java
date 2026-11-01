@@ -20974,7 +20974,7 @@ public class ChatActivity extends BaseFragment implements
             if (msg.deletedBy != null && !msg.deletedBy.isEmpty()) {
                 continue;
             }
-            String mark = DeletedMsg.INSTANCE.whoDelete(dialog_id, msg.messageOwner.id);
+            String mark = DeletedMsg.INSTANCE.whoDelete(currentAccount, dialog_id, msg.messageOwner.id);
             if (mark != null && !mark.isEmpty()) {
                 msg.deletedBy = mark;
                 cell.forceResetMessageObject();
@@ -22855,7 +22855,7 @@ public class ChatActivity extends BaseFragment implements
             } else if (DeletedMsg.ALL == fenixDeletedType) {
                 ArrayList<Integer> fenixM = new ArrayList<>();
                 if (fenixBy == By.Me) {
-                    fenixM.addAll(DeletedMsg.INSTANCE.sortDeletedIds(dialog_id, fenixKeepable));
+                    fenixM.addAll(DeletedMsg.INSTANCE.sortDeletedIds(currentAccount, dialog_id, fenixKeepable));
                 }
                 fenixM.addAll(fenixUnsent);
                 if (!fenixM.isEmpty()) {
@@ -38415,7 +38415,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     // Fenix delete-save: restore the "deleted" mark for saved-deleted messages across sessions.
                     if (message.deletedBy == null || message.deletedBy.isEmpty()) {
-                        message.deletedBy = DeletedMsg.INSTANCE.whoDelete(dialog_id, message.messageOwner.id);
+                        message.deletedBy = DeletedMsg.INSTANCE.whoDelete(currentAccount, dialog_id, message.messageOwner.id);
                     }
                     messageCell.setShowTopic(true);
                     messageCell.setMessageObject(message, groupedMessages, pinnedBottom, pinnedTop, firstInChat, lastInChatList);

@@ -1800,7 +1800,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         if (messageObject.deletedBy != null && !messageObject.deletedBy.isEmpty()) {
             return true;
         }
-        final String mark = org.fenixuz.utils.DeletedMsg.INSTANCE.whoDelete(messageObject.getDialogId(), messageObject.messageOwner.id);
+        final String mark = org.fenixuz.utils.DeletedMsg.INSTANCE.whoDelete(messageObject.currentAccount, messageObject.getDialogId(), messageObject.messageOwner.id);
         return mark != null && !mark.isEmpty();
     }
 

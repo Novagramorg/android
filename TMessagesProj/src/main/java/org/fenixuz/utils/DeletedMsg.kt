@@ -1,231 +1,43 @@
 package org.fenixuz.utils
 
-import android.app.Activity
-import android.app.Dialog
 import android.content.Context
-import android.content.DialogInterface
-import android.widget.TextView
+import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.telegram.messenger.ApplicationLoader
-import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessageObject
-import org.telegram.messenger.MessagesStorage
-import org.telegram.messenger.R
-import org.telegram.ui.ActionBar.AlertDialog
-import org.telegram.ui.ActionBar.Theme
+import org.telegram.messenger.UserConfig
 
+/**
+ * Delete-save: the mode switch and the "deleted by" marks. The kept messages themselves are stored per account in
+ * [HistoryDb]; this object maps between [By] and the stored codes and builds the marks' text.
+ */
 object DeletedMsg {
-    private const val TAG = "DeletedMsg"
 
     const val SIMPLE = 0
     const val SECOND = 1
     const val FIRST = 2//----
     const val ALL = 3
-    const val DELETE_MARK = "<-------------->"
-
-    // Rolling-window cap for the "mark_delete" store: keep at most the newest MAX_ENTRIES entries
-    // across all chats. It NEVER resets to empty — once the cap is exceeded only the single oldest
-    // entry rolls off per save. Bounds prefs growth so the storage queue never does unbounded work.
-    // Just a constant — raising it later needs no migration (the JSON format is unchanged).
-    // Sized high (20000) because each entry is tiny (dialogId + id + who ≈ 60 bytes ⇒ ~1.2 MB full),
-    // unlike edited_messages which stores full message text and is capped lower.
-    private const val MAX_ENTRIES = 20000
 
     private val sharedPreferences =
         ApplicationLoader.applicationContext.getSharedPreferences("db", Context.MODE_PRIVATE)
     private val editor = sharedPreferences.edit()
-    private val gson = Gson()
 
-    var list = ArrayList<MessageObject>()
-
-    // In-memory cache of the parsed "mark_delete" store. mark_delete is written ONLY through
-    // saveDeletedMessagesId(), so refreshing the cache there keeps it authoritative and it can
-    // never go stale. Reads (getAllIds/whoDelete) no longer parse JSON on the chat-scroll bind
-    // path — whoDelete() is now an O(1) lookup instead of a full SharedPreferences read + Gson
-    // parse per message per bind. Volatile + double-checked load keeps the hot path lock-free.
-    @Volatile
-    private var cachedList: ArrayList<WhoDeletedMsg>? = null
-
-    // dialogId -> (msgId -> who); rebuilt whenever the cache is (re)loaded or saved.
-    @Volatile
-    private var lookup: HashMap<Long, HashMap<Int, By>> = HashMap()
-
-    private fun ensureLoaded() {
-        if (cachedList != null) {
-            return
-        }
-        synchronized(this) {
-            if (cachedList != null) {
-                return
-            }
-            val parsed = parseFromPrefs()
-            lookup = buildLookup(parsed)
-            cachedList = parsed
-        }
+    /**
+     * The mark of [msgId] in [dialogId] of the account in slot [account] ("" when it isn't kept). Never touches the
+     * disk, so it is safe on the chat-scroll bind path: a chat's marks load in the background on first need and an
+     * open chat refreshes its rows when they arrive (NotificationCenter.novagramHistoryWarmedUp).
+     */
+    fun whoDelete(account: Int, dialogId: Long, msgId: Int): String {
+        val uid = UserConfig.getInstance(account).getClientUserId()
+        return whoDeleteStr(byOf(HistoryDb.whoDeleted(uid, dialogId, msgId)))
     }
 
-    private fun parseFromPrefs(): ArrayList<WhoDeletedMsg> {
-        val markMessages = ArrayList<WhoDeletedMsg>()
-        val str = sharedPreferences.getString("mark_delete", "")
-        if (!str.isNullOrEmpty()) {
-            try {
-                val type: TypeToken<*> = object : TypeToken<List<WhoDeletedMsg?>?>() {}
-                val fromJson = gson.fromJson<ArrayList<WhoDeletedMsg>>(str, type.type)
-                if (fromJson != null) {
-                    for (markId in fromJson) {
-                        if (markId != null) {
-                            markMessages.add(markId)
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-            }
-        }
-        return markMessages
-    }
+    /** Of [msgIds], those kept as deleted in [dialogId] of the account in slot [account], from the loaded marks. */
+    fun sortDeletedIds(account: Int, dialogId: Long, msgIds: ArrayList<Int>): ArrayList<Int> =
+        HistoryDb.keptInCache(UserConfig.getInstance(account).getClientUserId(), dialogId, msgIds)
 
-    private fun buildLookup(all: ArrayList<WhoDeletedMsg>): HashMap<Long, HashMap<Int, By>> {
-        val map = HashMap<Long, HashMap<Int, By>>()
-        for (item in all) {
-            val d = item.dialogId ?: continue
-            val id = item.id ?: continue
-            val who = item.who ?: continue
-            map.getOrPut(d) { HashMap() }[id] = who
-        }
-        return map
-    }
-
-    fun clearCacheDialog(parentActivity: Activity, allCache: Boolean, callback: (Unit?) -> Unit) {
-        val subTitle: String = if (allCache) {
-            LanguageCode.getMyTitles(106)
-        } else {
-            LanguageCode.getMyTitles(107)
-        }
-        val alertDialog =
-            AlertDialog.Builder(parentActivity)
-                .setTitle(LanguageCode.getMyTitles(105))
-                .setMessage(subTitle)
-                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
-                .setPositiveButton(LanguageCode.getMyTitles(105)) { dialog: DialogInterface?, which: Int ->
-                    callback(null)
-                }.create()
-        alertDialog.show()
-        (alertDialog.getButton(Dialog.BUTTON_POSITIVE) as TextView).setTextColor(
-            Theme.getColor(Theme.key_text_RedBold)
-        )
-    }
-
-    fun clearChatCache(currentAccount: Int, dialogId: Long, isChannel: Boolean) {
-        val msgids = getDeletedMessagesByDialogId(dialogId)
-        clearCache(currentAccount, dialogId, msgids, isChannel)
-    }
-
-    fun clearAllCache(currentAccount: Int) {
-        val allIds = getAllIds()
-        val resultMap = mutableMapOf<Long?, ArrayList<Int>>()
-        try {
-            for (allId in allIds) {
-                if (allId.dialogId != null && allId.id != null) {
-                    val idList = resultMap.getOrPut(allId.dialogId) { ArrayList() }
-                    idList.add(allId.id)
-                }
-            }
-
-            resultMap.forEach { (k, v) ->
-                clearCache(currentAccount, k, v, false)
-            }
-
-        } catch (_: Exception) {
-
-        }
-    }
-
-    private fun clearCache(
-        currentAccount: Int,
-        dialogId: Long?,
-        messageIds: ArrayList<Int>,
-        isChannel: Boolean
-    ) {
-        try {
-            if (dialogId != null) {
-                val messagesStorage = MessagesStorage.getInstance(currentAccount)
-                messagesStorage.markMessagesAsDeleted(
-                    dialogId,
-                    messageIds,
-                    true,
-                    true,
-                    0,
-                    0,
-                    true,
-                    By.Me
-                )
-                messagesStorage.updateDialogsWithDeletedMessages(
-                    dialogId,
-                    if (isChannel) dialogId else 0,
-                    messageIds,
-                    null,
-                    true
-                )
-                deleteFromSharedPrefByDialogId(dialogId)
-            }
-        } catch (e: Exception) {
-
-        }
-    }
-
-    private fun deleteFromSharedPrefByDialogId(dialogId: Long) {
-        val allIds = getAllIds()
-        val iterator = allIds.iterator()
-
-        while (iterator.hasNext()) {
-            val item = iterator.next()
-            if (item.dialogId == dialogId) {
-                iterator.remove()
-            }
-        }
-
-        saveDeletedMessagesId(allIds)
-    }
-
-    private fun getDeletedMessagesByDialogId(dialogId: Long): ArrayList<Int> {
-        var msgs = ArrayList<Int>()
-
-        var allIds = getAllIds()
-        for (i in 0 until allIds.size) {
-            if (allIds[i].dialogId == dialogId) {
-                msgs.add(allIds[i].id ?: -1)
-            }
-        }
-
-        return msgs
-    }
-
-    fun sortDeletedIds(dialogId: Long, msgIds: ArrayList<Int>): ArrayList<Int> {
-        val haveList = ArrayList<Int>()
-        val oldMsgsIds = getAllIds()
-
-        msgIds.forEach { m ->
-            if (oldMsgsIds.any { it.id == m && it.dialogId == dialogId }) {
-                haveList.add(m)
-            }
-        }
-
-        return haveList
-    }
-
-    fun whoDelete(dialogId: Long, msgId: Int): String {
-        // NON-BLOCKING hot path (chat-scroll bind). NEVER parse on the UI thread: if the cache isn't
-        // warmed yet (startup background thread does it), return empty so a large existing store can
-        // never freeze the first chat open. The "deleted by" tag simply appears once the cache is ready.
-        // Once warmed this is an O(1) allocation-free lookup.
-        if (cachedList == null) {
-            return ""
-        }
-        return whoDeleteStr(lookup[dialogId]?.get(msgId))
-    }
-
-    fun whoDeleteStr(by: By?): String{
+    fun whoDeleteStr(by: By?): String {
         return when (by) {
             By.Me -> {
                 LanguageCode.getMyTitles(109)
@@ -243,44 +55,21 @@ object DeletedMsg {
         }
     }
 
-    fun getAllIds(): ArrayList<WhoDeletedMsg> {
-        ensureLoaded()
-        // Return an independent copy: callers (delete/clear paths) mutate the returned list and
-        // then pass it back to saveDeletedMessagesId(), so the cache must stay untouched.
-        return ArrayList(cachedList ?: ArrayList())
+    /** The stored code for [by]: fixed numbers, not the enum's ordinal, so reordering the enum can't change them. */
+    @JvmStatic
+    fun whoCode(by: By?): Int = when (by) {
+        By.Me -> HistoryDb.WHO_ME
+        By.Channel -> HistoryDb.WHO_CHANNEL
+        else -> HistoryDb.WHO_YOU
     }
 
-    fun saveDeletedMessagesId(messageIds: ArrayList<WhoDeletedMsg>) {
-        // Rolling-window cap: entries are appended newest-last, so keep only the last MAX_ENTRIES and
-        // drop from the front (oldest). This never empties the store; only the oldest overflow rolls off.
-        val capped: ArrayList<WhoDeletedMsg> =
-            if (messageIds.size > MAX_ENTRIES) {
-                ArrayList(messageIds.subList(messageIds.size - MAX_ENTRIES, messageIds.size))
-            } else {
-                messageIds
-            }
-        val str = gson.toJson(capped)
-        editor.putString("mark_delete", str)
-        // apply() (async) not commit() (sync): this runs on the storage queue during deletion, and the
-        // authoritative view is the in-memory cache refreshed below, so the async disk write is safe.
-        editor.apply()
-        // Refresh the cache from the just-persisted list — this is the single write funnel, so
-        // the in-memory view can never diverge from disk. Copy so later external mutations of
-        // messageIds don't leak into the cache.
-        synchronized(this) {
-            val copy = ArrayList(capped)
-            lookup = buildLookup(copy)
-            cachedList = copy
-        }
-    }
+    fun byOfCode(code: Int): By? = byOf(code)
 
-    // Preload the mark_delete cache OFF the UI thread (called once at startup on a dedicated low-priority
-    // thread — never the shared globalQueue). This is what lets whoDelete() stay non-blocking on a large
-    // existing store. It ONLY parses (no write): the disk blob shrinks on the next real delete-save via
-    // the cap in saveDeletedMessagesId, which runs on the storage queue — so warm-up adds zero cross-thread
-    // writes and cannot race the delete path.
-    fun warmUp() {
-        ensureLoaded()
+    private fun byOf(code: Int): By? = when (code) {
+        HistoryDb.WHO_ME -> By.Me
+        HistoryDb.WHO_YOU -> By.You
+        HistoryDb.WHO_CHANNEL -> By.Channel
+        else -> null
     }
 
     fun saveCheckType(type: Int) {
@@ -303,8 +92,23 @@ object DeletedMsg {
         }
         return notifyMessages
     }
+
+    /** The marks of the old store ("mark_delete" in the "db" preferences, no account), for [HistoryDb]'s migration. */
+    fun parseLegacy(prefs: SharedPreferences): ArrayList<WhoDeletedMsg> {
+        val out = ArrayList<WhoDeletedMsg>()
+        val str = prefs.getString("mark_delete", "")
+        if (!str.isNullOrEmpty()) {
+            try {
+                val type = object : TypeToken<List<WhoDeletedMsg?>?>() {}.type
+                Gson().fromJson<ArrayList<WhoDeletedMsg?>>(str, type)?.filterNotNullTo(out)
+            } catch (_: Exception) {
+            }
+        }
+        return out
+    }
 }
 
+/** An old mark, as the old store kept it (Gson; the field names must stay, see proguard-rules.pro). */
 data class WhoDeletedMsg(val dialogId: Long?, val id: Int?, val who: By?)
 
 enum class By {

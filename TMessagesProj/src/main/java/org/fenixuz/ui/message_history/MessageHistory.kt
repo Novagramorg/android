@@ -106,7 +106,7 @@ class MessageHistory(val msg: MessageObject, var dialogId: Long) : BaseFragment(
             stackFromEnd = false  // Elementlarni pastdan (yoki o'ngdan) joylashtirish
         }
 
-        msgHistoryAdapter = MsgHistoryAdapter(EditMessage.getHistory(dialogId, msg.id))
+        msgHistoryAdapter = MsgHistoryAdapter(EditMessage.getHistory(msg.currentAccount, dialogId, msg.id))
         recyclerView.adapter = msgHistoryAdapter
 
         frameLayout.addView(

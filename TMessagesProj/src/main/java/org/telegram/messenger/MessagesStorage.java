@@ -32,7 +32,7 @@ import androidx.collection.LongSparseArray;
 import org.fenixuz.utils.By;
 import org.fenixuz.utils.DeletedMsg;
 import org.fenixuz.utils.EditMessage;
-import org.fenixuz.utils.WhoDeletedMsg;
+import org.fenixuz.utils.HistoryDb;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
@@ -14552,9 +14552,10 @@ public class MessagesStorage extends BaseController {
         SQLiteCursor cursor = null;
         SQLitePreparedStatement state = null;
 
-        // Fenix delete-save: capture deleted messages instead of removing them, depending on the chosen mode.
+        // Fenix delete-save: capture deleted messages instead of removing them, depending on the chosen mode. A deletion
+        // by the user (By.Me) is looked at in every mode: it removes a kept message for good, its saved copy included.
         int deletedType = DeletedMsg.INSTANCE.getCheckType();
-        if ((DeletedMsg.SECOND == deletedType || DeletedMsg.ALL == deletedType) && !clear) {
+        if ((DeletedMsg.SECOND == deletedType || DeletedMsg.ALL == deletedType || By.Me == whoDeleted) && !clear) {
             // Only genuinely delivered messages may be "saved as deleted". A message the user is aborting
             // mid-send — pressing X on a still-uploading video — must NOT be preserved; it has to stay in
             // `messages` so it is hard-deleted below, otherwise the cancelled upload lingers with a "deleted"
@@ -14572,18 +14573,20 @@ public class MessagesStorage extends BaseController {
             }
             if (!savable.isEmpty()) {
                 // Collect the (dialogId, mid) of the savable messages that actually exist in storage AND are
-                // fully delivered (send_state = 0). Done once here rather than inside a mutating per-row loop,
-                // so a multi-message delete can never double-save entries or drop some.
-                ArrayList<WhoDeletedMsg> found = new ArrayList<>();
+                // fully delivered (send_state = 0), with their stored bytes: the kept copy, which outlives this
+                // cache. Done once here rather than inside a mutating per-row loop, so a multi-message delete can
+                // never double-save entries or drop some.
+                ArrayList<HistoryDb.Kept> found = new ArrayList<>();
+                int who = DeletedMsg.whoCode(whoDeleted);
                 try {
                     String myIds = TextUtils.join(",", savable);
                     if (dialogId != 0) {
-                        cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, mid FROM messages_v2 WHERE mid IN(%s) AND uid = %d AND send_state = 0", myIds, dialogId));
+                        cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, mid, data FROM messages_v2 WHERE mid IN(%s) AND uid = %d AND send_state = 0", myIds, dialogId));
                     } else {
-                        cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, mid FROM messages_v2 WHERE mid IN(%s) AND is_channel = 0 AND send_state = 0", myIds));
+                        cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, mid, data FROM messages_v2 WHERE mid IN(%s) AND is_channel = 0 AND send_state = 0", myIds));
                     }
                     while (cursor.next()) {
-                        found.add(new WhoDeletedMsg(cursor.longValue(0), cursor.intValue(1), whoDeleted));
+                        found.add(new HistoryDb.Kept(cursor.longValue(0), cursor.intValue(1), who, cursor.byteArrayValue(2)));
                     }
                 } catch (Exception e) {
                 } finally {
@@ -14594,28 +14597,30 @@ public class MessagesStorage extends BaseController {
                 }
 
                 if (!found.isEmpty()) {
-                    if (DeletedMsg.SECOND == deletedType && By.Me != whoDeleted) {
-                        ArrayList<WhoDeletedMsg> deletedMsgs = DeletedMsg.INSTANCE.getAllIds();
-                        deletedMsgs.addAll(found);
-                        DeletedMsg.INSTANCE.saveDeletedMessagesId(deletedMsgs);
+                    // Marks belong to this account: in private chats, basic groups and bots message ids are counted
+                    // per account, so a mark without one showed on another account's message with the same id.
+                    long accountUid = getUserConfig().getClientUserId();
+                    if (By.Me == whoDeleted && DeletedMsg.ALL != deletedType) {
+                        // The user deleted it: hard-deleted below as usual, and a kept copy is forgotten too.
+                        HistoryDb.INSTANCE.removeDeleted(accountUid, found);
+                    } else if (DeletedMsg.SECOND == deletedType) {
+                        HistoryDb.INSTANCE.addDeleted(accountUid, found);
                         // Preserve the saved messages: drop them from the hard-delete set. Unsent ids (never
-                        // in `found`) stay in `messages` and are hard-deleted below.
+                        // in `found`) stay in `messages` and are hard-deleted below. Integer.valueOf: remove the id,
+                        // not the element at that index.
                         for (int i = 0; i < found.size(); i++) {
-                            messages.remove(found.get(i).getId());
+                            messages.remove(Integer.valueOf(found.get(i).getMsgId()));
                         }
                     } else if (DeletedMsg.ALL == deletedType) {
-                        ArrayList<WhoDeletedMsg> deletedMsgs = DeletedMsg.INSTANCE.getAllIds();
-                        ArrayList<Integer> alreadySaved = new ArrayList<>();
-                        if (By.Me == whoDeleted) {
-                            alreadySaved.addAll(DeletedMsg.INSTANCE.sortDeletedIds(dialogId, savable));
-                        }
-                        deletedMsgs.addAll(found);
-                        DeletedMsg.INSTANCE.saveDeletedMessagesId(deletedMsgs);
-                        for (int i = 0; i < found.size(); i++) {
-                            messages.remove(found.get(i).getId());
-                        }
                         // A By.Me re-delete of an already-saved message really removes it.
-                        messages.addAll(alreadySaved);
+                        ArrayList<HistoryDb.Kept> alreadySaved = By.Me == whoDeleted ? HistoryDb.INSTANCE.keptAmong(accountUid, found) : new ArrayList<>();
+                        ArrayList<HistoryDb.Kept> toKeep = new ArrayList<>(found);
+                        toKeep.removeAll(alreadySaved);
+                        HistoryDb.INSTANCE.removeDeleted(accountUid, alreadySaved);
+                        HistoryDb.INSTANCE.addDeleted(accountUid, toKeep);
+                        for (int i = 0; i < toKeep.size(); i++) {
+                            messages.remove(Integer.valueOf(toKeep.get(i).getMsgId()));
+                        }
                     }
                 }
             }
@@ -16407,7 +16412,7 @@ public class MessagesStorage extends BaseController {
                                     TLRPC.Message oldMessage = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
                                     oldMessage.readAttachPath(data, getUserConfig().clientUserId);
                                     if (EditMessage.INSTANCE.getEditMode()) {
-                                        EditMessage.INSTANCE.saveEditedMsg(oldMessage, dialogId);
+                                        EditMessage.INSTANCE.saveEditedMsg(getUserConfig().getClientUserId(), oldMessage, message, dialogId);
                                     }
                                     data.reuse();
                                     if (reactionUpdates != null) {
