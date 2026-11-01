@@ -16205,6 +16205,8 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         // Novagram: logging out of a hidden account forgets that it was hidden; logging in again shows it.
         org.fenixuz.hidden.HiddenAccounts.onLoggedOut(getUserConfig().getClientUserId());
+        // Novagram: the account's kept deleted messages and edit history go with it, like its cache.
+        org.fenixuz.utils.HistoryDb.INSTANCE.deleteAccount(getUserConfig().getClientUserId());
         getUserConfig().clearConfig();
         SharedPrefsHelper.cleanupAccount(currentAccount);
 

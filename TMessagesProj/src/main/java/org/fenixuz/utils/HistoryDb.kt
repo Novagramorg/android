@@ -379,6 +379,23 @@ object HistoryDb {
 
     // endregion
 
+    /** The account [uid] logged out: its kept messages and edit history must not stay on the phone after it. */
+    fun deleteAccount(uid: Long) {
+        if (uid == 0L) return
+        io.execute {
+            try {
+                val args = arrayOf<Any>(uid)
+                db.execSQL("DELETE FROM deleted_messages WHERE account_uid = ?", args)
+                db.execSQL("DELETE FROM edit_history WHERE account_uid = ?", args)
+            } catch (e: Exception) {
+                FileLog.e(e)
+            }
+            synchronized(marks) {
+                marks.keys.removeAll { it.uid == uid }
+            }
+        }
+    }
+
     // region size and "Clear saved history"
 
     /** Per row, roughly what SQLite keeps besides the row's own bytes (keys, indexes, page space). */
