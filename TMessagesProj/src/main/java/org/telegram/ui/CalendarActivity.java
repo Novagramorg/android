@@ -965,7 +965,10 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
                                             @Override
                                             public void run(boolean forAll) {
                                                 finishFragment();
-                                                ((ChatActivity) fragment).deleteHistory(dateSelectedStart, dateSelectedEnd + 86400, forAll);
+                                                // Novagram: the day pressed, not the selection (upstream passed
+                                                // dateSelectedStart/End, which are 0 unless days were selected first,
+                                                // so the server got 1970 and refused it: MAX_DATE_INVALID).
+                                                ((ChatActivity) fragment).deleteHistory(periodDay.date, periodDay.date + 86400, forAll);
                                             }
                                         }, null);
                                     }
