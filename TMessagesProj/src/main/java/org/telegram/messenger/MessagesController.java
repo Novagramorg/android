@@ -10277,6 +10277,26 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
                     return;
                 }
+                // Novagram delete-save: clearing a supergroup for everyone also deletes, on the server, the history
+                // of the basic group it was upgraded from, and those deletions come back to this account like any
+                // others: the user's own clear was kept as "Deleted". They are deleted here first, as the user's own
+                // delete, before the answer arrives (the storage queue runs them in order).
+                TLRPC.ChatFull clearedChatFull = revoke && onlyHistory == 1 ? getChatFull(peer.channel_id) : null;
+                if (clearedChatFull != null && clearedChatFull.migrated_from_chat_id != 0) {
+                    final long migratedDid = -clearedChatFull.migrated_from_chat_id;
+                    final long accountUid = getUserConfig().getClientUserId();
+                    getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                        ArrayList<Integer> migratedMessages = getMessagesStorage().getCachedMessagesInRange(migratedDid, 0, Integer.MAX_VALUE);
+                        migratedMessages.addAll(org.fenixuz.utils.HistoryDb.INSTANCE.forgetInDates(accountUid, migratedDid, 0, Integer.MAX_VALUE, migratedMessages));
+                        if (migratedMessages.isEmpty()) {
+                            return;
+                        }
+                        final ArrayList<Integer> storageMessages = new ArrayList<>(migratedMessages);
+                        getMessagesStorage().markMessagesAsDeleted(migratedDid, storageMessages, false, true, 0, 0, false, By.Me);
+                        getMessagesStorage().updateDialogsWithDeletedMessages(migratedDid, 0, storageMessages, null);
+                        AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, migratedMessages, 0L, false, false, false, 0, null, By.Me));
+                    });
+                }
                 TLRPC.TL_channels_deleteHistory req = new TLRPC.TL_channels_deleteHistory();
                 req.channel = new TLRPC.TL_inputChannel();
                 req.for_everyone = revoke;
