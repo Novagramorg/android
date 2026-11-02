@@ -12,6 +12,7 @@ import org.telegram.messenger.MessagesStorage
 import org.telegram.messenger.NotificationCenter
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.ConnectionsManager
+import org.telegram.tgnet.SerializedData
 import org.telegram.tgnet.TLRPC
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -278,6 +279,40 @@ object HistoryDb {
                 if (left.decrementAndGet() == 0) io.execute(block)
             }
         }
+    }
+
+    /**
+     * The user deleted the messages of [dialogId] dated [minDate]..[maxDate] (seconds, both included) in the account
+     * [uid]: forgets the kept ones Telegram's cache no longer has (those in [cached] go through storage's own delete,
+     * which must find them still kept). Returns their ids, for the open chat. Storage-queue thread.
+     */
+    fun forgetInDates(uid: Long, dialogId: Long, minDate: Int, maxDate: Int, cached: Collection<Int>): ArrayList<Int> {
+        val gone = ArrayList<Int>()
+        if (uid == 0L) return gone
+        val skip = HashSet(cached)
+        try {
+            db.rawQuery(
+                "SELECT msg_id, data FROM deleted_messages WHERE account_uid = ? AND dialog_id = ?",
+                arrayOf(uid.toString(), dialogId.toString())
+            ).use { c ->
+                while (c.moveToNext()) {
+                    val msgId = c.getInt(0)
+                    if (msgId in skip) continue
+                    val stream = SerializedData(c.getBlob(1) ?: continue)
+                    val date = try {
+                        TLRPC.Message.TLdeserialize(stream, stream.readInt32(false), false)?.date
+                    } finally {
+                        stream.cleanup()
+                    } ?: continue
+                    if (date in minDate..maxDate) gone.add(msgId)
+                }
+            }
+        } catch (e: Exception) {
+            FileLog.e(e)
+            return ArrayList()
+        }
+        removeDeleted(uid, gone.map { Kept(dialogId, it, WHO_YOU, null) })
+        return gone
     }
 
     /** Forgets [rows] in the account [uid]: the user deleted them themselves, which removes them for good. */

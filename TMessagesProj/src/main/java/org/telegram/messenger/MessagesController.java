@@ -23302,10 +23302,16 @@ public class MessagesController extends BaseController implements NotificationCe
                 processNewDifferenceParams(-1, res.pts, -1, res.pts_count);
                 getMessagesStorage().getStorageQueue().postRunnable(() -> {
                     ArrayList<Integer> dbMessages = getMessagesStorage().getCachedMessagesInRange(dialogId, minDate, maxDate);
-                    getMessagesStorage().markMessagesAsDeleted(dialogId, dbMessages, false, true, 0, 0);
-                    getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, 0, dbMessages, null);
+                    // Novagram delete-save: the user deleted these days, so storage and the open chat must see their own
+                    // delete (By.Me), not one by others: without it every message of those days was kept as "Deleted".
+                    // Kept messages of those days that only the saved history still has go too. Storage gets its own
+                    // copy of the list, as in deleteMessages.
+                    dbMessages.addAll(org.fenixuz.utils.HistoryDb.INSTANCE.forgetInDates(getUserConfig().getClientUserId(), dialogId, minDate, maxDate, dbMessages));
+                    final ArrayList<Integer> storageMessages = new ArrayList<>(dbMessages);
+                    getMessagesStorage().markMessagesAsDeleted(dialogId, storageMessages, false, true, 0, 0, false, By.Me);
+                    getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, 0, storageMessages, null);
                     AndroidUtilities.runOnUIThread(() -> {
-                        getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, dbMessages, channelId, false);
+                        getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, dbMessages, channelId, false, false, false, 0, null, By.Me);
                         if (res.offset > 0) {
                             deleteMessagesRange(dialogId, channelId, minDate, maxDate, forAll, callback);
                         } else {
