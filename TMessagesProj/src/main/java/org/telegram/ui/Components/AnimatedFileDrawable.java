@@ -26,6 +26,7 @@ import android.graphics.Shader;
 import android.graphics.Xfermode;
 import android.graphics.drawable.Animatable;
 import android.graphics.drawable.BitmapDrawable;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 
@@ -214,6 +215,14 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @UiThread
     public void invalidateInternal() {
+        // Novagram: recycle() also runs on ImageLoader's cache thread (a video's first frame taken, the drawable then
+        // dropped). If that task was cancelled meanwhile, the thread is interrupted and ReferenceList.iterator() throws
+        // IllegalStateException instead of iterating, which crashed the app (Vitals: ReferenceList / ee.b.iterator).
+        // The parents are views, so they are invalidated on the UI thread, where every other caller already is.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(this::invalidateInternal);
+            return;
+        }
         for (ImageReceiver imageReceiver : parents) {
             imageReceiver.invalidate();
         }
