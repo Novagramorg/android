@@ -14586,7 +14586,14 @@ public class MessagesStorage extends BaseController {
                         cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, mid, data FROM messages_v2 WHERE mid IN(%s) AND is_channel = 0 AND send_state = 0", myIds));
                     }
                     while (cursor.next()) {
-                        found.add(new HistoryDb.Kept(cursor.longValue(0), cursor.intValue(1), who, cursor.byteArrayValue(2)));
+                        byte[] data = cursor.byteArrayValue(2);
+                        // The "History cleared" placeholder Telegram writes in place of a chat's last message when
+                        // the user clears the chat: the server deleting that message later is the user's own clear,
+                        // not a deletion to keep. Left out here, it is hard-deleted below as usual.
+                        if (HistoryDb.isClearedPlaceholder(data)) {
+                            continue;
+                        }
+                        found.add(new HistoryDb.Kept(cursor.longValue(0), cursor.intValue(1), who, data));
                     }
                 } catch (Exception e) {
                 } finally {

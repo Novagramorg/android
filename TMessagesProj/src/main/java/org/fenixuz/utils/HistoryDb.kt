@@ -315,6 +315,24 @@ object HistoryDb {
         return gone
     }
 
+    /**
+     * Whether [data] (a stored message) is the "History cleared" placeholder Telegram puts in place of a chat's last
+     * message when the user clears the chat (MessagesController.deleteDialog). Storage thread.
+     */
+    @JvmStatic
+    fun isClearedPlaceholder(data: ByteArray?): Boolean {
+        if (data == null || data.size < 4) return false
+        val stream = SerializedData(data)
+        return try {
+            val message = TLRPC.Message.TLdeserialize(stream, stream.readInt32(false), false)
+            message is TLRPC.TL_messageService && message.action is TLRPC.TL_messageActionHistoryClear
+        } catch (e: Exception) {
+            false
+        } finally {
+            stream.cleanup()
+        }
+    }
+
     /** Forgets [rows] in the account [uid]: the user deleted them themselves, which removes them for good. */
     fun removeDeleted(uid: Long, rows: List<Kept>) {
         if (uid == 0L || rows.isEmpty()) return
