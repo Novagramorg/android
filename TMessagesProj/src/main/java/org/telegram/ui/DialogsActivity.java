@@ -9666,6 +9666,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         getMessagesController().reportSpam(did, u, null, null, false);
                     }
                     if (delete) {
+                        org.fenixuz.utils.HistoryDb.forgetChat(currentAccount, did); // Novagram delete-save: the user's own clear/delete takes the chat's kept messages with it.
                         getMessagesController().deleteDialog(did, 0, true);
                     }
                     getMessagesController().blockPeer(did);
@@ -9758,6 +9759,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                          AlertsCreator.createClearOrDeleteDialogAlert(DialogsActivity.this, action == clear, chat, user, DialogObject.isEncryptedDialog(dialog.id), action == delete, false, false, (param) -> {
                             hideActionMode(false);
                             if (action == clear && ChatObject.isChannel(chat) && (!chat.megagroup || ChatObject.isPublic(chat))) {
+                                org.fenixuz.utils.HistoryDb.forgetChat(currentAccount, selectedDialog); // Novagram delete-save: the user's own clear/delete takes the chat's kept messages with it.
                                 getMessagesController().deleteDialog(selectedDialog, 2, param);
                             } else {
                                 if (action == delete && folderId != 0 && getDialogsArray(currentAccount, viewPages[0].dialogsType, folderId, false).size() == 1) {
@@ -9811,6 +9813,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         getMessagesController().hidePromoDialog();
                     } else {
                         if (action == clear && canClearCacheCount != 0) {
+                            org.fenixuz.utils.HistoryDb.forgetChat(currentAccount, selectedDialog); // Novagram delete-save: the user's own clear/delete takes the chat's kept messages with it.
                             getMessagesController().deleteDialog(selectedDialog, 2, false);
                         } else {
                             boolean revoke = dialogsIdsToRevoke != null && dialogsIdsToRevoke.contains(selectedDialog);
@@ -9941,6 +9944,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void performDeleteOrClearDialogAction(int action, long selectedDialog, TLRPC.Chat chat, boolean isBot, boolean revoke) {
+        org.fenixuz.utils.HistoryDb.forgetChat(currentAccount, selectedDialog); // Novagram delete-save: the user's own clear/delete takes the chat's kept messages with it.
         if (action == clear) {
             getMessagesController().deleteDialog(selectedDialog, 1, revoke);
         } else {
@@ -11063,6 +11067,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
 
             Runnable deleteRunnable = () -> {
+                org.fenixuz.utils.HistoryDb.forgetChat(currentAccount, dialogId); // Novagram delete-save: the user's own clear/delete takes the chat's kept messages with it.
                 if (chat != null) {
                     if (ChatObject.isNotInChat(chat)) {
                         getMessagesController().deleteDialog(dialogId, 0, revoke);

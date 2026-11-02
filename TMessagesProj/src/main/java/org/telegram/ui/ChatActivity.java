@@ -4016,6 +4016,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     AlertsCreator.createClearOrDeleteDialogAlert(ChatActivity.this, id == clear_history, currentChat, currentUser, currentEncryptedChat != null, true, false, canDeleteHistory, (param) -> {
                         if (id == clear_history && ChatObject.isChannel(currentChat) && (!currentChat.megagroup || ChatObject.isPublic(currentChat))) {
+                            org.fenixuz.utils.HistoryDb.forgetChat(currentAccount, dialog_id); // Novagram delete-save: the user's own clear/delete takes the chat's kept messages with it.
                             getMessagesController().deleteDialog(dialog_id, 2, param);
                         } else {
                             if (id != clear_history) {
@@ -13152,6 +13153,7 @@ public class ChatActivity extends BaseFragment implements
                     getMessagesController().getTopicsController().onTopicsDeletedServerSide(currentChat.id, threadId);
                 }
             } else {
+                org.fenixuz.utils.HistoryDb.forgetChat(currentAccount, dialog_id); // Novagram delete-save: the user's own clear/delete takes the chat's kept messages with it.
                 getMessagesController().deleteDialog(dialog_id, 1, revoke);
                 getMessagesStorage().removeAllTopics(dialog_id);
                 getMessagesController().getTopicsController().reloadTopics(-dialog_id);

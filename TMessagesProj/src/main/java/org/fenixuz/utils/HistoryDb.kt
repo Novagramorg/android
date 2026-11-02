@@ -333,6 +333,32 @@ object HistoryDb {
         }
     }
 
+    /**
+     * The user cleared or deleted the chat [dialogId] of the account in slot [slot] themselves: its kept messages and
+     * edit history go too, as with a message the user deletes. Telegram's own clear doesn't come through storage's
+     * delete hook, so without this they stayed: still listed under the chat's "Deleted messages", and shown in the chat
+     * again once its older messages were reloaded. Called only from the user's own Clear history / Delete chat
+     * actions: Telegram also clears dialogs by itself (the old chat of an upgraded group, a chat the user was removed
+     * from), and those keep what was saved. Any thread.
+     */
+    @JvmStatic
+    fun forgetChat(slot: Int, dialogId: Long) {
+        val uid = UserConfig.getInstance(slot).getClientUserId()
+        if (uid == 0L) return
+        io.execute {
+            try {
+                val args = arrayOf<Any>(uid, dialogId)
+                db.execSQL("DELETE FROM deleted_messages WHERE account_uid = ? AND dialog_id = ?", args)
+                db.execSQL("DELETE FROM edit_history WHERE account_uid = ? AND dialog_id = ?", args)
+            } catch (e: Exception) {
+                FileLog.e(e)
+            }
+            synchronized(marks) {
+                marks.remove(Key(uid, dialogId))
+            }
+        }
+    }
+
     /** Forgets [rows] in the account [uid]: the user deleted them themselves, which removes them for good. */
     fun removeDeleted(uid: Long, rows: List<Kept>) {
         if (uid == 0L || rows.isEmpty()) return

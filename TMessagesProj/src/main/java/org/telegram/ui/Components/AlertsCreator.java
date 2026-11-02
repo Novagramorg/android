@@ -1471,6 +1471,7 @@ public class AlertsCreator {
                 accountInstance.getMessagesController().reportSpam(dialog_id, currentUser, currentChat, encryptedChat, currentChat != null && isLocation);
             }
             if (cells == null || cells[1].isChecked()) {
+                org.fenixuz.utils.HistoryDb.forgetChat(accountInstance.getCurrentAccount(), dialog_id); // Novagram delete-save: the user's own clear/delete takes the chat's kept messages with it.
                 if (currentChat != null) {
                     if (ChatObject.isNotInChat(currentChat)) {
                         accountInstance.getMessagesController().deleteDialog(dialog_id, 0);
