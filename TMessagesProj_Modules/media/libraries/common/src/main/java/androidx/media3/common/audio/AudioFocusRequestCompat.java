@@ -16,8 +16,8 @@
 package androidx.media3.common.audio;
 
 import static android.os.Build.VERSION.SDK_INT;
-import static androidx.media3.common.util.Assertions.checkArgument;
-import static androidx.media3.common.util.Assertions.checkNotNull;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -42,6 +42,7 @@ public final class AudioFocusRequestCompat {
   private final Handler focusChangeHandler;
   private final AudioAttributes audioAttributes;
   private final boolean pauseOnDuck;
+  private final boolean acceptsDelayedFocusGain;
 
   @Nullable private final Object frameworkAudioFocusRequest;
 
@@ -50,11 +51,13 @@ public final class AudioFocusRequestCompat {
       AudioManager.OnAudioFocusChangeListener onAudioFocusChangeListener,
       Handler focusChangeHandler,
       AudioAttributes audioFocusRequestCompat,
-      boolean pauseOnDuck) {
+      boolean pauseOnDuck,
+      boolean acceptsDelayedFocusGain) {
     this.focusGain = focusGain;
     this.focusChangeHandler = focusChangeHandler;
     this.audioAttributes = audioFocusRequestCompat;
     this.pauseOnDuck = pauseOnDuck;
+    this.acceptsDelayedFocusGain = acceptsDelayedFocusGain;
 
     if (SDK_INT < 26) {
       this.onAudioFocusChangeListener =
@@ -67,9 +70,10 @@ public final class AudioFocusRequestCompat {
     if (SDK_INT >= 26) {
       this.frameworkAudioFocusRequest =
           new AudioFocusRequest.Builder(focusGain)
-              .setAudioAttributes(audioAttributes.getAudioAttributesV21().audioAttributes)
+              .setAudioAttributes(audioAttributes.getPlatformAudioAttributes())
               .setWillPauseWhenDucked(pauseOnDuck)
               .setOnAudioFocusChangeListener(onAudioFocusChangeListener, focusChangeHandler)
+              .setAcceptsDelayedFocusGain(acceptsDelayedFocusGain)
               .build();
     } else {
       this.frameworkAudioFocusRequest = null;
@@ -99,6 +103,15 @@ public final class AudioFocusRequestCompat {
    */
   public boolean willPauseWhenDucked() {
     return pauseOnDuck;
+  }
+
+  /**
+   * Returns whether the application that would use this {@code AudioFocusRequestCompat} supports a
+   * focus gain granted after a temporary request failure. This value is only applicable on {@link
+   * android.os.Build.VERSION_CODES#O} and later.
+   */
+  public boolean acceptsDelayedFocusGain() {
+    return acceptsDelayedFocusGain;
   }
 
   /**
@@ -173,6 +186,7 @@ public final class AudioFocusRequestCompat {
     @Nullable private Handler focusChangeHandler;
     private AudioAttributes audioAttributes;
     private boolean pauseOnDuck;
+    private boolean acceptsDelayedFocusGain;
 
     /**
      * Constructs a new {@code Builder}, and specifies how audio focus will be requested.
@@ -284,6 +298,25 @@ public final class AudioFocusRequestCompat {
     }
 
     /**
+     * Marks this focus request as compatible with delayed focus. See more details about delayed
+     * focus in the {@link AudioFocusRequest} class documentation.
+     *
+     * <p>Setting {@code acceptsDelayedFocusGain} to {@code true} will only have an effect on {@link
+     * android.os.Build.VERSION_CODES#O} and later.
+     *
+     * @param acceptsDelayedFocusGain Use {@code true} if the application supports delayed focus. If
+     *     {@code true}, note that you must also set a focus listener to be notified of delayed
+     *     focus gain with {@link
+     *     #setOnAudioFocusChangeListener(AudioManager.OnAudioFocusChangeListener, Handler)}.
+     * @return This {@code Builder} instance.
+     */
+    @CanIgnoreReturnValue
+    public Builder setAcceptsDelayedFocusGain(boolean acceptsDelayedFocusGain) {
+      this.acceptsDelayedFocusGain = acceptsDelayedFocusGain;
+      return this;
+    }
+
+    /**
      * Builds a new {@code AudioFocusRequestCompat} instance combining all the information gathered
      * by this builder's configuration methods.
      *
@@ -299,7 +332,8 @@ public final class AudioFocusRequestCompat {
           onAudioFocusChangeListener,
           checkNotNull(focusChangeHandler),
           audioAttributes,
-          pauseOnDuck);
+          pauseOnDuck,
+          acceptsDelayedFocusGain);
     }
 
     /**

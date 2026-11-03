@@ -16,12 +16,7 @@
 
 package androidx.media3.transformer;
 
-import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.common.util.Util.percentInt;
-import static androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS;
-import static androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS;
-import static androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_MAX_BUFFER_MS;
-import static androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_MIN_BUFFER_MS;
 import static androidx.media3.transformer.ExportException.ERROR_CODE_FAILED_RUNTIME_CHECK;
 import static androidx.media3.transformer.ExportException.ERROR_CODE_UNSPECIFIED;
 import static androidx.media3.transformer.Transformer.PROGRESS_STATE_AVAILABLE;
@@ -29,6 +24,8 @@ import static androidx.media3.transformer.Transformer.PROGRESS_STATE_NOT_STARTED
 import static androidx.media3.transformer.Transformer.PROGRESS_STATE_UNAVAILABLE;
 import static androidx.media3.transformer.Transformer.PROGRESS_STATE_WAITING_FOR_AVAILABILITY;
 import static androidx.media3.transformer.TransformerUtil.isImage;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.min;
 
 import android.content.Context;
@@ -41,12 +38,14 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.audio.SpeedProvider;
 import androidx.media3.common.util.Clock;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.ExoTimeoutException;
+import androidx.media3.exoplayer.LoadControl;
 import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.RenderersFactory;
 import androidx.media3.exoplayer.audio.AudioRendererEventListener;
@@ -75,6 +74,7 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
     @Nullable private final MediaSource.Factory mediaSourceFactory;
     @Nullable private final TrackSelector.Factory trackSelectorFactory;
     @Nullable private final LogSessionId logSessionId;
+    @Nullable private final LoadControl loadControl;
 
     /**
      * Creates an instance using a {@link DefaultMediaSourceFactory}.
@@ -93,7 +93,34 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
           clock,
           /* mediaSourceFactory= */ null,
           /* trackSelectorFactory= */ null,
-          /* logSessionId= */ null);
+          /* logSessionId= */ null,
+          /* loadControl= */ null);
+    }
+
+    /**
+     * Creates an instance using a {@link DefaultMediaSourceFactory}.
+     *
+     * @param context The {@link Context}.
+     * @param decoderFactory The {@link Codec.DecoderFactory} to use to decode the samples (if
+     *     necessary).
+     * @param clock The {@link Clock} to use. It should always be {@link Clock#DEFAULT}, except for
+     *     testing.
+     * @param loadControl The {@link LoadControl} to use in the underlying {@link ExoPlayer}.
+     */
+    public Factory(
+        Context context,
+        Codec.DecoderFactory decoderFactory,
+        Clock clock,
+        LoadControl loadControl) {
+      // TODO: b/381519379 - Deprecate this constructor and replace with a builder.
+      this(
+          context,
+          decoderFactory,
+          clock,
+          /* mediaSourceFactory= */ null,
+          /* trackSelectorFactory= */ null,
+          /* logSessionId= */ null,
+          loadControl);
     }
 
     /**
@@ -119,7 +146,8 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
           clock,
           mediaSourceFactory,
           /* trackSelectorFactory= */ null,
-          /* logSessionId= */ null);
+          /* logSessionId= */ null,
+          /* loadControl= */ null);
     }
 
     /**
@@ -136,6 +164,7 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
      *     to transform.
      * @param logSessionId The optional {@link LogSessionId} of the {@link
      *     android.media.metrics.EditingSession}.
+     * @param loadControl The {@link LoadControl} to use in the underlying {@link ExoPlayer}.
      */
     public Factory(
         Context context,
@@ -143,7 +172,8 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
         Clock clock,
         @Nullable MediaSource.Factory mediaSourceFactory,
         @Nullable TrackSelector.Factory trackSelectorFactory,
-        @Nullable LogSessionId logSessionId) {
+        @Nullable LogSessionId logSessionId,
+        @Nullable LoadControl loadControl) {
       // TODO: b/381519379 - Deprecate this constructor and replace with a builder.
       this.context = context;
       this.decoderFactory = decoderFactory;
@@ -151,6 +181,7 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
       this.mediaSourceFactory = mediaSourceFactory;
       this.trackSelectorFactory = trackSelectorFactory;
       this.logSessionId = logSessionId;
+      this.loadControl = loadControl;
     }
 
     @Override
@@ -170,7 +201,7 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
       TrackSelector.Factory trackSelectorFactory = this.trackSelectorFactory;
       if (trackSelectorFactory == null) {
         DefaultTrackSelector.Parameters defaultTrackSelectorParameters =
-            new DefaultTrackSelector.Parameters.Builder(context)
+            new DefaultTrackSelector.Parameters.Builder()
                 .setForceHighestSupportedBitrate(true)
                 .setConstrainAudioChannelCountToDeviceCapabilities(false)
                 .build();
@@ -180,6 +211,10 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
               trackSelector.setParameters(defaultTrackSelectorParameters);
               return trackSelector;
             };
+      }
+      @Nullable LoadControl loadControl = this.loadControl;
+      if (loadControl == null) {
+        loadControl = new DefaultLoadControl.Builder().build();
       }
       return new ExoPlayerAssetLoader(
           context,
@@ -191,7 +226,8 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
           listener,
           clock,
           trackSelectorFactory,
-          logSessionId);
+          logSessionId,
+          loadControl);
     }
   }
 
@@ -201,8 +237,10 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
   private final EditedMediaItem editedMediaItem;
   private final CapturingDecoderFactory decoderFactory;
   private final ExoPlayer player;
+  private final MediaSource.Factory mediaSourceFactory;
 
   private @Transformer.ProgressState int progressState;
+  private long durationUs;
 
   private ExoPlayerAssetLoader(
       Context context,
@@ -214,37 +252,26 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
       Listener listener,
       Clock clock,
       TrackSelector.Factory trackSelectorFactory,
-      @Nullable LogSessionId logSessionId) {
+      @Nullable LogSessionId logSessionId,
+      LoadControl loadControl) {
     this.context = context;
     this.editedMediaItem = editedMediaItem;
     this.decoderFactory = new CapturingDecoderFactory(decoderFactory);
+    this.mediaSourceFactory = mediaSourceFactory;
 
     TrackSelector trackSelector = trackSelectorFactory.createTrackSelector(context);
-    // Arbitrarily decrease buffers for playback so that samples start being sent earlier to the
-    // exporters (rebuffers are less problematic for the export use case).
-    DefaultLoadControl loadControl =
-        new DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                DEFAULT_MIN_BUFFER_MS,
-                DEFAULT_MAX_BUFFER_MS,
-                DEFAULT_BUFFER_FOR_PLAYBACK_MS / 10,
-                DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS / 10)
-            .build();
     ExoPlayer.Builder playerBuilder =
         new ExoPlayer.Builder(
                 context,
                 new RenderersFactoryImpl(
-                    editedMediaItem.removeAudio,
-                    editedMediaItem.removeVideo,
-                    editedMediaItem.flattenForSlowMotion,
-                    this.decoderFactory,
-                    hdrMode,
-                    listener,
-                    logSessionId))
+                    editedMediaItem, this.decoderFactory, hdrMode, listener, logSessionId))
             .setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setLooper(looper)
+            .setStuckBufferingDetectionTimeoutMs(Integer.MAX_VALUE)
+            .setStuckPlayingDetectionTimeoutMs(Integer.MAX_VALUE)
+            .setStuckPlayingNotEndingTimeoutMs(Integer.MAX_VALUE)
             .setUsePlatformDiagnostics(false);
     if (decoderFactory instanceof DefaultDecoderFactory) {
       playerBuilder.experimentalSetDynamicSchedulingEnabled(
@@ -260,11 +287,12 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
     player.addListener(new PlayerListener(listener));
 
     progressState = PROGRESS_STATE_NOT_STARTED;
+    durationUs = C.TIME_UNSET;
   }
 
   @Override
   public void start() {
-    player.setMediaItem(editedMediaItem.mediaItem);
+    player.setMediaSource(createMediaSourceForEditedMediaItem(mediaSourceFactory, editedMediaItem));
     player.prepare();
     progressState = PROGRESS_STATE_WAITING_FOR_AVAILABILITY;
   }
@@ -272,7 +300,7 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
   @Override
   public @Transformer.ProgressState int getProgress(ProgressHolder progressHolder) {
     if (progressState == PROGRESS_STATE_AVAILABLE) {
-      long durationMs = player.getDuration();
+      long durationMs = durationUs / 1_000;
       // The player position can become greater than the duration. This happens if the player is
       // using a StandaloneMediaClock because the renderers have ended.
       long positionMs = min(player.getCurrentPosition(), durationMs);
@@ -301,28 +329,41 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
     progressState = PROGRESS_STATE_NOT_STARTED;
   }
 
+  /**
+   * Returns a {@link MediaSource} representing the provided {@link EditedMediaItem}.
+   *
+   * <p>This method creates the {@link MediaSource} using {@code factory} and optionally wraps the
+   * new source in a {@link SpeedChangingMediaSource}.
+   */
+  private static MediaSource createMediaSourceForEditedMediaItem(
+      MediaSource.Factory factory, EditedMediaItem editedMediaItem) {
+    MediaSource mediaSource = factory.createMediaSource(editedMediaItem.mediaItem);
+    if (editedMediaItem.speedProvider != SpeedProvider.DEFAULT) {
+      mediaSource =
+          new SpeedChangingMediaSource(
+              mediaSource,
+              editedMediaItem.speedProvider,
+              editedMediaItem.mediaItem.clippingConfiguration);
+    }
+    return mediaSource;
+  }
+
   private static final class RenderersFactoryImpl implements RenderersFactory {
 
     private final TransformerMediaClock mediaClock;
-    private final boolean removeAudio;
-    private final boolean removeVideo;
-    private final boolean flattenForSlowMotion;
+    private final EditedMediaItem editedMediaItem;
     private final Codec.DecoderFactory decoderFactory;
     private final @Composition.HdrMode int hdrMode;
     private final Listener assetLoaderListener;
     @Nullable private final LogSessionId logSessionId;
 
     public RenderersFactoryImpl(
-        boolean removeAudio,
-        boolean removeVideo,
-        boolean flattenForSlowMotion,
+        EditedMediaItem editedMediaItem,
         Codec.DecoderFactory decoderFactory,
         @Composition.HdrMode int hdrMode,
         Listener assetLoaderListener,
         @Nullable LogSessionId logSessionId) {
-      this.removeAudio = removeAudio;
-      this.removeVideo = removeVideo;
-      this.flattenForSlowMotion = flattenForSlowMotion;
+      this.editedMediaItem = editedMediaItem;
       this.decoderFactory = decoderFactory;
       this.hdrMode = hdrMode;
       this.assetLoaderListener = assetLoaderListener;
@@ -338,20 +379,21 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
         TextOutput textRendererOutput,
         MetadataOutput metadataRendererOutput) {
       ArrayList<Renderer> renderers = new ArrayList<>();
-      if (!removeAudio) {
+      if (!editedMediaItem.removeAudio) {
         renderers.add(
             new ExoAssetLoaderAudioRenderer(
                 decoderFactory, mediaClock, assetLoaderListener, logSessionId));
       }
-      if (!removeVideo) {
+      if (!editedMediaItem.removeVideo) {
         renderers.add(
             new ExoAssetLoaderVideoRenderer(
-                flattenForSlowMotion,
+                editedMediaItem.flattenForSlowMotion,
                 decoderFactory,
                 hdrMode,
                 mediaClock,
                 assetLoaderListener,
-                logSessionId));
+                logSessionId,
+                editedMediaItem.frameRate));
       }
       return renderers.toArray(new Renderer[0]);
     }
@@ -368,21 +410,23 @@ public final class ExoPlayerAssetLoader implements AssetLoader {
     @Override
     public void onTimelineChanged(Timeline timeline, int reason) {
       try {
-        if (progressState != PROGRESS_STATE_WAITING_FOR_AVAILABILITY) {
-          return;
-        }
         Timeline.Window window = new Timeline.Window();
         timeline.getWindow(/* windowIndex= */ 0, window);
         if (!window.isPlaceholder) {
-          long durationUs = window.durationUs;
-          // Make progress permanently unavailable if the duration is unknown, so that it doesn't
-          // jump to a high value at the end of the export if the duration is set once the media is
-          // entirely loaded.
-          progressState =
-              durationUs <= 0 || durationUs == C.TIME_UNSET
-                  ? PROGRESS_STATE_UNAVAILABLE
-                  : PROGRESS_STATE_AVAILABLE;
-          assetLoaderListener.onDurationUs(window.durationUs);
+          if (progressState == PROGRESS_STATE_WAITING_FOR_AVAILABILITY) {
+            durationUs = window.durationUs;
+            // Make progress permanently unavailable if the duration is unknown, so that it doesn't
+            // jump to a high value at the end of the export if the duration is set once the media
+            // is entirely loaded.
+            progressState =
+                durationUs <= 0 || durationUs == C.TIME_UNSET
+                    ? PROGRESS_STATE_UNAVAILABLE
+                    : PROGRESS_STATE_AVAILABLE;
+            assetLoaderListener.onDurationUs(window.durationUs);
+          } else if (durationUs != C.TIME_UNSET) {
+            // Duration once known can not change.
+            checkState(durationUs == window.durationUs);
+          }
         }
       } catch (RuntimeException e) {
         assetLoaderListener.onError(

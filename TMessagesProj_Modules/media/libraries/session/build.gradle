@@ -11,7 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-apply from: "$gradle.ext.androidxMediaSettingsDir/common_library_config.gradle"
+apply plugin: 'com.android.library'
+apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
 
 android {
     namespace 'androidx.media3.session'
@@ -22,9 +23,6 @@ android {
         }
     }
     sourceSets.test.assets.srcDir '../test_data/src/test/assets/'
-    lint {
-        baseline = file("lint-baseline.xml")
-    }
     publishing {
         singleVariant('release') {
             withSourcesJar()
@@ -36,10 +34,12 @@ android {
 }
 dependencies {
     api project(modulePrefix + 'lib-common')
+    api 'androidx.lifecycle:lifecycle-service:' + androidxLifecycleVersion
     compileOnly 'com.google.errorprone:error_prone_annotations:' + errorProneVersion
     compileOnly 'org.checkerframework:checker-qual:' + checkerframeworkVersion
     implementation project(modulePrefix + 'lib-datasource')
     implementation 'androidx.collection:collection:' + androidxCollectionVersion
+    implementation 'androidx.concurrent:concurrent-futures:' + androidxConcurrentFuturesVersion
     implementation 'androidx.media:media:' + androidxMediaVersion
     implementation 'androidx.core:core:' + androidxCoreVersion
     testImplementation 'com.squareup.okhttp3:mockwebserver:' + okhttpVersion
@@ -48,6 +48,7 @@ dependencies {
     testImplementation project(modulePrefix + 'test-utils-robolectric')
     testImplementation project(modulePrefix + 'lib-exoplayer')
     testImplementation 'org.robolectric:robolectric:' + robolectricVersion
+    testImplementation 'com.google.testparameterinjector:test-parameter-injector:' + testParameterInjectorVersion
 }
 
 ext {

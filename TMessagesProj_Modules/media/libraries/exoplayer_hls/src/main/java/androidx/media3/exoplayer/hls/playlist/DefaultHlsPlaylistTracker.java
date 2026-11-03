@@ -15,8 +15,9 @@
  */
 package androidx.media3.exoplayer.hls.playlist;
 
-import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.common.util.Util.castNonNull;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.max;
 
 import android.net.Uri;
@@ -25,7 +26,6 @@ import android.os.SystemClock;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.ParserException;
-import androidx.media3.common.util.Assertions;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.datasource.DataSource;
@@ -46,10 +46,14 @@ import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy.LoadErrorInfo;
 import androidx.media3.exoplayer.upstream.Loader;
 import androidx.media3.exoplayer.upstream.Loader.LoadErrorAction;
 import androidx.media3.exoplayer.upstream.ParsingLoadable;
+import androidx.media3.exoplayer.util.ReleasableExecutor;
+import com.google.common.base.Supplier;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Default implementation for {@link HlsPlaylistTracker}. */
@@ -69,16 +73,23 @@ public final class DefaultHlsPlaylistTracker
   private final HlsDataSourceFactory dataSourceFactory;
   private final HlsPlaylistParserFactory playlistParserFactory;
   private final LoadErrorHandlingPolicy loadErrorHandlingPolicy;
-  private final HashMap<Uri, MediaPlaylistBundle> playlistBundles;
+  private final HashMap<Uri, RedundantGroupBundle> redundantGroupBundles;
   private final CopyOnWriteArrayList<PlaylistEventListener> listeners;
   private final double playlistStuckTargetDurationCoefficient;
   @Nullable private final CmcdConfiguration cmcdConfiguration;
+  @Nullable private final Supplier<ReleasableExecutor> downloadExecutorSupplier;
 
   @Nullable private EventDispatcher eventDispatcher;
   @Nullable private Loader initialPlaylistLoader;
   @Nullable private Handler playlistRefreshHandler;
   @Nullable private PrimaryPlaylistListener primaryPlaylistListener;
   @Nullable private HlsMultivariantPlaylist multivariantPlaylist;
+  @Nullable private ParserException redundantGroupListCreationError;
+  @Nullable private ImmutableList<HlsRedundantGroup> variantRedundantGroups;
+  @Nullable private ImmutableList<HlsRedundantGroup> videoRedundantGroups;
+  @Nullable private ImmutableList<HlsRedundantGroup> audioRedundantGroups;
+  @Nullable private ImmutableList<HlsRedundantGroup> subtitleRedundantGroups;
+
   @Nullable private Uri primaryMediaPlaylistUrl;
   @Nullable private HlsMediaPlaylist primaryMediaPlaylistSnapshot;
   private boolean isLive;
@@ -91,18 +102,22 @@ public final class DefaultHlsPlaylistTracker
    * @param loadErrorHandlingPolicy The {@link LoadErrorHandlingPolicy}.
    * @param playlistParserFactory An {@link HlsPlaylistParserFactory}.
    * @param cmcdConfiguration The {@link CmcdConfiguration}.
+   * @param downloadExecutorSupplier A supplier for a {@link ReleasableExecutor} that is used for
+   *     loading the playlist.
    */
   public DefaultHlsPlaylistTracker(
       HlsDataSourceFactory dataSourceFactory,
       LoadErrorHandlingPolicy loadErrorHandlingPolicy,
       HlsPlaylistParserFactory playlistParserFactory,
-      @Nullable CmcdConfiguration cmcdConfiguration) {
+      @Nullable CmcdConfiguration cmcdConfiguration,
+      @Nullable Supplier<ReleasableExecutor> downloadExecutorSupplier) {
     this(
         dataSourceFactory,
         loadErrorHandlingPolicy,
         playlistParserFactory,
         cmcdConfiguration,
-        DEFAULT_PLAYLIST_STUCK_TARGET_DURATION_COEFFICIENT);
+        DEFAULT_PLAYLIST_STUCK_TARGET_DURATION_COEFFICIENT,
+        downloadExecutorSupplier);
   }
 
   /**
@@ -116,20 +131,24 @@ public final class DefaultHlsPlaylistTracker
    *     media playlists in order to determine that a non-changing playlist is stuck. Once a
    *     playlist is deemed stuck, a {@link PlaylistStuckException} is thrown via {@link
    *     #maybeThrowPlaylistRefreshError(Uri)}.
+   * @param downloadExecutorSupplier A supplier for a {@link ReleasableExecutor} that is used for
+   *     loading the playlist.
    */
   public DefaultHlsPlaylistTracker(
       HlsDataSourceFactory dataSourceFactory,
       LoadErrorHandlingPolicy loadErrorHandlingPolicy,
       HlsPlaylistParserFactory playlistParserFactory,
       @Nullable CmcdConfiguration cmcdConfiguration,
-      double playlistStuckTargetDurationCoefficient) {
+      double playlistStuckTargetDurationCoefficient,
+      @Nullable Supplier<ReleasableExecutor> downloadExecutorSupplier) {
     this.dataSourceFactory = dataSourceFactory;
     this.playlistParserFactory = playlistParserFactory;
     this.loadErrorHandlingPolicy = loadErrorHandlingPolicy;
     this.cmcdConfiguration = cmcdConfiguration;
     this.playlistStuckTargetDurationCoefficient = playlistStuckTargetDurationCoefficient;
+    this.downloadExecutorSupplier = downloadExecutorSupplier;
     listeners = new CopyOnWriteArrayList<>();
-    playlistBundles = new HashMap<>();
+    redundantGroupBundles = new HashMap<>();
     initialStartTimeUs = C.TIME_UNSET;
   }
 
@@ -161,8 +180,11 @@ public final class DefaultHlsPlaylistTracker
             dataSpec,
             C.DATA_TYPE_MANIFEST,
             playlistParserFactory.createPlaylistParser());
-    Assertions.checkState(initialPlaylistLoader == null);
-    initialPlaylistLoader = new Loader("DefaultHlsPlaylistTracker:MultivariantPlaylist");
+    checkState(initialPlaylistLoader == null);
+    initialPlaylistLoader =
+        downloadExecutorSupplier != null
+            ? new Loader(downloadExecutorSupplier.get())
+            : new Loader("DefaultHlsPlaylistTracker:MultivariantPlaylist");
     initialPlaylistLoader.startLoading(
         multivariantPlaylistLoadable,
         this,
@@ -174,15 +196,20 @@ public final class DefaultHlsPlaylistTracker
     primaryMediaPlaylistUrl = null;
     primaryMediaPlaylistSnapshot = null;
     multivariantPlaylist = null;
+    variantRedundantGroups = null;
+    videoRedundantGroups = null;
+    audioRedundantGroups = null;
+    subtitleRedundantGroups = null;
+    redundantGroupListCreationError = null;
     initialStartTimeUs = C.TIME_UNSET;
     initialPlaylistLoader.release();
     initialPlaylistLoader = null;
-    for (MediaPlaylistBundle bundle : playlistBundles.values()) {
+    for (RedundantGroupBundle bundle : redundantGroupBundles.values()) {
       bundle.release();
     }
     playlistRefreshHandler.removeCallbacksAndMessages(null);
     playlistRefreshHandler = null;
-    playlistBundles.clear();
+    redundantGroupBundles.clear();
   }
 
   @Override
@@ -205,8 +232,11 @@ public final class DefaultHlsPlaylistTracker
   @Override
   @Nullable
   public HlsMediaPlaylist getPlaylistSnapshot(Uri url, boolean isForPlayback) {
-    MediaPlaylistBundle bundle = playlistBundles.get(url);
-    @Nullable HlsMediaPlaylist snapshot = bundle.getPlaylistSnapshot();
+    @Nullable RedundantGroupBundle bundle = redundantGroupBundles.get(url);
+    if (bundle == null) {
+      return null;
+    }
+    @Nullable HlsMediaPlaylist snapshot = bundle.getPlaylistSnapshot(url);
     if (snapshot != null && isForPlayback) {
       maybeSetPrimaryUrl(url);
       maybeActivateForPlayback(url);
@@ -221,13 +251,20 @@ public final class DefaultHlsPlaylistTracker
 
   @Override
   public boolean isSnapshotValid(Uri url) {
-    return playlistBundles.get(url).isSnapshotValid();
+    @Nullable RedundantGroupBundle bundle = redundantGroupBundles.get(url);
+    if (bundle == null) {
+      return false;
+    }
+    return bundle.isSnapshotValid(url);
   }
 
   @Override
   public void maybeThrowPrimaryPlaylistRefreshError() throws IOException {
     if (initialPlaylistLoader != null) {
       initialPlaylistLoader.maybeThrowError();
+    }
+    if (redundantGroupListCreationError != null) {
+      throw redundantGroupListCreationError;
     }
     if (primaryMediaPlaylistUrl != null) {
       maybeThrowPlaylistRefreshError(primaryMediaPlaylistUrl);
@@ -236,12 +273,18 @@ public final class DefaultHlsPlaylistTracker
 
   @Override
   public void maybeThrowPlaylistRefreshError(Uri url) throws IOException {
-    playlistBundles.get(url).maybeThrowPlaylistRefreshError();
+    @Nullable RedundantGroupBundle bundle = redundantGroupBundles.get(url);
+    if (bundle != null) {
+      bundle.maybeThrowPlaylistRefreshError(url);
+    }
   }
 
   @Override
   public void refreshPlaylist(Uri url) {
-    playlistBundles.get(url).loadPlaylist(/* allowDeliveryDirectives= */ true);
+    @Nullable RedundantGroupBundle bundle = redundantGroupBundles.get(url);
+    if (bundle != null) {
+      bundle.loadPlaylist(url, /* allowDeliveryDirectives= */ true);
+    }
   }
 
   @Override
@@ -251,18 +294,64 @@ public final class DefaultHlsPlaylistTracker
 
   @Override
   public boolean excludeMediaPlaylist(Uri playlistUrl, long exclusionDurationMs) {
-    @Nullable MediaPlaylistBundle bundle = playlistBundles.get(playlistUrl);
+    @Nullable RedundantGroupBundle bundle = redundantGroupBundles.get(playlistUrl);
     if (bundle != null) {
-      return !bundle.excludePlaylist(exclusionDurationMs);
+      return bundle.excludePlaylist(playlistUrl, exclusionDurationMs);
+    }
+    return false;
+  }
+
+  @Override
+  public boolean isExcluded(Uri playlistUrl, long nowMs) {
+    @Nullable RedundantGroupBundle bundle = redundantGroupBundles.get(playlistUrl);
+    if (bundle != null) {
+      return bundle.isExcluded(playlistUrl, nowMs);
+    }
+    return false;
+  }
+
+  @Override
+  public boolean isExcluded(HlsRedundantGroup redundantGroup, long nowMs) {
+    @Nullable
+    RedundantGroupBundle bundle = redundantGroupBundles.get(redundantGroup.getCurrentPlaylistUrl());
+    if (bundle != null) {
+      return bundle.isExcluded(nowMs);
     }
     return false;
   }
 
   @Override
   public void deactivatePlaylistForPlayback(Uri url) {
-    @Nullable MediaPlaylistBundle bundle = playlistBundles.get(url);
+    @Nullable RedundantGroupBundle bundle = redundantGroupBundles.get(url);
     if (bundle != null) {
-      bundle.setActiveForPlayback(false);
+      bundle.setActiveForPlayback(url, /* activeForPlayback= */ false);
+    }
+  }
+
+  @Nullable
+  @Override
+  public HlsRedundantGroup getRedundantGroup(Uri playlistUrl) {
+    @Nullable RedundantGroupBundle bundle = redundantGroupBundles.get(playlistUrl);
+    if (bundle != null) {
+      return bundle.redundantGroup;
+    }
+    return null;
+  }
+
+  @Nullable
+  @Override
+  public ImmutableList<HlsRedundantGroup> getRedundantGroups(@HlsRedundantGroup.Type int type) {
+    switch (type) {
+      case HlsRedundantGroup.VARIANT:
+        return variantRedundantGroups;
+      case HlsRedundantGroup.VIDEO_RENDITION:
+        return videoRedundantGroups;
+      case HlsRedundantGroup.AUDIO_RENDITION:
+        return audioRedundantGroups;
+      case HlsRedundantGroup.SUBTITLE_RENDITION:
+        return subtitleRedundantGroups;
+      default:
+        return null;
     }
   }
 
@@ -301,10 +390,24 @@ public final class DefaultHlsPlaylistTracker
       multivariantPlaylist = (HlsMultivariantPlaylist) result;
     }
     this.multivariantPlaylist = multivariantPlaylist;
-    primaryMediaPlaylistUrl = multivariantPlaylist.variants.get(0).url;
+    try {
+      this.variantRedundantGroups =
+          HlsRedundantGroup.createVariantRedundantGroupList(multivariantPlaylist.variants);
+      this.videoRedundantGroups =
+          HlsRedundantGroup.createRenditionRedundantGroupList(multivariantPlaylist.videos);
+      this.audioRedundantGroups =
+          HlsRedundantGroup.createRenditionRedundantGroupList(multivariantPlaylist.audios);
+      this.subtitleRedundantGroups =
+          HlsRedundantGroup.createRenditionRedundantGroupList(multivariantPlaylist.subtitles);
+    } catch (ParserException e) {
+      redundantGroupListCreationError = e;
+      return;
+    }
+    HlsRedundantGroup primaryRedundantGroup = variantRedundantGroups.get(0);
+    primaryMediaPlaylistUrl = primaryRedundantGroup.getCurrentPlaylistUrl();
     // Add a temporary playlist listener for loading the first primary playlist.
     listeners.add(new FirstPrimaryMediaPlaylistListener());
-    createBundles(multivariantPlaylist.mediaPlaylistUrls);
+    createBundles();
     LoadEventInfo loadEventInfo =
         new LoadEventInfo(
             loadable.loadTaskId,
@@ -314,12 +417,15 @@ public final class DefaultHlsPlaylistTracker
             elapsedRealtimeMs,
             loadDurationMs,
             loadable.bytesLoaded());
-    MediaPlaylistBundle primaryBundle = playlistBundles.get(primaryMediaPlaylistUrl);
+    RedundantGroupBundle primaryRedundantGroupBundle =
+        checkNotNull(redundantGroupBundles.get(primaryMediaPlaylistUrl));
     if (isMediaPlaylist) {
       // We don't need to load the playlist again. We can use the same result.
-      primaryBundle.processLoadedPlaylist((HlsMediaPlaylist) result, loadEventInfo);
+      primaryRedundantGroupBundle.processLoadedPlaylist(
+          loadable.getUri(), (HlsMediaPlaylist) result, loadEventInfo);
     } else {
-      primaryBundle.loadPlaylist(/* allowDeliveryDirectives= */ false);
+      primaryRedundantGroupBundle.loadPlaylist(
+          primaryMediaPlaylistUrl, /* allowDeliveryDirectives= */ false);
     }
     loadErrorHandlingPolicy.onLoadTaskConcluded(loadable.loadTaskId);
     eventDispatcher.loadCompleted(loadEventInfo, C.DATA_TYPE_MANIFEST);
@@ -377,14 +483,15 @@ public final class DefaultHlsPlaylistTracker
   // Internal methods.
 
   private boolean maybeSelectNewPrimaryUrl() {
-    List<Variant> variants = multivariantPlaylist.variants;
-    int variantsSize = variants.size();
+    ImmutableList<HlsRedundantGroup> redundantGroups = variantRedundantGroups;
     long currentTimeMs = SystemClock.elapsedRealtime();
-    for (int i = 0; i < variantsSize; i++) {
-      MediaPlaylistBundle bundle = checkNotNull(playlistBundles.get(variants.get(i).url));
-      if (currentTimeMs > bundle.excludeUntilMs) {
-        primaryMediaPlaylistUrl = bundle.playlistUrl;
-        bundle.loadPlaylistInternal(getRequestUriForPrimaryChange(primaryMediaPlaylistUrl));
+    for (int i = 0; i < redundantGroups.size(); i++) {
+      HlsRedundantGroup redundantGroup = redundantGroups.get(i);
+      Uri playlistUrl = redundantGroup.getCurrentPlaylistUrl();
+      RedundantGroupBundle bundle = checkNotNull(redundantGroupBundles.get(playlistUrl));
+      if (!bundle.isExcluded(playlistUrl, currentTimeMs)) {
+        primaryMediaPlaylistUrl = playlistUrl;
+        bundle.loadPlaylist(playlistUrl, getRequestUriForPrimaryChange(playlistUrl));
         return true;
       }
     }
@@ -400,29 +507,29 @@ public final class DefaultHlsPlaylistTracker
       return;
     }
     primaryMediaPlaylistUrl = url;
-    MediaPlaylistBundle newPrimaryBundle = playlistBundles.get(primaryMediaPlaylistUrl);
-    @Nullable HlsMediaPlaylist newPrimarySnapshot = newPrimaryBundle.playlistSnapshot;
+    RedundantGroupBundle redundantGroupBundle = checkNotNull(redundantGroupBundles.get(url));
+    @Nullable HlsMediaPlaylist newPrimarySnapshot = redundantGroupBundle.getPlaylistSnapshot(url);
     if (newPrimarySnapshot != null && newPrimarySnapshot.hasEndTag) {
       primaryMediaPlaylistSnapshot = newPrimarySnapshot;
       primaryPlaylistListener.onPrimaryPlaylistRefreshed(newPrimarySnapshot);
     } else {
       // The snapshot for the new primary media playlist URL may be stale. Defer updating the
       // primary snapshot until after we've refreshed it.
-      newPrimaryBundle.loadPlaylistInternal(getRequestUriForPrimaryChange(url));
+      redundantGroupBundle.loadPlaylist(url, getRequestUriForPrimaryChange(url));
     }
   }
 
   private void maybeActivateForPlayback(Uri url) {
-    MediaPlaylistBundle playlistBundle = playlistBundles.get(url);
-    @Nullable HlsMediaPlaylist playlistSnapshot = playlistBundle.getPlaylistSnapshot();
-    if (playlistBundle.isActiveForPlayback()) {
+    RedundantGroupBundle redundantGroupBundle = checkNotNull(redundantGroupBundles.get(url));
+    if (redundantGroupBundle.isActiveForPlayback(url)) {
       return;
     }
-    playlistBundle.setActiveForPlayback(true);
+    redundantGroupBundle.setActiveForPlayback(url, true);
+    @Nullable HlsMediaPlaylist playlistSnapshot = redundantGroupBundle.getPlaylistSnapshot(url);
     if (playlistSnapshot != null && !playlistSnapshot.hasEndTag) {
       // For playlist that doesn't contain an end tag, we should trigger another load for it, as
       // the snapshot for it may be stale and it can keep refreshing as an active playlist.
-      playlistBundle.loadPlaylist(true);
+      redundantGroupBundle.loadPlaylist(url, true);
     }
   }
 
@@ -460,12 +567,20 @@ public final class DefaultHlsPlaylistTracker
     return false;
   }
 
-  private void createBundles(List<Uri> urls) {
-    int listSize = urls.size();
-    for (int i = 0; i < listSize; i++) {
-      Uri url = urls.get(i);
-      MediaPlaylistBundle bundle = new MediaPlaylistBundle(url);
-      playlistBundles.put(url, bundle);
+  private void createBundles() {
+    createBundles(variantRedundantGroups);
+    createBundles(videoRedundantGroups);
+    createBundles(audioRedundantGroups);
+    createBundles(subtitleRedundantGroups);
+  }
+
+  private void createBundles(List<HlsRedundantGroup> redundantGroups) {
+    for (int i = 0; i < redundantGroups.size(); i++) {
+      HlsRedundantGroup redundantGroup = redundantGroups.get(i);
+      RedundantGroupBundle redundantGroupBundle = new RedundantGroupBundle(redundantGroup);
+      for (Uri playlistUrl : redundantGroup.getAllPlaylistUrls()) {
+        redundantGroupBundles.put(playlistUrl, redundantGroupBundle);
+      }
     }
   }
 
@@ -568,6 +683,138 @@ public final class DefaultHlsPlaylistTracker
     return mediaSequenceOffset < oldSegments.size() ? oldSegments.get(mediaSequenceOffset) : null;
   }
 
+  /** Holds all information related to a {@link HlsRedundantGroup}. */
+  private final class RedundantGroupBundle {
+
+    private final HlsRedundantGroup redundantGroup;
+    private final Map<Uri, MediaPlaylistBundle> playlistBundles;
+
+    private RedundantGroupBundle(HlsRedundantGroup redundantGroup) {
+      this.redundantGroup = redundantGroup;
+      this.playlistBundles = createMediaPlaylistBundles(redundantGroup);
+    }
+
+    private Map<Uri, MediaPlaylistBundle> createMediaPlaylistBundles(
+        HlsRedundantGroup redundantGroup) {
+      HashMap<Uri, MediaPlaylistBundle> playlistBundles = new HashMap<>();
+      for (String pathwayId : redundantGroup.getAllPathwayIds()) {
+        Uri url = checkNotNull(redundantGroup.getPlaylistUrl(pathwayId));
+        MediaPlaylistBundle bundle = new MediaPlaylistBundle(url, pathwayId);
+        playlistBundles.put(url, bundle);
+      }
+      return playlistBundles;
+    }
+
+    @Nullable
+    private HlsMediaPlaylist getPlaylistSnapshot(Uri playlistUrl) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      return playlistBundle.getPlaylistSnapshot();
+    }
+
+    private boolean isSnapshotValid(Uri playlistUrl) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      return playlistBundle.isSnapshotValid();
+    }
+
+    private void loadPlaylist(Uri playlistUrl, boolean allowDeliveryDirectives) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      playlistBundle.loadPlaylist(allowDeliveryDirectives);
+    }
+
+    private void loadPlaylist(Uri playlistUrl, Uri requestUri) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      playlistBundle.loadPlaylistInternal(requestUri);
+    }
+
+    private void processLoadedPlaylist(
+        Uri playlistUrl, HlsMediaPlaylist loadedPlaylist, LoadEventInfo loadEventInfo) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      playlistBundle.processLoadedPlaylist(loadedPlaylist, loadEventInfo);
+    }
+
+    private void maybeThrowPlaylistRefreshError(Uri playlistUrl) throws IOException {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      playlistBundle.maybeThrowPlaylistRefreshError();
+    }
+
+    private boolean isActiveForPlayback(Uri playlistUrl) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      return playlistBundle.isActiveForPlayback();
+    }
+
+    private void setActiveForPlayback(Uri playlistUrl, boolean activeForPlayback) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      playlistBundle.setActiveForPlayback(activeForPlayback);
+    }
+
+    private boolean isExcluded(Uri playlistUrl, long nowMs) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      return nowMs <= playlistBundle.excludeUntilMs;
+    }
+
+    private boolean isExcluded(long nowMs) {
+      boolean isExcluded = true;
+      for (MediaPlaylistBundle mediaPlaylistBundle : playlistBundles.values()) {
+        isExcluded &= (nowMs <= mediaPlaylistBundle.excludeUntilMs);
+      }
+      return isExcluded;
+    }
+
+    /**
+     * Excludes the playlist.
+     *
+     * @param playlistUrl The URL of the playlist.
+     * @param excludeDurationMs The number of milliseconds for which the playlist should be
+     *     excluded.
+     * @return Whether exclusion was successful.
+     */
+    private boolean excludePlaylist(Uri playlistUrl, long excludeDurationMs) {
+      checkState(playlistBundles.containsKey(playlistUrl));
+      MediaPlaylistBundle playlistBundle = checkNotNull(playlistBundles.get(playlistUrl));
+      playlistBundle.excludePlaylist(excludeDurationMs);
+      if (switchPathway()) {
+        return true;
+      }
+      // Otherwise, we may need to select new primary url in across all redundantGroups.
+      return (primaryMediaPlaylistUrl != null && !playlistUrl.equals(primaryMediaPlaylistUrl))
+          || maybeSelectNewPrimaryUrl();
+    }
+
+    private boolean switchPathway() {
+      long currentTimeMs = SystemClock.elapsedRealtime();
+      for (MediaPlaylistBundle bundle : playlistBundles.values()) {
+        if (!bundle.pathwayId.equals(redundantGroup.getCurrentPathwayId())
+            && currentTimeMs > bundle.excludeUntilMs) {
+          Uri oldPlaylistUrl = redundantGroup.getCurrentPlaylistUrl();
+          redundantGroup.setCurrentPathwayId(bundle.pathwayId);
+          if (oldPlaylistUrl.equals(primaryMediaPlaylistUrl)) {
+            maybeSetPrimaryUrl(bundle.playlistUrl);
+          }
+          MediaPlaylistBundle oldPlaylistBundle = checkNotNull(playlistBundles.get(oldPlaylistUrl));
+          bundle.setActiveForPlayback(oldPlaylistBundle.isActiveForPlayback());
+          oldPlaylistBundle.setActiveForPlayback(false);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    private void release() {
+      for (MediaPlaylistBundle bundle : playlistBundles.values()) {
+        bundle.release();
+      }
+    }
+  }
+
   /** Holds all information related to a specific Media Playlist. */
   private final class MediaPlaylistBundle implements Loader.Callback<ParsingLoadable<HlsPlaylist>> {
 
@@ -576,6 +823,7 @@ public final class DefaultHlsPlaylistTracker
     private static final String SKIP_PARAM = "_HLS_skip";
 
     private final Uri playlistUrl;
+    private final String pathwayId;
     private final Loader mediaPlaylistLoader;
     private final DataSource mediaPlaylistDataSource;
 
@@ -588,9 +836,13 @@ public final class DefaultHlsPlaylistTracker
     @Nullable private IOException playlistError;
     private boolean activeForPlayback;
 
-    public MediaPlaylistBundle(Uri playlistUrl) {
+    private MediaPlaylistBundle(Uri playlistUrl, String pathwayId) {
       this.playlistUrl = playlistUrl;
-      mediaPlaylistLoader = new Loader("DefaultHlsPlaylistTracker:MediaPlaylist");
+      this.pathwayId = pathwayId;
+      mediaPlaylistLoader =
+          downloadExecutorSupplier != null
+              ? new Loader(downloadExecutorSupplier.get())
+              : new Loader("DefaultHlsPlaylistTracker:MediaPlaylist");
       mediaPlaylistDataSource = dataSourceFactory.createDataSource(C.DATA_TYPE_MANIFEST);
     }
 
@@ -906,11 +1158,9 @@ public final class DefaultHlsPlaylistTracker
      *
      * @param exclusionDurationMs The number of milliseconds for which the playlist should be
      *     excluded.
-     * @return Whether the playlist is the primary, despite being excluded.
      */
-    private boolean excludePlaylist(long exclusionDurationMs) {
+    private void excludePlaylist(long exclusionDurationMs) {
       excludeUntilMs = SystemClock.elapsedRealtime() + exclusionDurationMs;
-      return playlistUrl.equals(primaryMediaPlaylistUrl) && !maybeSelectNewPrimaryUrl();
     }
   }
 
@@ -930,34 +1180,49 @@ public final class DefaultHlsPlaylistTracker
     @Override
     public boolean onPlaylistError(Uri url, LoadErrorInfo loadErrorInfo, boolean forceRetry) {
       if (primaryMediaPlaylistSnapshot == null) {
-        long nowMs = SystemClock.elapsedRealtime();
-        int variantExclusionCounter = 0;
-        List<Variant> variants = castNonNull(multivariantPlaylist).variants;
-        for (int i = 0; i < variants.size(); i++) {
-          @Nullable
-          MediaPlaylistBundle mediaPlaylistBundle = playlistBundles.get(variants.get(i).url);
-          if (mediaPlaylistBundle != null && nowMs < mediaPlaylistBundle.excludeUntilMs) {
-            variantExclusionCounter++;
-          }
-        }
-        LoadErrorHandlingPolicy.FallbackOptions fallbackOptions =
-            new LoadErrorHandlingPolicy.FallbackOptions(
-                /* numberOfLocations= */ 1,
-                /* numberOfExcludedLocations= */ 0,
-                /* numberOfTracks= */ multivariantPlaylist.variants.size(),
-                /* numberOfExcludedTracks= */ variantExclusionCounter);
+        LoadErrorHandlingPolicy.FallbackOptions fallbackOptions = createFallbackOptions(url);
         @Nullable
         LoadErrorHandlingPolicy.FallbackSelection fallbackSelection =
             loadErrorHandlingPolicy.getFallbackSelectionFor(fallbackOptions, loadErrorInfo);
-        if (fallbackSelection != null
-            && fallbackSelection.type == LoadErrorHandlingPolicy.FALLBACK_TYPE_TRACK) {
-          @Nullable MediaPlaylistBundle mediaPlaylistBundle = playlistBundles.get(url);
-          if (mediaPlaylistBundle != null) {
-            mediaPlaylistBundle.excludePlaylist(fallbackSelection.exclusionDurationMs);
+        if (fallbackSelection != null) {
+          @Nullable RedundantGroupBundle redundantGroupBundle = redundantGroupBundles.get(url);
+          if (redundantGroupBundle != null) {
+            return redundantGroupBundle.excludePlaylist(url, fallbackSelection.exclusionDurationMs);
           }
         }
       }
       return false;
+    }
+
+    // Create FallbackOptions for primary media playlist.
+    private LoadErrorHandlingPolicy.FallbackOptions createFallbackOptions(Uri playlistUrl) {
+      long nowMs = SystemClock.elapsedRealtime();
+      RedundantGroupBundle redundantGroupBundle =
+          checkNotNull(redundantGroupBundles.get(playlistUrl));
+      HlsRedundantGroup currentVariantRedundantGroup = redundantGroupBundle.redundantGroup;
+      // The numberOfLocations is the number of pathways (urls) in the current variant redundant
+      // group.
+      int numberOfLocations = currentVariantRedundantGroup.size();
+      int numberOfExcludedLocations = 0;
+      for (Uri url : currentVariantRedundantGroup.getAllPlaylistUrls()) {
+        if (isExcluded(url, nowMs)) {
+          // The numberOfExcludedLocations is the number of pathways (urls) that are excluded in the
+          // current variant redundant group.
+          numberOfExcludedLocations++;
+        }
+      }
+      // The numberOfTracks is the number of variant redundant groups.
+      int numberOfTracks = variantRedundantGroups.size();
+      int numberOfExcludedTracks = 0;
+      for (HlsRedundantGroup variantRedundantGroup : variantRedundantGroups) {
+        if (isExcluded(variantRedundantGroup, nowMs)) {
+          // The numberOfExcludedTracks is the number of variant redundant groups that the urls from
+          // all locations are excluded.
+          numberOfExcludedTracks++;
+        }
+      }
+      return new LoadErrorHandlingPolicy.FallbackOptions(
+          numberOfLocations, numberOfExcludedLocations, numberOfTracks, numberOfExcludedTracks);
     }
   }
 }

@@ -15,24 +15,27 @@
  */
 package androidx.media3.exoplayer.source;
 
-import static androidx.media3.common.util.Assertions.checkNotNull;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
+import androidx.media3.common.StreamKey;
 import androidx.media3.common.TrackGroup;
-import androidx.media3.common.util.Assertions;
 import androidx.media3.common.util.NullableType;
 import androidx.media3.exoplayer.LoadingInfo;
 import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
 import androidx.media3.exoplayer.trackselection.ForwardingTrackSelection;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 
 /** Merges multiple {@link MediaPeriod}s. */
 /* package */ final class MergingMediaPeriod implements MediaPeriod, MediaPeriod.Callback {
@@ -97,8 +100,14 @@ import java.util.IdentityHashMap;
   }
 
   @Override
+  public ImmutableList<StreamKey> getStreamKeys(List<ExoTrackSelection> trackSelections) {
+    // Not supported due to the ambiguity of the stream keys across periods.
+    return ImmutableList.of();
+  }
+
+  @Override
   public TrackGroupArray getTrackGroups() {
-    return Assertions.checkNotNull(trackGroups);
+    return checkNotNull(trackGroups);
   }
 
   @Override
@@ -155,13 +164,13 @@ import java.util.IdentityHashMap;
       for (int j = 0; j < selections.length; j++) {
         if (selectionChildIndices[j] == i) {
           // Assert that the child provided a stream for the selection.
-          SampleStream childStream = Assertions.checkNotNull(childStreams[j]);
+          SampleStream childStream = checkNotNull(childStreams[j]);
           newStreams[j] = childStreams[j];
           periodEnabled = true;
           streamPeriodIndices.put(childStream, i);
         } else if (streamChildIndices[j] == i) {
           // Assert that the child cleared any previous stream.
-          Assertions.checkState(childStreams[j] == null);
+          checkState(childStreams[j] == null);
         }
       }
       if (periodEnabled) {
@@ -268,6 +277,16 @@ import java.util.IdentityHashMap;
     return queryPeriod.getAdjustedSeekPositionUs(positionUs, seekParameters);
   }
 
+  @Override
+  public long setEndPositionUs(long endPositionUs) {
+    boolean supported = true;
+    for (MediaPeriod period : periods) {
+      long actualEndPositionUs = period.setEndPositionUs(endPositionUs);
+      supported &= actualEndPositionUs == endPositionUs;
+    }
+    return supported ? endPositionUs : C.TIME_END_OF_SOURCE;
+  }
+
   // MediaPeriod.Callback implementation
 
   @Override
@@ -290,11 +309,13 @@ import java.util.IdentityHashMap;
         Format[] mergedFormats = new Format[childTrackGroup.length];
         for (int k = 0; k < childTrackGroup.length; k++) {
           Format originalFormat = childTrackGroup.getFormat(k);
-          mergedFormats[k] =
-              originalFormat
-                  .buildUpon()
-                  .setId(i + ":" + (originalFormat.id == null ? "" : originalFormat.id))
-                  .build();
+          Format.Builder mergedFormatBuilder = originalFormat.buildUpon();
+          mergedFormatBuilder.setId(i + ":" + (originalFormat.id == null ? "" : originalFormat.id));
+          if (originalFormat.primaryTrackGroupId != null) {
+            mergedFormatBuilder.setPrimaryTrackGroupId(
+                i + ":" + originalFormat.primaryTrackGroupId);
+          }
+          mergedFormats[k] = mergedFormatBuilder.build();
         }
         TrackGroup mergedTrackGroup =
             new TrackGroup(/* id= */ i + ":" + childTrackGroup.id, mergedFormats);
@@ -303,12 +324,12 @@ import java.util.IdentityHashMap;
       }
     }
     trackGroups = new TrackGroupArray(trackGroupArray);
-    Assertions.checkNotNull(callback).onPrepared(this);
+    checkNotNull(callback).onPrepared(this);
   }
 
   @Override
   public void onContinueLoadingRequested(MediaPeriod ignored) {
-    Assertions.checkNotNull(callback).onContinueLoadingRequested(this);
+    checkNotNull(callback).onContinueLoadingRequested(this);
   }
 
   private static final class MergingMediaPeriodTrackSelection extends ForwardingTrackSelection {

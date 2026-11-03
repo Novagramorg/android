@@ -48,12 +48,14 @@ project(modulePrefix + 'lib-exoplayer-ima').projectDir = new File(rootDir, 'libr
 include modulePrefix + 'lib-exoplayer-workmanager'
 project(modulePrefix + 'lib-exoplayer-workmanager').projectDir = new File(rootDir, 'libraries/exoplayer_workmanager')
 
-include modulePrefix + 'lib-ui'
-project(modulePrefix + 'lib-ui').projectDir = new File(rootDir, 'libraries/ui')
-include modulePrefix + 'lib-ui-leanback'
-project(modulePrefix + 'lib-ui-leanback').projectDir = new File(rootDir, 'libraries/ui_leanback')
-//include modulePrefix + 'lib-ui-compose'
-//project(modulePrefix + 'lib-ui-compose').projectDir = new File(rootDir, 'libraries/ui_compose')
+// include modulePrefix + 'lib-ui'
+// project(modulePrefix + 'lib-ui').projectDir = new File(rootDir, 'libraries/ui')
+// include modulePrefix + 'lib-ui-leanback'
+// project(modulePrefix + 'lib-ui-leanback').projectDir = new File(rootDir, 'libraries/ui_leanback')
+// include modulePrefix + 'lib-ui-compose'
+// project(modulePrefix + 'lib-ui-compose').projectDir = new File(rootDir, 'libraries/ui_compose')
+// include modulePrefix + 'lib-ui-compose-material3'
+// project(modulePrefix + 'lib-ui-compose-material3').projectDir = new File(rootDir, 'libraries/ui_compose_material3')
 
 include modulePrefix + 'lib-database'
 project(modulePrefix + 'lib-database').projectDir = new File(rootDir, 'libraries/database')
@@ -91,11 +93,19 @@ project(modulePrefix + 'lib-decoder-vp9').projectDir = new File(rootDir, 'librar
 include modulePrefix + 'lib-extractor'
 project(modulePrefix + 'lib-extractor').projectDir = new File(rootDir, 'libraries/extractor')
 
-include modulePrefix + 'lib-cast'
-project(modulePrefix + 'lib-cast').projectDir = new File(rootDir, 'libraries/cast')
+// include modulePrefix + 'lib-cast'
+// project(modulePrefix + 'lib-cast').projectDir = new File(rootDir, 'libraries/cast')
 
 include modulePrefix + 'lib-effect'
 project(modulePrefix + 'lib-effect').projectDir = new File(rootDir, 'libraries/effect')
+
+include modulePrefix + 'lib-effect-lottie'
+project(modulePrefix + 'lib-effect-lottie').projectDir = new File(rootDir, 'libraries/effect_lottie')
+
+include modulePrefix + 'lib-inspector'
+project(modulePrefix + 'lib-inspector').projectDir = new File(rootDir, 'libraries/inspector')
+include modulePrefix + 'lib-inspector-frame'
+project(modulePrefix + 'lib-inspector-frame').projectDir = new File(rootDir, 'libraries/inspector_frame')
 
 include modulePrefix + 'lib-muxer'
 project(modulePrefix + 'lib-muxer').projectDir = new File(rootDir, 'libraries/muxer')

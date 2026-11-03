@@ -15,7 +15,7 @@
  */
 package androidx.media3.effect;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
+import static com.google.common.base.Preconditions.checkArgument;
 
 import android.content.Context;
 import androidx.annotation.FloatRange;
@@ -25,13 +25,10 @@ import androidx.media3.common.util.SpeedProviderUtil;
 import androidx.media3.common.util.UnstableApi;
 
 /**
- * Applies a speed change by updating the frame timestamps.
- *
- * <p>This effect doesn't drop any frames.
- *
- * <p>This effect is not supported for effects previewing.
+ * @deprecated Use {@code EditedMediaItem.Builder#setSpeed(SpeedProvider)} instead.
  */
 @UnstableApi
+@Deprecated
 public final class SpeedChangeEffect implements GlEffect {
 
   private final SpeedProvider speedProvider;

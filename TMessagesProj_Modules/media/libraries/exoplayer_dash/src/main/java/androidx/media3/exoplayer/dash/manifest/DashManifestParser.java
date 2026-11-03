@@ -18,6 +18,7 @@ package androidx.media3.exoplayer.dash.manifest;
 import static androidx.media3.exoplayer.dash.manifest.BaseUrl.DEFAULT_DVB_PRIORITY;
 import static androidx.media3.exoplayer.dash.manifest.BaseUrl.DEFAULT_WEIGHT;
 import static androidx.media3.exoplayer.dash.manifest.BaseUrl.PRIORITY_UNSET;
+import static com.google.common.base.Preconditions.checkState;
 
 import android.net.Uri;
 import android.text.TextUtils;
@@ -26,13 +27,13 @@ import android.util.Pair;
 import android.util.Xml;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
+import androidx.media3.common.ColorInfo;
 import androidx.media3.common.DrmInitData;
 import androidx.media3.common.DrmInitData.SchemeData;
 import androidx.media3.common.Format;
 import androidx.media3.common.Label;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.ParserException;
-import androidx.media3.common.util.Assertions;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.NullableType;
 import androidx.media3.common.util.UnstableApi;
@@ -127,6 +128,10 @@ public class DashManifestParser extends DefaultHandler
       }
       return parseMediaPresentationDescription(xpp, uri);
     } catch (XmlPullParserException e) {
+      if (e.getDetail() instanceof IOException) {
+        // Forward IOException from input stream directly instead of wrapping in a ParserException
+        throw (IOException) e.getDetail();
+      }
       throw ParserException.createForMalformedManifest(/* message= */ null, /* cause= */ e);
     }
   }
@@ -848,8 +853,11 @@ public class DashManifestParser extends DefaultHandler
         codecs = MimeTypes.CODEC_E_AC3_JOC;
       }
     }
+
+    @Nullable ColorInfo colorInfo = null;
     if (MimeTypes.isDolbyVisionCodec(codecs, supplementalCodecs)) {
       sampleMimeType = MimeTypes.VIDEO_DOLBY_VISION;
+      colorInfo = Util.getColorInfoForDolbyVision(codecs, supplementalCodecs, supplementalProfiles);
       codecs = supplementalCodecs != null ? supplementalCodecs : codecs;
     }
     @C.SelectionFlags int selectionFlags = parseSelectionFlagsFromRoleDescriptors(roleDescriptors);
@@ -868,6 +876,7 @@ public class DashManifestParser extends DefaultHandler
             .setPeakBitrate(bitrate)
             .setSelectionFlags(selectionFlags)
             .setRoleFlags(roleFlags)
+            .setColorInfo(colorInfo)
             .setLanguage(language)
             .setTileCountHorizontal(tileCounts != null ? tileCounts.first : Format.NO_VALUE)
             .setTileCountVertical(tileCounts != null ? tileCounts.second : Format.NO_VALUE);
@@ -1835,7 +1844,7 @@ public class DashManifestParser extends DefaultHandler
     } else if (secondLanguage == null) {
       return firstLanguage;
     } else {
-      Assertions.checkState(firstLanguage.equals(secondLanguage));
+      checkState(firstLanguage.equals(secondLanguage));
       return firstLanguage;
     }
   }
@@ -1858,7 +1867,7 @@ public class DashManifestParser extends DefaultHandler
     } else if (secondType == C.TRACK_TYPE_UNKNOWN) {
       return firstType;
     } else {
-      Assertions.checkState(firstType == secondType);
+      checkState(firstType == secondType);
       return firstType;
     }
   }

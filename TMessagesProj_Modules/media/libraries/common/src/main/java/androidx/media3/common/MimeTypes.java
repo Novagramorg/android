@@ -15,10 +15,11 @@
  */
 package androidx.media3.common;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import android.text.TextUtils;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
-import androidx.media3.common.util.Assertions;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import com.google.common.base.Ascii;
@@ -40,12 +41,14 @@ public final class MimeTypes {
   // video/ MIME types
 
   public static final String VIDEO_MP4 = BASE_TYPE_VIDEO + "/mp4";
+  @UnstableApi public static final String VIDEO_QUICK_TIME = BASE_TYPE_VIDEO + "/quicktime";
   @UnstableApi public static final String VIDEO_MATROSKA = BASE_TYPE_VIDEO + "/x-matroska";
   public static final String VIDEO_WEBM = BASE_TYPE_VIDEO + "/webm";
   public static final String VIDEO_H263 = BASE_TYPE_VIDEO + "/3gpp";
   public static final String VIDEO_H264 = BASE_TYPE_VIDEO + "/avc";
   @UnstableApi public static final String VIDEO_APV = BASE_TYPE_VIDEO + "/apv";
   public static final String VIDEO_H265 = BASE_TYPE_VIDEO + "/hevc";
+  @UnstableApi public static final String VIDEO_H266 = BASE_TYPE_VIDEO + "/vvc";
   @UnstableApi public static final String VIDEO_PRORES = BASE_TYPE_VIDEO + "/prores";
   @UnstableApi public static final String VIDEO_VP8 = BASE_TYPE_VIDEO + "/x-vnd.on2.vp8";
   @UnstableApi public static final String VIDEO_VP9 = BASE_TYPE_VIDEO + "/x-vnd.on2.vp9";
@@ -87,6 +90,7 @@ public final class MimeTypes {
   public static final String AUDIO_E_AC3_JOC = BASE_TYPE_AUDIO + "/eac3-joc";
   public static final String AUDIO_AC4 = BASE_TYPE_AUDIO + "/ac4";
   public static final String AUDIO_TRUEHD = BASE_TYPE_AUDIO + "/true-hd";
+  @UnstableApi public static final String AUDIO_DSD = BASE_TYPE_AUDIO + "/dsd";
   public static final String AUDIO_DTS = BASE_TYPE_AUDIO + "/vnd.dts";
   public static final String AUDIO_DTS_HD = BASE_TYPE_AUDIO + "/vnd.dts.hd";
   public static final String AUDIO_DTS_EXPRESS = BASE_TYPE_AUDIO + "/vnd.dts.hd;profile=lbr";
@@ -147,6 +151,11 @@ public final class MimeTypes {
 
   @UnstableApi
   public static final String APPLICATION_CAMERA_MOTION = BASE_TYPE_APPLICATION + "/x-camera-motion";
+
+  @UnstableApi public static final String APPLICATION_META = BASE_TYPE_APPLICATION + "/meta";
+
+  @UnstableApi
+  public static final String APPLICATION_ITUT_T35 = BASE_TYPE_APPLICATION + "/x-itut-t35";
 
   @UnstableApi
   public static final String APPLICATION_DEPTH_METADATA =
@@ -216,6 +225,17 @@ public final class MimeTypes {
     customMimeTypes.add(customMimeType);
   }
 
+  /**
+   * Clears all previously registered custom MIME types.
+   *
+   * @see #registerCustomMimeType(String, String, int)
+   */
+  @UnstableApi
+  @VisibleForTesting
+  public static void clearRegisteredCustomMimeTypes() {
+    customMimeTypes.clear();
+  }
+
   /** Returns whether the given string is an audio MIME type. */
   @UnstableApi
   public static boolean isAudio(@Nullable String mimeType) {
@@ -260,9 +280,8 @@ public final class MimeTypes {
 
   /**
    * Returns true if it is known that all samples in a stream of the given MIME type and codec are
-   * guaranteed to be sync samples (i.e., {@link C#BUFFER_FLAG_KEY_FRAME} is guaranteed to be set on
-   * every sample) and the inherent duration of each sample is negligible (i.e., we never expect to
-   * require a sample because playback partially falls into its duration).
+   * guaranteed to be sync samples, i.e., {@link C#BUFFER_FLAG_KEY_FRAME} is guaranteed to be set on
+   * every sample and no additional samples are needed to start decoding.
    *
    * @param mimeType The MIME type of the stream.
    * @param codec The RFC 6381 codec string of the stream, or {@code null} if unknown.
@@ -274,11 +293,8 @@ public final class MimeTypes {
     if (mimeType == null) {
       return false;
     }
-    // TODO: Add additional audio MIME types. Also consider evaluating based on Format rather than
-    // just MIME type, since in some cases the property is true for a subset of the profiles
-    // belonging to a single MIME type. If we do this, we should move the method to a different
-    // class. See [Internal ref: http://go/exo-audio-format-random-access].
     switch (mimeType) {
+      case VIDEO_APV:
       case AUDIO_MPEG:
       case AUDIO_MPEG_L1:
       case AUDIO_MPEG_L2:
@@ -289,6 +305,15 @@ public final class MimeTypes {
       case AUDIO_AC3:
       case AUDIO_E_AC3:
       case AUDIO_E_AC3_JOC:
+      case APPLICATION_MEDIA3_CUES:
+      case APPLICATION_ID3:
+      case APPLICATION_EMSG:
+      case APPLICATION_SCTE35:
+      case APPLICATION_ICY:
+      case APPLICATION_AIT:
+      case APPLICATION_META:
+      case APPLICATION_ITUT_T35:
+      case APPLICATION_CAMERA_MOTION:
         return true;
       case AUDIO_AAC:
         if (codec == null) {
@@ -438,10 +463,13 @@ public final class MimeTypes {
       return MimeTypes.VIDEO_H264;
     } else if (codec.startsWith("hev1") || codec.startsWith("hvc1")) {
       return MimeTypes.VIDEO_H265;
+    } else if (codec.startsWith("vvc1") || codec.startsWith("vvi1")) {
+      return MimeTypes.VIDEO_H266;
     } else if (codec.startsWith("dvav")
         || codec.startsWith("dva1")
         || codec.startsWith("dvhe")
-        || codec.startsWith("dvh1")) {
+        || codec.startsWith("dvh1")
+        || codec.startsWith("dav1")) {
       return MimeTypes.VIDEO_DOLBY_VISION;
     } else if (codec.startsWith("av01")) {
       return MimeTypes.VIDEO_AV1;
@@ -596,8 +624,8 @@ public final class MimeTypes {
     if (codecs == null) {
       return false;
     }
-    if (codecs.startsWith("dvhe") || codecs.startsWith("dvh1")) {
-      // profile 5
+    if (codecs.startsWith("dvhe") || codecs.startsWith("dvh1") || codecs.startsWith("dav1")) {
+      // profiles 5, 10.0 and 20.0
       return true;
     }
     if (supplementalCodecs == null) {
@@ -635,7 +663,9 @@ public final class MimeTypes {
         || APPLICATION_EMSG.equals(mimeType)
         || APPLICATION_SCTE35.equals(mimeType)
         || APPLICATION_ICY.equals(mimeType)
-        || APPLICATION_AIT.equals(mimeType)) {
+        || APPLICATION_AIT.equals(mimeType)
+        || APPLICATION_META.equals(mimeType)
+        || APPLICATION_ITUT_T35.equals(mimeType)) {
       return C.TRACK_TYPE_METADATA;
     } else if (APPLICATION_CAMERA_MOTION.equals(mimeType)) {
       return C.TRACK_TYPE_CAMERA_MOTION;
@@ -687,6 +717,8 @@ public final class MimeTypes {
         return C.ENCODING_DOLBY_TRUEHD;
       case MimeTypes.AUDIO_OPUS:
         return C.ENCODING_OPUS;
+      case MimeTypes.AUDIO_DSD:
+        return C.ENCODING_DSD;
       default:
         return C.ENCODING_INVALID;
     }
@@ -821,7 +853,7 @@ public final class MimeTypes {
     if (!matcher.matches()) {
       return null;
     }
-    String objectTypeIndicationHex = Assertions.checkNotNull(matcher.group(1));
+    String objectTypeIndicationHex = checkNotNull(matcher.group(1));
     @Nullable String audioObjectTypeIndicationDec = matcher.group(2);
     int objectTypeIndication;
     int audioObjectTypeIndication = 0;

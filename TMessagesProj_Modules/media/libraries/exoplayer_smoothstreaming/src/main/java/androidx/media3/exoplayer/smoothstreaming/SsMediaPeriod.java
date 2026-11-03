@@ -15,7 +15,7 @@
  */
 package androidx.media3.exoplayer.smoothstreaming;
 
-import static androidx.media3.common.util.Assertions.checkNotNull;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
@@ -41,6 +41,8 @@ import androidx.media3.exoplayer.upstream.Allocator;
 import androidx.media3.exoplayer.upstream.CmcdConfiguration;
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy;
 import androidx.media3.exoplayer.upstream.LoaderErrorThrower;
+import androidx.media3.exoplayer.util.ReleasableExecutor;
+import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import java.io.IOException;
@@ -62,11 +64,13 @@ import java.util.List;
   private final Allocator allocator;
   private final TrackGroupArray trackGroups;
   private final CompositeSequenceableLoaderFactory compositeSequenceableLoaderFactory;
+  @Nullable private final Supplier<ReleasableExecutor> downloadExecutorSupplier;
 
   @Nullable private Callback callback;
   private SsManifest manifest;
   private ChunkSampleStream<SsChunkSource>[] sampleStreams;
   private SequenceableLoader compositeSequenceableLoader;
+  private long endPositionUs;
 
   public SsMediaPeriod(
       SsManifest manifest,
@@ -79,7 +83,8 @@ import java.util.List;
       LoadErrorHandlingPolicy loadErrorHandlingPolicy,
       MediaSourceEventListener.EventDispatcher mediaSourceEventDispatcher,
       LoaderErrorThrower manifestLoaderErrorThrower,
-      Allocator allocator) {
+      Allocator allocator,
+      @Nullable Supplier<ReleasableExecutor> downloadExecutorSupplier) {
     this.manifest = manifest;
     this.chunkSourceFactory = chunkSourceFactory;
     this.transferListener = transferListener;
@@ -91,9 +96,11 @@ import java.util.List;
     this.mediaSourceEventDispatcher = mediaSourceEventDispatcher;
     this.allocator = allocator;
     this.compositeSequenceableLoaderFactory = compositeSequenceableLoaderFactory;
+    this.downloadExecutorSupplier = downloadExecutorSupplier;
     trackGroups = buildTrackGroups(manifest, drmSessionManager, chunkSourceFactory);
     sampleStreams = newSampleStreamArray(0);
     compositeSequenceableLoader = compositeSequenceableLoaderFactory.empty();
+    endPositionUs = C.TIME_END_OF_SOURCE;
   }
 
   public void updateManifest(SsManifest manifest) {
@@ -233,6 +240,15 @@ import java.util.List;
     return positionUs;
   }
 
+  @Override
+  public long setEndPositionUs(long endPositionUs) {
+    this.endPositionUs = endPositionUs;
+    for (ChunkSampleStream<SsChunkSource> sampleStream : sampleStreams) {
+      sampleStream.setEndPositionUs(endPositionUs);
+    }
+    return endPositionUs;
+  }
+
   // SequenceableLoader.Callback implementation.
 
   @Override
@@ -253,20 +269,24 @@ import java.util.List;
             selection,
             transferListener,
             cmcdConfiguration);
-    return new ChunkSampleStream<>(
-        manifest.streamElements[streamElementIndex].type,
-        null,
-        null,
-        chunkSource,
-        this,
-        allocator,
-        positionUs,
-        drmSessionManager,
-        drmEventDispatcher,
-        loadErrorHandlingPolicy,
-        mediaSourceEventDispatcher,
-        /* canReportInitialDiscontinuity= */ false,
-        /* downloadExecutor= */ null);
+    ChunkSampleStream<SsChunkSource> stream =
+        new ChunkSampleStream<>(
+            manifest.streamElements[streamElementIndex].type,
+            null,
+            null,
+            chunkSource,
+            this,
+            allocator,
+            positionUs,
+            drmSessionManager,
+            drmEventDispatcher,
+            loadErrorHandlingPolicy,
+            mediaSourceEventDispatcher,
+            /* handleInitialDiscontinuity= */ false,
+            /* firstChunkStartTimeUs= */ C.TIME_UNSET,
+            downloadExecutorSupplier != null ? downloadExecutorSupplier.get() : null);
+    stream.setEndPositionUs(endPositionUs);
+    return stream;
   }
 
   private static TrackGroupArray buildTrackGroups(

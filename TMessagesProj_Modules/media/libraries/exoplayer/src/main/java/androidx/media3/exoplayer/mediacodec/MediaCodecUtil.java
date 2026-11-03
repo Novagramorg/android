@@ -20,6 +20,7 @@ import static androidx.media3.common.util.CodecSpecificDataUtil.getHevcProfileAn
 import static java.lang.Math.max;
 
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.media.MediaCodecInfo.CodecCapabilities;
 import android.media.MediaCodecInfo.CodecProfileLevel;
 import android.media.MediaCodecList;
@@ -31,6 +32,7 @@ import androidx.annotation.GuardedBy;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.VisibleForTesting;
+import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.CodecSpecificDataUtil;
@@ -159,7 +161,7 @@ public final class MediaCodecUtil {
     MediaCodecListCompat mediaCodecList =
         new MediaCodecListCompatV21(secure, tunneling, specialCodec);
     ArrayList<MediaCodecInfo> decoderInfos = getDecoderInfosInternal(key, mediaCodecList);
-    if (secure && decoderInfos.isEmpty() && SDK_INT <= 23) {
+    if (secure && decoderInfos.isEmpty() && SDK_INT == 23) {
       // Some devices don't list secure decoders on API level 21 [Internal: b/18678462]. Try the
       // legacy path. We also try this path on API levels 22 and 23 as a defensive measure.
       mediaCodecList = new MediaCodecListCompatV16();
@@ -256,10 +258,11 @@ public final class MediaCodecUtil {
    */
   @CheckResult
   public static List<MediaCodecInfo> getDecoderInfosSortedByFormatSupport(
-      List<MediaCodecInfo> decoderInfos, Format format) {
+      Context context, List<MediaCodecInfo> decoderInfos, Format format) {
     decoderInfos = new ArrayList<>(decoderInfos);
     sortByScore(
-        decoderInfos, decoderInfo -> decoderInfo.isFormatFunctionallySupported(format) ? 1 : 0);
+        decoderInfos,
+        decoderInfo -> decoderInfo.isFormatFunctionallySupported(context, format) ? 1 : 0);
     return decoderInfos;
   }
 
@@ -269,16 +272,12 @@ public final class MediaCodecUtil {
    */
   @CheckResult
   public static List<MediaCodecInfo> getDecoderInfosSortedByFullFormatSupport(
-      List<MediaCodecInfo> decoderInfos, Format format) {
+      Context context, List<MediaCodecInfo> decoderInfos, Format format) {
     decoderInfos = new ArrayList<>(decoderInfos);
     sortByScore(
         decoderInfos,
         decoderInfo -> {
-          try {
-            return decoderInfo.isFormatSupported(format) ? 1 : 0;
-          } catch (DecoderQueryException e) {
-            return -1;
-          }
+          return decoderInfo.isFormatSupported(context, format) ? 1 : 0;
         });
     return decoderInfos;
   }
@@ -385,7 +384,9 @@ public final class MediaCodecUtil {
       // This can't be done for profile CodecProfileLevel.DolbyVisionProfileDvheStn and profile
       // CodecProfileLevel.DolbyVisionProfileDvheDtb because the first one is not backward
       // compatible and the second one is deprecated and is not always backward compatible.
-      @Nullable Pair<Integer, Integer> codecProfileAndLevel = getCodecProfileAndLevel(format);
+      @Nullable
+      Pair<Integer, Integer> codecProfileAndLevel =
+          CodecSpecificDataUtil.getCodecProfileAndLevel(format);
       if (codecProfileAndLevel != null) {
         int profile = codecProfileAndLevel.first;
         if (profile == CodecProfileLevel.DolbyVisionProfileDvheDtr
@@ -394,6 +395,11 @@ public final class MediaCodecUtil {
         } else if (profile == CodecProfileLevel.DolbyVisionProfileDvavSe) {
           return MimeTypes.VIDEO_H264;
         } else if (profile == CodecProfileLevel.DolbyVisionProfileDvav110) {
+          if (format.colorInfo != null
+              && format.colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084
+              && format.colorInfo.colorRange == C.COLOR_RANGE_FULL) {
+            return null;
+          }
           return MimeTypes.VIDEO_AV1;
         }
       }
@@ -491,7 +497,7 @@ public final class MediaCodecUtil {
             return decoderInfos;
           }
         } catch (Exception e) {
-          if (SDK_INT <= 23 && !decoderInfos.isEmpty()) {
+          if (SDK_INT == 23 && !decoderInfos.isEmpty()) {
             // Suppress error querying secondary codec capabilities up to API level 23.
             Log.e(TAG, "Skipping codec " + name + " (failed to query capabilities)");
           } else {
@@ -590,7 +596,7 @@ public final class MediaCodecUtil {
     }
 
     // MTK AC3 decoder doesn't support decoding JOC streams in 2-D. See [Internal: b/69400041].
-    if (SDK_INT <= 23
+    if (SDK_INT == 23
         && MimeTypes.AUDIO_E_AC3_JOC.equals(mimeType)
         && "OMX.MTK.AUDIO.DECODER.DSPAC3".equals(name)) {
       return false;

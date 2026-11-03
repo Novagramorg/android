@@ -54,10 +54,13 @@ import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.source.chunk.ChunkSampleStream;
 import androidx.media3.exoplayer.source.chunk.ChunkSampleStream.EmbeddedSampleStream;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
+import androidx.media3.exoplayer.trackselection.TrackSelection;
 import androidx.media3.exoplayer.upstream.Allocator;
 import androidx.media3.exoplayer.upstream.CmcdConfiguration;
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy;
 import androidx.media3.exoplayer.upstream.LoaderErrorThrower;
+import androidx.media3.exoplayer.util.ReleasableExecutor;
+import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -107,6 +110,7 @@ import java.util.regex.Pattern;
   private final MediaSourceEventListener.EventDispatcher mediaSourceEventDispatcher;
   private final DrmSessionEventListener.EventDispatcher drmEventDispatcher;
   private final PlayerId playerId;
+  @Nullable private final Supplier<ReleasableExecutor> downloadExecutorSupplier;
 
   @Nullable private Callback callback;
   private ChunkSampleStream<DashChunkSource>[] sampleStreams;
@@ -117,6 +121,8 @@ import java.util.regex.Pattern;
   private List<EventStream> eventStreams;
   private boolean canReportInitialDiscontinuity;
   private long initialStartTimeUs;
+  private long endPositionUs;
+  private boolean readingSuppressedWaitingForInitialDiscontinuity;
 
   public DashMediaPeriod(
       int id,
@@ -135,7 +141,8 @@ import java.util.regex.Pattern;
       Allocator allocator,
       CompositeSequenceableLoaderFactory compositeSequenceableLoaderFactory,
       PlayerEmsgCallback playerEmsgCallback,
-      PlayerId playerId) {
+      PlayerId playerId,
+      @Nullable Supplier<ReleasableExecutor> downloadExecutorSupplier) {
     this.id = id;
     this.manifest = manifest;
     this.baseUrlExclusionList = baseUrlExclusionList;
@@ -152,6 +159,7 @@ import java.util.regex.Pattern;
     this.allocator = allocator;
     this.compositeSequenceableLoaderFactory = compositeSequenceableLoaderFactory;
     this.playerId = playerId;
+    this.downloadExecutorSupplier = downloadExecutorSupplier;
     this.canReportInitialDiscontinuity = true;
     playerEmsgHandler = new PlayerEmsgHandler(manifest, playerEmsgCallback, allocator);
     sampleStreams = newSampleStreamArray(0);
@@ -165,6 +173,7 @@ import java.util.regex.Pattern;
             drmSessionManager, chunkSourceFactory, period.adaptationSets, eventStreams);
     trackGroups = result.first;
     trackGroupInfos = result.second;
+    endPositionUs = C.TIME_END_OF_SOURCE;
   }
 
   /**
@@ -312,6 +321,9 @@ import java.util.regex.Pattern;
     if (canReportInitialDiscontinuity) {
       canReportInitialDiscontinuity = false;
       initialStartTimeUs = positionUs;
+      if (mayHaveAnyStreamWithPendingInitialDiscontinuity()) {
+        setSuppressReadOnAllStreams(true);
+      }
     }
     return positionUs;
   }
@@ -351,8 +363,12 @@ import java.util.regex.Pattern;
 
   @Override
   public long readDiscontinuity() {
-    for (ChunkSampleStream<DashChunkSource> sampleStream : sampleStreams) {
-      if (sampleStream.consumeInitialDiscontinuity()) {
+    if (readingSuppressedWaitingForInitialDiscontinuity) {
+      boolean hasDiscontinuity = tryConsumeInitialDiscontinuityFromStreams();
+      if (!mayHaveAnyStreamWithPendingInitialDiscontinuity()) {
+        setSuppressReadOnAllStreams(false);
+      }
+      if (hasDiscontinuity) {
         return initialStartTimeUs;
       }
     }
@@ -385,6 +401,15 @@ import java.util.regex.Pattern;
     return positionUs;
   }
 
+  @Override
+  public long setEndPositionUs(long endPositionUs) {
+    this.endPositionUs = endPositionUs;
+    for (ChunkSampleStream<DashChunkSource> sampleStream : sampleStreams) {
+      sampleStream.setEndPositionUs(endPositionUs);
+    }
+    return endPositionUs;
+  }
+
   // SequenceableLoader.Callback implementation.
 
   @Override
@@ -393,6 +418,30 @@ import java.util.regex.Pattern;
   }
 
   // Internal methods.
+
+  private boolean mayHaveAnyStreamWithPendingInitialDiscontinuity() {
+    for (ChunkSampleStream<DashChunkSource> sampleStream : sampleStreams) {
+      if (sampleStream.mayHaveInitialDiscontinuity()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void setSuppressReadOnAllStreams(boolean suppressRead) {
+    readingSuppressedWaitingForInitialDiscontinuity = suppressRead;
+    for (ChunkSampleStream<DashChunkSource> sampleStream : sampleStreams) {
+      sampleStream.setSuppressRead(suppressRead);
+    }
+  }
+
+  private boolean tryConsumeInitialDiscontinuityFromStreams() {
+    boolean consumedDiscontinuity = false;
+    for (ChunkSampleStream<DashChunkSource> sampleStream : sampleStreams) {
+      consumedDiscontinuity |= sampleStream.consumeInitialDiscontinuity();
+    }
+    return consumedDiscontinuity;
+  }
 
   private int[] getStreamIndexToTrackGroupIndex(ExoTrackSelection[] selections) {
     int[] streamIndexToTrackGroupIndex = new int[selections.length];
@@ -757,6 +806,7 @@ import java.util.regex.Pattern;
             new Format.Builder()
                 .setId(eventMessageTrackGroupId)
                 .setSampleMimeType(MimeTypes.APPLICATION_EMSG)
+                .setPrimaryTrackGroupId(trackGroupId)
                 .build();
         trackGroups[eventMessageTrackGroupIndex] = new TrackGroup(eventMessageTrackGroupId, format);
         trackGroupInfos[eventMessageTrackGroupIndex] =
@@ -771,6 +821,13 @@ import java.util.regex.Pattern;
                 ImmutableList.copyOf(primaryGroupClosedCaptionTrackFormats[i]));
         maybeUpdateFormatsForParsedText(
             chunkSourceFactory, primaryGroupClosedCaptionTrackFormats[i]);
+        for (int j = 0; j < primaryGroupClosedCaptionTrackFormats[i].length; j++) {
+          primaryGroupClosedCaptionTrackFormats[i][j] =
+              primaryGroupClosedCaptionTrackFormats[i][j]
+                  .buildUpon()
+                  .setPrimaryTrackGroupId(trackGroupId)
+                  .build();
+        }
         trackGroups[closedCaptionTrackGroupIndex] =
             new TrackGroup(closedCaptionTrackGroupId, primaryGroupClosedCaptionTrackFormats[i]);
       }
@@ -829,11 +886,17 @@ import java.util.regex.Pattern;
       embeddedClosedCaptionTrackFormats.add(embeddedTrackFormats[embeddedTrackCount]);
       embeddedTrackCount++;
     }
-
     PlayerTrackEmsgHandler trackPlayerEmsgHandler =
         manifest.dynamic && enableEventMessageTrack
             ? playerEmsgHandler.newPlayerTrackEmsgHandler()
             : null;
+    long firstChunkStartTimeUs =
+        getFirstChunkStartTimeUs(
+            positionUs, manifest, periodIndex, trackGroupInfo.adaptationSetIndices);
+    boolean handleInitialDiscontinuity =
+        canReportInitialDiscontinuity
+            && !areAllSamplesSyncSamples(
+                manifest, periodIndex, trackGroupInfo.adaptationSetIndices, selection);
     DashChunkSource chunkSource =
         chunkSourceFactory.createDashChunkSource(
             manifestLoaderErrorThrower,
@@ -863,13 +926,55 @@ import java.util.regex.Pattern;
             drmEventDispatcher,
             loadErrorHandlingPolicy,
             mediaSourceEventDispatcher,
-            canReportInitialDiscontinuity,
-            /* downloadExecutor= */ null);
+            handleInitialDiscontinuity,
+            firstChunkStartTimeUs,
+            downloadExecutorSupplier != null ? downloadExecutorSupplier.get() : null);
+    stream.setEndPositionUs(endPositionUs);
     synchronized (this) {
       // The map is also accessed on the loading thread so synchronize access.
       trackEmsgHandlerBySampleStream.put(stream, trackPlayerEmsgHandler);
     }
     return stream;
+  }
+
+  private static long getFirstChunkStartTimeUs(
+      long positionsUs, DashManifest manifest, int periodIndex, int[] adaptationSetIndices) {
+    // Use the first representation as all representations in one adaptation set (or in grouped
+    // adaptation sets) need to be segment-aligned.
+    Representation representation =
+        manifest
+            .getPeriod(periodIndex)
+            .adaptationSets
+            .get(adaptationSetIndices[0])
+            .representations
+            .get(0);
+    @Nullable DashSegmentIndex segmentIndex = representation.getIndex();
+    if (segmentIndex == null) {
+      return C.TIME_UNSET;
+    }
+    long periodDurationUs = manifest.getPeriodDurationUs(periodIndex);
+    return segmentIndex.getTimeUs(segmentIndex.getSegmentNum(positionsUs, periodDurationUs));
+  }
+
+  private static boolean areAllSamplesSyncSamples(
+      DashManifest manifest,
+      int periodIndex,
+      int[] adaptationSetIndices,
+      TrackSelection trackSelection) {
+    List<AdaptationSet> adaptationSets = manifest.getPeriod(periodIndex).adaptationSets;
+    ImmutableList.Builder<Representation> representationsBuilder = ImmutableList.builder();
+    for (int adaptationSetIndex : adaptationSetIndices) {
+      representationsBuilder.addAll(adaptationSets.get(adaptationSetIndex).representations);
+    }
+    ImmutableList<Representation> representations = representationsBuilder.build();
+    for (int i = 0; i < trackSelection.length(); i++) {
+      Representation representation = representations.get(trackSelection.getIndexInTrackGroup(i));
+      if (!MimeTypes.allSamplesAreSyncSamples(
+          representation.format.sampleMimeType, representation.format.codecs)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   @Nullable

@@ -15,10 +15,10 @@
  */
 package androidx.media3.exoplayer.source;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
-import static androidx.media3.common.util.Assertions.checkNotNull;
-import static androidx.media3.common.util.Assertions.checkState;
 import static androidx.media3.common.util.Util.msToUs;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.lang.annotation.ElementType.TYPE_USE;
@@ -28,7 +28,7 @@ import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Timeline;
-import androidx.media3.common.util.Assertions;
+import androidx.media3.common.util.ExperimentalApi;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.exoplayer.upstream.Allocator;
@@ -58,6 +58,7 @@ public final class ClippingMediaSource extends WrappingMediaSource {
     private boolean allowDynamicClippingUpdates;
     private boolean relativeToDefaultPosition;
     private boolean allowUnseekableMedia;
+    private boolean enableClippingInMediaPeriod;
     private boolean buildCalled;
 
     /**
@@ -215,6 +216,24 @@ public final class ClippingMediaSource extends WrappingMediaSource {
       return this;
     }
 
+    /**
+     * Sets whether an experimental setting to delegate end position clipping to the wrapped {@link
+     * MediaPeriod} is enabled.
+     *
+     * <p>The default value is {@code false}.
+     *
+     * @param enableClippingInMediaPeriod Whether the end clipping should be delegated to the
+     *     wrapped {@link MediaPeriod}.
+     * @return This builder.
+     */
+    @ExperimentalApi // TODO: b/474538573 - Remove once clipping in media period is default.
+    @CanIgnoreReturnValue
+    public Builder setEnableClippingInMediaPeriod(boolean enableClippingInMediaPeriod) {
+      checkState(!buildCalled);
+      this.enableClippingInMediaPeriod = enableClippingInMediaPeriod;
+      return this;
+    }
+
     /** Builds the {@link ClippingMediaSource}. */
     public ClippingMediaSource build() {
       buildCalled = true;
@@ -280,6 +299,7 @@ public final class ClippingMediaSource extends WrappingMediaSource {
   private final boolean allowDynamicClippingUpdates;
   private final boolean relativeToDefaultPosition;
   private final boolean allowUnseekableMedia;
+  private final boolean enableClippingInMediaPeriod;
   private final ArrayList<ClippingMediaPeriod> mediaPeriods;
   private final Timeline.Window window;
 
@@ -335,6 +355,7 @@ public final class ClippingMediaSource extends WrappingMediaSource {
     this.allowDynamicClippingUpdates = builder.allowDynamicClippingUpdates;
     this.relativeToDefaultPosition = builder.relativeToDefaultPosition;
     this.allowUnseekableMedia = builder.allowUnseekableMedia;
+    this.enableClippingInMediaPeriod = builder.enableClippingInMediaPeriod;
     mediaPeriods = new ArrayList<>();
     window = new Timeline.Window();
   }
@@ -360,7 +381,8 @@ public final class ClippingMediaSource extends WrappingMediaSource {
             mediaSource.createPeriod(id, allocator, startPositionUs),
             enableInitialDiscontinuity,
             periodStartUs,
-            periodEndUs);
+            periodEndUs,
+            enableClippingInMediaPeriod);
     mediaPeriods.add(mediaPeriod);
     return mediaPeriod;
   }
@@ -370,7 +392,7 @@ public final class ClippingMediaSource extends WrappingMediaSource {
     checkState(mediaPeriods.remove(mediaPeriod));
     mediaSource.releasePeriod(((ClippingMediaPeriod) mediaPeriod).mediaPeriod);
     if (mediaPeriods.isEmpty() && !allowDynamicClippingUpdates) {
-      refreshClippedTimeline(Assertions.checkNotNull(clippingTimeline).timeline);
+      refreshClippedTimeline(checkNotNull(clippingTimeline).timeline);
     }
   }
 

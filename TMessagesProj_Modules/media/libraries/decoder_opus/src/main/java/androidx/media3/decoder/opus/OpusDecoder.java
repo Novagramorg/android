@@ -16,12 +16,12 @@
 package androidx.media3.decoder.opus;
 
 import static androidx.annotation.VisibleForTesting.PACKAGE_PRIVATE;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.Math.max;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import androidx.media3.common.C;
-import androidx.media3.common.util.Assertions;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.decoder.CryptoConfig;
@@ -150,6 +150,7 @@ public final class OpusDecoder
    *
    * <p>This method is experimental, and will be renamed or removed in a future release.
    */
+  // TODO: b/470358402 - Remove method and default to true.
   public void experimentalSetDiscardPaddingEnabled(boolean enabled) {
     this.experimentalDiscardPaddingEnabled = enabled;
   }
@@ -197,8 +198,8 @@ public final class OpusDecoder
                 SAMPLE_RATE,
                 cryptoConfig,
                 cryptoInfo.mode,
-                Assertions.checkNotNull(cryptoInfo.key),
-                Assertions.checkNotNull(cryptoInfo.iv),
+                checkNotNull(cryptoInfo.key),
+                checkNotNull(cryptoInfo.iv),
                 cryptoInfo.numSubSamples,
                 cryptoInfo.numBytesOfClearData,
                 cryptoInfo.numBytesOfEncryptedData)

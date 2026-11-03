@@ -17,21 +17,26 @@ package androidx.media3.session;
 
 import static android.os.Build.VERSION.SDK_INT;
 import static androidx.annotation.VisibleForTesting.PRIVATE;
-import static androidx.media3.common.util.Assertions.checkArgument;
-import static androidx.media3.common.util.Assertions.checkNotNull;
-import static androidx.media3.common.util.Assertions.checkState;
 import static androidx.media3.session.SessionError.ERROR_NOT_SUPPORTED;
 import static androidx.media3.session.SessionResult.RESULT_SUCCESS;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static java.lang.Math.max;
 
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Point;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.RemoteException;
+import android.view.Display;
 import android.view.KeyEvent;
+import android.view.Surface;
+import android.view.WindowManager;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -55,6 +60,8 @@ import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.BitmapLoader;
+import androidx.media3.common.util.ExperimentalApi;
+import androidx.media3.common.util.NullableType;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.datasource.DataSourceBitmapLoader;
@@ -63,6 +70,7 @@ import androidx.media3.session.MediaLibraryService.MediaLibrarySession;
 import androidx.media3.session.legacy.MediaControllerCompat;
 import androidx.media3.session.legacy.MediaSessionManager.RemoteUserInfo;
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.ImmutableIntArray;
 import com.google.common.primitives.Longs;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -71,6 +79,8 @@ import com.google.errorprone.annotations.DoNotMock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import org.checkerframework.checker.nullness.qual.EnsuresNonNull;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
@@ -239,6 +249,9 @@ public class MediaSession {
   @GuardedBy("STATIC_LOCK")
   private static final HashMap<String, MediaSession> SESSION_ID_TO_SESSION_MAP = new HashMap<>();
 
+  /** The default session ID. */
+  /* package */ static final String DEFAULT_SESSION_ID = "";
+
   /**
    * A builder for {@link MediaSession}.
    *
@@ -246,6 +259,9 @@ public class MediaSession {
    * thread of the underlying {@link Player}.
    */
   public static final class Builder extends BuilderBase<MediaSession, Builder, Callback> {
+
+    private boolean useLegacySurfaceHandling;
+    private boolean buildCalled;
 
     /**
      * Creates a builder for {@link MediaSession}.
@@ -474,6 +490,25 @@ public class MediaSession {
     }
 
     /**
+     * Sets whether to use the legacy surface handling logic by ignoring the surface size.
+     *
+     * <p>When set to {@code true}, the session will call {@link Player#setVideoSurface(Surface)}
+     * directly, which may not work correctly with video effects. This is intended as a temporary
+     * opt-out for applications that experience issues with the new SurfaceHolder-based approach.
+     *
+     * <p>This method is experimental and may be removed in a future release.
+     *
+     * @param useLegacySurfaceHandling Whether to use the legacy surface handling logic.
+     * @return This builder.
+     */
+    @CanIgnoreReturnValue
+    @ExperimentalApi // TODO: b/469431007 - Remove method once workaround is no longer needed.
+    public Builder setExperimentalSetUseLegacySurfaceHandling(boolean useLegacySurfaceHandling) {
+      this.useLegacySurfaceHandling = useLegacySurfaceHandling;
+      return this;
+    }
+
+    /**
      * Builds a {@link MediaSession}.
      *
      * @return A new session.
@@ -482,9 +517,9 @@ public class MediaSession {
      */
     @Override
     public MediaSession build() {
-      if (bitmapLoader == null) {
-        bitmapLoader = new CacheBitmapLoader(new DataSourceBitmapLoader(context));
-      }
+      checkState(!buildCalled);
+      buildCalled = true;
+      ensureBitmapLoaderIsSizeLimited();
       return new MediaSession(
           context,
           id,
@@ -496,10 +531,11 @@ public class MediaSession {
           callback,
           tokenExtras,
           sessionExtras,
-          checkNotNull(bitmapLoader),
+          bitmapLoader,
           playIfSuppressed,
           isPeriodicPositionUpdateEnabled,
-          MediaLibrarySession.LIBRARY_ERROR_REPLICATION_MODE_NONE);
+          MediaLibrarySession.LIBRARY_ERROR_REPLICATION_MODE_NONE,
+          useLegacySurfaceHandling);
     }
   }
 
@@ -534,6 +570,7 @@ public class MediaSession {
     @Nullable private final ControllerCb controllerCb;
     private final Bundle connectionHints;
     private final int maxCommandsForMediaItems;
+    private final boolean isPackageNameVerified;
 
     /**
      * Creates an instance.
@@ -555,7 +592,8 @@ public class MediaSession {
         boolean trusted,
         @Nullable ControllerCb cb,
         Bundle connectionHints,
-        int maxCommandsForMediaItems) {
+        int maxCommandsForMediaItems,
+        boolean isPackageNameVerified) {
       this.remoteUserInfo = remoteUserInfo;
       this.libraryVersion = libraryVersion;
       this.interfaceVersion = interfaceVersion;
@@ -563,6 +601,7 @@ public class MediaSession {
       controllerCb = cb;
       this.connectionHints = connectionHints;
       this.maxCommandsForMediaItems = maxCommandsForMediaItems;
+      this.isPackageNameVerified = isPackageNameVerified;
     }
 
     /* package */ RemoteUserInfo getRemoteUserInfo() {
@@ -582,7 +621,7 @@ public class MediaSession {
     }
 
     /**
-     * Returns the interface version of the controller, or {@link
+     * Returns the {@link MediaLibraryInfo#INTERFACE_VERSION} of the controller, or {@link
      * #LEGACY_CONTROLLER_INTERFACE_VERSION} if the controller is a platform {@link
      * android.media.session.MediaController} or legacy {@code
      * android.support.v4.media.session.MediaControllerCompat}.
@@ -592,7 +631,15 @@ public class MediaSession {
       return interfaceVersion;
     }
 
-    /** Returns the package name, or {@link #LEGACY_CONTROLLER_PACKAGE_NAME} on API &le; 24. */
+    /**
+     * Returns the package name, or {@link #LEGACY_CONTROLLER_PACKAGE_NAME} on API &le; 24.
+     *
+     * <p>In some cases the correctness of the package name cannot be verified, for example when a
+     * controller from another app connects directly with a {@link SessionToken} and the app's
+     * package is not visible from this app. Refer to the <a
+     * href="https://developer.android.com/training/package-visibility">package visibility
+     * guidelines</a> for more details and how to ensure specific packages are visible if required.
+     */
     public String getPackageName() {
       return remoteUserInfo.getPackageName();
     }
@@ -622,13 +669,32 @@ public class MediaSession {
     }
 
     /**
-     * Returns if the controller has been granted {@code android.permission.MEDIA_CONTENT_CONTROL}
-     * or has an enabled notification listener so it can be trusted to accept connection and
-     * incoming command requests.
+     * Returns whether the controller is trusted by the user to control and access media.
+     *
+     * <p>One or more of the following must be true for the controller to be trusted:
+     *
+     * <ul>
+     *   <li>The controller is part of the current app and user (using {@link
+     *       android.os.Process#myUid()}.
+     *   <li>The controller is part of the Android system (using {@link
+     *       android.os.Process#SYSTEM_UID}.
+     *   <li>The controller has been granted {@code android.permission.MEDIA_CONTENT_CONTROL}.
+     *   <li>The controller has been granted {@code android.permission.STATUS_BAR_SERVICE}.
+     *   <li>The controller has an enabled notification listener.
+     * </ul>
      */
     @UnstableApi
     public boolean isTrusted() {
       return isTrusted;
+    }
+
+    /**
+     * Returns whether the value returned from {@link #getPackageName()} has been verified to be a
+     * valid package name belonging to {@link #getUid()}.
+     */
+    @UnstableApi
+    public boolean isPackageNameVerified() {
+      return isPackageNameVerified;
     }
 
     @Override
@@ -668,7 +734,7 @@ public class MediaSession {
     /* package */ static ControllerInfo createLegacyControllerInfo() {
       RemoteUserInfo legacyRemoteUserInfo =
           new RemoteUserInfo(
-              RemoteUserInfo.LEGACY_CONTROLLER,
+              /* packageName= */ RemoteUserInfo.LEGACY_CONTROLLER,
               /* pid= */ RemoteUserInfo.UNKNOWN_PID,
               /* uid= */ RemoteUserInfo.UNKNOWN_UID);
       return new ControllerInfo(
@@ -678,10 +744,12 @@ public class MediaSession {
           /* trusted= */ false,
           /* cb= */ null,
           /* connectionHints= */ Bundle.EMPTY,
-          /* maxCommandsForMediaItems= */ 0);
+          /* maxCommandsForMediaItems= */ 0,
+          /* isPackageNameVerified= */ false);
     }
 
     /** Returns a {@link ControllerInfo} suitable for use when testing client code. */
+    @UnstableApi
     @VisibleForTesting(otherwise = PRIVATE)
     public static ControllerInfo createTestOnlyControllerInfo(
         String packageName,
@@ -690,7 +758,8 @@ public class MediaSession {
         int libraryVersion,
         int interfaceVersion,
         boolean trusted,
-        Bundle connectionHints) {
+        Bundle connectionHints,
+        boolean isPackageNameVerified) {
       return new MediaSession.ControllerInfo(
           new RemoteUserInfo(packageName, pid, uid),
           libraryVersion,
@@ -698,7 +767,8 @@ public class MediaSession {
           trusted,
           /* cb= */ null,
           connectionHints,
-          /* maxCommandsForMediaItems= */ 0);
+          /* maxCommandsForMediaItems= */ 0,
+          isPackageNameVerified);
     }
   }
 
@@ -720,7 +790,8 @@ public class MediaSession {
       BitmapLoader bitmapLoader,
       boolean playIfSuppressed,
       boolean isPeriodicPositionUpdateEnabled,
-      @MediaLibrarySession.LibraryErrorReplicationMode int libraryErrorReplicationMode) {
+      @MediaLibrarySession.LibraryErrorReplicationMode int libraryErrorReplicationMode,
+      boolean useLegacySurfaceHandling) {
     synchronized (STATIC_LOCK) {
       if (SESSION_ID_TO_SESSION_MAP.containsKey(id)) {
         throw new IllegalStateException("Session ID must be unique. ID=" + id);
@@ -742,7 +813,8 @@ public class MediaSession {
             bitmapLoader,
             playIfSuppressed,
             isPeriodicPositionUpdateEnabled,
-            libraryErrorReplicationMode);
+            libraryErrorReplicationMode,
+            useLegacySurfaceHandling);
   }
 
   /* package */ MediaSessionImpl createImpl(
@@ -759,7 +831,8 @@ public class MediaSession {
       BitmapLoader bitmapLoader,
       boolean playIfSuppressed,
       boolean isPeriodicPositionUpdateEnabled,
-      @MediaLibrarySession.LibraryErrorReplicationMode int libraryErrorReplicationMode) {
+      @MediaLibrarySession.LibraryErrorReplicationMode int libraryErrorReplicationMode,
+      boolean useLegacySurfaceHandling) {
     return new MediaSessionImpl(
         this,
         context,
@@ -774,11 +847,23 @@ public class MediaSession {
         sessionExtras,
         bitmapLoader,
         playIfSuppressed,
-        isPeriodicPositionUpdateEnabled);
+        isPeriodicPositionUpdateEnabled,
+        useLegacySurfaceHandling);
   }
 
   /* package */ MediaSessionImpl getImpl() {
     return impl;
+  }
+
+  /**
+   * Returns the bitmap dimension limit in pixels. Bitmaps with width or height larger than this
+   * will be scaled down to fit within the limit.
+   *
+   * @param context The context in which the bitmap dimension limit is defined.
+   * @return The bitmap dimension limit in pixels.
+   */
+  public static int getBitmapDimensionLimit(Context context) {
+    return MediaSessionImpl.getBitmapDimensionLimit(context);
   }
 
   @Nullable
@@ -1438,6 +1523,29 @@ public class MediaSession {
   }
 
   /**
+   * A progress reporter to report progress for a custom command sent by a controller.
+   *
+   * <p>A non-null instance is passed to {@link MediaSession.Callback#onCustomCommand(MediaSession,
+   * ControllerInfo, SessionCommand, Bundle, ProgressReporter)} in case the controller requests
+   * progress updates.
+   */
+  @UnstableApi
+  public interface ProgressReporter {
+
+    /**
+     * Sends a progress update to the controller that has sent a custom command.
+     *
+     * <p>Updates can be sent as long as the {@link ListenableFuture<SessionCommand>} returned by
+     * {@link Callback#onCustomCommand(MediaSession, ControllerInfo, SessionCommand, Bundle,
+     * ProgressReporter)} is not done. Sending updates after completion of the future results in a
+     * no-op.
+     *
+     * @param progressData The progress data {@link Bundle} to be sent to the controller.
+     */
+    void sendProgressUpdate(Bundle progressData);
+  }
+
+  /**
    * A callback to handle incoming commands from {@link MediaController}.
    *
    * <p>The callback methods will be called from the application thread associated with the {@link
@@ -1458,6 +1566,9 @@ public class MediaSession {
      * the session. All session and player commands are made available and the {@linkplain
      * MediaSession#getMediaButtonPreferences() media button preferences of the session} are
      * included.
+     *
+     * <p>You can use {@link ControllerInfo#isTrusted()} to filter by system apps, apps with media
+     * control permissions, and your own app.
      *
      * <p>Note that the player commands in {@link ConnectionResult#availablePlayerCommands} will be
      * intersected with the {@link Player#getAvailableCommands() available commands} of the
@@ -1571,6 +1682,13 @@ public class MediaSession {
      * Called when a controller sent a custom command through {@link
      * MediaController#sendCustomCommand(SessionCommand, Bundle)}.
      *
+     * <p>Note: By default {@link #onCustomCommand(MediaSession, ControllerInfo, SessionCommand,
+     * Bundle, ProgressReporter)} delegates all calls to this method and drops the option to send
+     * progress updates. If you want to implement progress updates you should override {@link
+     * #onCustomCommand(MediaSession, ControllerInfo, SessionCommand, Bundle, ProgressReporter)}
+     * instead to get access to the {@link ProgressReporter} in case a controller requests progress
+     * updates.
+     *
      * <p>{@link MediaController} instances are only allowed to send a command if the command has
      * been added to the {@link MediaSession.ConnectionResult#availableSessionCommands list of
      * available session commands} in {@link #onConnect} or set via {@link #setAvailableCommands}.
@@ -1598,6 +1716,53 @@ public class MediaSession {
         SessionCommand customCommand,
         Bundle args) {
       return Futures.immediateFuture(new SessionResult(ERROR_NOT_SUPPORTED));
+    }
+
+    /**
+     * Called when a controller sent a custom command through {@link
+     * MediaController#sendCustomCommand(SessionCommand, Bundle, MediaController.ProgressListener)}.
+     *
+     * <p>By default this callback delegates to {@link #onCustomCommand(MediaSession,
+     * ControllerInfo, SessionCommand, Bundle)}. If this method is overridden, the callback {@link
+     * #onCustomCommand(MediaSession, ControllerInfo, SessionCommand, Bundle)} is never called.
+     *
+     * <p>If a non-null {@link ProgressReporter} is passed in, then the session can report progress
+     * updates to the controller. It's the decision of the session whether or not to send progress
+     * updates. In any case, the transaction ends by completing the {@link ListenableFuture}
+     * returned by this method.
+     *
+     * <p>{@link MediaController} instances are only allowed to send a command if the command has
+     * been added to the {@link MediaSession.ConnectionResult#availableSessionCommands list of
+     * available session commands} in {@link #onConnect} or set via {@link #setAvailableCommands}.
+     *
+     * <p>Interoperability: This will be also called by {@code
+     * android.support.v4.media.MediaBrowserCompat.sendCustomAction()}. If so, {@code extras} from
+     * {@code android.support.v4.media.MediaBrowserCompat.sendCustomAction()} will be considered as
+     * {@code args} and the custom command will have {@code null} {@link
+     * SessionCommand#customExtras}.
+     *
+     * <p>Return a {@link ListenableFuture} to send a {@link SessionResult} back to the controller
+     * asynchronously. You can also return a {@link SessionResult} directly by using Guava's {@link
+     * Futures#immediateFuture(Object)}. Progress updates are dispatched only until the future has
+     * completed.
+     *
+     * @param session The session for this event.
+     * @param controller The {@linkplain ControllerInfo controller} information.
+     * @param customCommand The custom command.
+     * @param args A {@link Bundle} for additional arguments. May be empty.
+     * @param progressReporter A {@link ProgressReporter} to send progress update until the future
+     *     has completed. May be null if progress updates are not supported.
+     * @return The result of handling the custom command.
+     * @see SessionCommand#COMMAND_CODE_CUSTOM
+     */
+    @UnstableApi
+    default ListenableFuture<SessionResult> onCustomCommand(
+        MediaSession session,
+        ControllerInfo controller,
+        SessionCommand customCommand,
+        Bundle args,
+        @Nullable ProgressReporter progressReporter) {
+      return onCustomCommand(session, controller, customCommand, args);
     }
 
     /**
@@ -1745,6 +1910,17 @@ public class MediaSession {
     }
 
     /**
+     * @deprecated Override {@link MediaSession.Callback#onPlaybackResumption(MediaSession,
+     *     ControllerInfo, boolean)} instead.
+     */
+    @Deprecated
+    @UnstableApi
+    default ListenableFuture<MediaItemsWithStartPosition> onPlaybackResumption(
+        MediaSession mediaSession, ControllerInfo controller) {
+      return Futures.immediateFailedFuture(new UnsupportedOperationException());
+    }
+
+    /**
      * Returns the playlist with which the player should be prepared when a controller requests to
      * play without a current {@link MediaItem}.
      *
@@ -1752,14 +1928,28 @@ public class MediaSession {
      * href="https://developer.android.com/media/media3/session/background-playback#resumption">playback
      * resumption</a> is requested from a media button receiver or the System UI notification.
      *
-     * <p>Use {@link MediaMetadata#artworkData} or {@link MediaMetadata#artworkUri} with a content
-     * URI to set locally available artwork data for the System UI notification after reboot of the
-     * device. Note that network access may not be available when this method is called during boot
-     * time.
+     * <p>If {@code isForPlayback} is {@code false}, the controller only requests metadata about the
+     * item that will be played once playback resumption is requested without an immediate intention
+     * to start playback. For example, this may happen immediately after reboot of the device for
+     * System UI to populate its playback resumption notification. In these cases, only one {@link
+     * MediaItem} is needed and it's useful to provide additional metadata to allow System UI to
+     * generate the notification:
      *
-     * <p>Use {@link MediaConstants#EXTRAS_KEY_COMPLETION_STATUS} and {@link
-     * MediaConstants#EXTRAS_KEY_COMPLETION_PERCENTAGE} to statically indicate the completion
-     * status.
+     * <ul>
+     *   <li>Use {@link MediaMetadata#artworkData} or {@link MediaMetadata#artworkUri} with a
+     *       content URI to set locally available artwork data for the playback resumption
+     *       notification. Note that network access may not be available when this method is called
+     *       during boot time.
+     *   <li>Use {@link MediaConstants#EXTRAS_KEY_COMPLETION_STATUS} and {@link
+     *       MediaConstants#EXTRAS_KEY_COMPLETION_PERCENTAGE} to statically indicate the completion
+     *       status.
+     * </ul>
+     *
+     * <p>If {@code isForPlayback} is {@code true}, return the initial playlist for the {@link
+     * Player} and the intended start position. {@link Player#setMediaItem}, {@link
+     * Player#setMediaItems}, {@link Player#prepare} and {@link Player#play} will be called
+     * automatically as required. Any additional initial setup like setting playback speed, repeat
+     * mode or shuffle mode can be done from within this callback.
      *
      * <p>The method will only be called if the {@link Player} has {@link
      * Player#COMMAND_GET_CURRENT_MEDIA_ITEM} and either {@link Player#COMMAND_SET_MEDIA_ITEM} or
@@ -1769,12 +1959,16 @@ public class MediaSession {
      * @param controller The {@linkplain ControllerInfo controller} that requests the playback
      *     resumption. This may be a short living controller created only for issuing a play command
      *     for resuming playback.
+     * @param isForPlayback Whether playback is intended to start after this callback. If false, the
+     *     controller only requests metadata about the item that will be played once playback
+     *     resumption is requested. If true, playback will be started automatically with the
+     *     provided {@link MediaItemsWithStartPosition}.
      * @return The {@linkplain MediaItemsWithStartPosition playlist} to resume playback with.
      */
     @UnstableApi
     default ListenableFuture<MediaItemsWithStartPosition> onPlaybackResumption(
-        MediaSession mediaSession, ControllerInfo controller) {
-      return Futures.immediateFailedFuture(new UnsupportedOperationException());
+        MediaSession mediaSession, ControllerInfo controller, boolean isForPlayback) {
+      return onPlaybackResumption(mediaSession, controller);
     }
 
     /**
@@ -2162,6 +2356,9 @@ public class MediaSession {
     default void sendCustomCommand(int seq, SessionCommand command, Bundle args)
         throws RemoteException {}
 
+    default void sendCustomCommandProgressUpdate(
+        int seq, SessionCommand command, Bundle args, Bundle progressData) throws RemoteException {}
+
     default void onAvailableCommandsChangedFromSession(
         int seq, SessionCommands sessionCommands, Player.Commands playerCommands)
         throws RemoteException {}
@@ -2240,6 +2437,8 @@ public class MediaSession {
 
     default void onVolumeChanged(int seq, float volume) throws RemoteException {}
 
+    default void onAudioSessionIdChanged(int seq, int audioSessionId) throws RemoteException {}
+
     default void onAudioAttributesChanged(int seq, AudioAttributes audioAttributes)
         throws RemoteException {}
 
@@ -2249,6 +2448,8 @@ public class MediaSession {
 
     default void onMediaMetadataChanged(int seq, MediaMetadata mediaMetadata)
         throws RemoteException {}
+
+    default void onSurfaceSizeChanged(int seq, int width, int height) throws RemoteException {}
 
     default void onRenderedFirstFrame(int seq) throws RemoteException {}
 
@@ -2288,6 +2489,9 @@ public class MediaSession {
       BuilderT extends BuilderBase<SessionT, BuilderT, CallbackT>,
       CallbackT extends Callback> {
 
+    private static final AtomicReference<@NullableType ImmutableIntArray> bitmapSizesToAvoidApi29 =
+        new AtomicReference<>(/* initialValue= */ null);
+
     /* package */ final Context context;
     /* package */ final Player player;
     /* package */ String id;
@@ -2303,10 +2507,10 @@ public class MediaSession {
     /* package */ boolean isPeriodicPositionUpdateEnabled;
 
     public BuilderBase(Context context, Player player, CallbackT callback) {
-      this.context = checkNotNull(context);
+      this.context = checkNotNull(context.getApplicationContext());
       this.player = checkNotNull(player);
       checkArgument(player.canAdvertiseSession());
-      id = "";
+      id = DEFAULT_SESSION_ID;
       this.callback = callback;
       tokenExtras = new Bundle();
       sessionExtras = new Bundle();
@@ -2399,6 +2603,58 @@ public class MediaSession {
     }
 
     public abstract SessionT build();
+
+    /** Updates bitmap loader to ensure its using the maximum media session size limit. */
+    @EnsuresNonNull("bitmapLoader")
+    protected final void ensureBitmapLoaderIsSizeLimited() {
+      int dimensionLimit = MediaSession.getBitmapDimensionLimit(context);
+      if (bitmapLoader == null) {
+        bitmapLoader =
+            new DataSourceBitmapLoader.Builder(context)
+                .setMaximumOutputDimension(dimensionLimit)
+                .setMakeShared(true)
+                .build();
+      } else {
+        bitmapLoader =
+            new SizeLimitedBitmapLoader(bitmapLoader, dimensionLimit, /* makeShared= */ true);
+      }
+      if (SDK_INT == 29) {
+        bitmapLoader =
+            new SizeAvoidingBitmapLoader(bitmapLoader, getBitmapSizesToAvoidApi29(context));
+      }
+      // Always apply at least a basic level of caching to avoid repeated work.
+      bitmapLoader = new CacheBitmapLoader(bitmapLoader);
+    }
+
+    private static ImmutableIntArray getBitmapSizesToAvoidApi29(Context context) {
+      // Workaround bug on API 29 where Bitmap size of exactly display size / 6 causes crashes.
+      // See https://github.com/androidx/media/issues/3118.
+      ImmutableIntArray sizesToAvoid = bitmapSizesToAvoidApi29.get();
+      if (sizesToAvoid != null) {
+        return sizesToAvoid;
+      }
+      // Use same method to obtain display size and downscaling by 6 as in
+      // https://android.googlesource.com/platform/frameworks/base/+/android-platform-12.0.0_r29/packages/SystemUI/src/com/android/systemui/statusbar/MediaArtworkProcessor.kt#57
+      Display display = context.getSystemService(WindowManager.class).getDefaultDisplay();
+      Point currentDisplaySize = new Point();
+      display.getSize(currentDisplaySize);
+      Point realDisplaySize = new Point();
+      display.getRealSize(realDisplaySize);
+      // We also have to exclude the size when the display is rotated (landscape/portrait), but we
+      // can't query it upfront. It's usually either the same as the current dimension, or the
+      // device applies the same offset between the reported and real size (to account for the
+      // system navigation bar usually).
+      Point rotatedDisplaySize =
+          new Point(
+              realDisplaySize.y - (realDisplaySize.x - currentDisplaySize.x),
+              realDisplaySize.x - (realDisplaySize.y - currentDisplaySize.y));
+      sizesToAvoid =
+          ImmutableIntArray.of(
+              max(currentDisplaySize.x / 6, currentDisplaySize.y / 6),
+              max(rotatedDisplaySize.x / 6, rotatedDisplaySize.y / 6));
+      bitmapSizesToAvoidApi29.set(sizesToAvoid);
+      return sizesToAvoid;
+    }
   }
 
   @RequiresApi(31)

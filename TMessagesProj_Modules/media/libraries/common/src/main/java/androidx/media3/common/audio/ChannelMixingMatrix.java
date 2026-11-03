@@ -15,7 +15,7 @@
  */
 package androidx.media3.common.audio;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
+import static com.google.common.base.Preconditions.checkArgument;
 
 import androidx.annotation.IntRange;
 import androidx.media3.common.util.UnstableApi;
@@ -51,26 +51,6 @@ public final class ChannelMixingMatrix {
   private final boolean isZero;
   private final boolean isDiagonal;
   private final boolean isIdentity;
-
-  /**
-   * Returns a default constant gain channel mixing matrix that mixes {@code inputChannelCount}
-   * channels into {@code outputChannelCount} channels.
-   *
-   * <p>This method returns an identity matrix if {@code inputChannelCount} and {@code
-   * outputChannelCount} are equal.
-   *
-   * @param inputChannelCount Number of input channels.
-   * @param outputChannelCount Number of output channels.
-   * @throws UnsupportedOperationException If no default coefficients are available for the given
-   *     input and output channel counts.
-   * @deprecated Use {@link #createForConstantGain} instead.
-   */
-  @Deprecated
-  public static ChannelMixingMatrix create(
-      @IntRange(from = 1, to = 2) int inputChannelCount,
-      @IntRange(from = 1, to = 2) int outputChannelCount) {
-    return createForConstantGain(inputChannelCount, outputChannelCount);
-  }
 
   /**
    * Returns a default constant gain channel mixing matrix that mixes {@code inputChannelCount}

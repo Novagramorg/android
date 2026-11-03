@@ -15,9 +15,9 @@
  */
 package androidx.media3.common;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
-import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.common.util.BundleCollectionUtil.toBundleArrayList;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import android.os.Bundle;
 import androidx.annotation.Nullable;
@@ -189,6 +189,17 @@ public final class Tracks {
     /** Returns the {@link C.TrackType} of the group. */
     public @C.TrackType int getType() {
       return mediaTrackGroup.type;
+    }
+
+    /**
+     * Copies the {@code Group} with a new media {@link TrackGroup}.
+     *
+     * @param trackGroup The new {@link TrackGroup}.
+     * @return The copied {@code Group}.
+     */
+    @UnstableApi
+    public Group copyWithMediaTrackGroup(TrackGroup trackGroup) {
+      return new Group(trackGroup, adaptiveSupported, trackSupport, trackSelected);
     }
 
     /**

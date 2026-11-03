@@ -15,23 +15,25 @@
  */
 package androidx.media3.session;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
-import static androidx.media3.common.util.Assertions.checkNotEmpty;
-import static androidx.media3.common.util.Assertions.checkNotNull;
-import static androidx.media3.common.util.Assertions.checkState;
 import static androidx.media3.common.util.Util.postOrRun;
 import static androidx.media3.session.SessionError.ERROR_SESSION_DISCONNECTED;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import androidx.annotation.IntRange;
 import androidx.annotation.Nullable;
+import androidx.media3.common.DeviceInfo;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.BitmapLoader;
 import androidx.media3.common.util.Consumer;
+import androidx.media3.common.util.ExperimentalApi;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.datasource.DataSourceBitmapLoader;
@@ -62,6 +64,7 @@ public final class MediaBrowser extends MediaController {
     private @MonotonicNonNull BitmapLoader bitmapLoader;
     private int maxCommandsForMediaItems;
     private long platformSessionCallbackAggregationTimeoutMs;
+    private boolean allowDeviceVolumeCommandsForLocalPlayback;
 
     /**
      * Creates a builder for {@link MediaBrowser}.
@@ -168,12 +171,34 @@ public final class MediaBrowser extends MediaController {
      * @param platformSessionCallbackAggregationTimeoutMs The timeout, in milliseconds.
      * @return The builder to allow chaining.
      */
-    @UnstableApi
+    @ExperimentalApi // TODO: b/470378769 - Remove or convert to permanent config.
     @CanIgnoreReturnValue
     public Builder experimentalSetPlatformSessionCallbackAggregationTimeoutMs(
         long platformSessionCallbackAggregationTimeoutMs) {
       this.platformSessionCallbackAggregationTimeoutMs =
           platformSessionCallbackAggregationTimeoutMs;
+      return this;
+    }
+
+    /**
+     * Sets whether {@link Player#COMMAND_SET_DEVICE_VOLUME_WITH_FLAGS} and {@link
+     * Player#COMMAND_ADJUST_DEVICE_VOLUME_WITH_FLAGS} are allowed to be available for {@linkplain
+     * DeviceInfo#PLAYBACK_TYPE_LOCAL local} playbacks (assuming the media session supports it).
+     *
+     * <p>This method will be removed in a future release.
+     *
+     * <p>The default is {@code false}. Local device volume changes should not generally be done by
+     * apps and can be triggered via {@link android.media.AudioManager} without using a media
+     * controller or media session.
+     *
+     * @return The builder to allow chaining.
+     */
+    @UnstableApi
+    @CanIgnoreReturnValue
+    @ExperimentalApi // TODO: b/470349284 - Remove method after a transition period.
+    public Builder setAllowDeviceVolumeCommandsForLocalPlayback(
+        boolean allowDeviceVolumeCommandsForLocalPlayback) {
+      this.allowDeviceVolumeCommandsForLocalPlayback = allowDeviceVolumeCommandsForLocalPlayback;
       return this;
     }
 
@@ -206,7 +231,7 @@ public final class MediaBrowser extends MediaController {
     public ListenableFuture<MediaBrowser> buildAsync() {
       MediaControllerHolder<MediaBrowser> holder = new MediaControllerHolder<>(applicationLooper);
       if (token.isLegacySession() && bitmapLoader == null) {
-        bitmapLoader = new CacheBitmapLoader(new DataSourceBitmapLoader(context));
+        bitmapLoader = new CacheBitmapLoader(new DataSourceBitmapLoader.Builder(context).build());
       }
       MediaBrowser browser =
           new MediaBrowser(
@@ -218,7 +243,8 @@ public final class MediaBrowser extends MediaController {
               holder,
               bitmapLoader,
               maxCommandsForMediaItems,
-              platformSessionCallbackAggregationTimeoutMs);
+              platformSessionCallbackAggregationTimeoutMs,
+              allowDeviceVolumeCommandsForLocalPlayback);
       postOrRun(new Handler(applicationLooper), () -> holder.setController(browser));
       return holder;
     }
@@ -289,7 +315,8 @@ public final class MediaBrowser extends MediaController {
       ConnectionCallback connectionCallback,
       @Nullable BitmapLoader bitmapLoader,
       int maxCommandsForMediaItems,
-      long platformSessionCallbackAggregationTimeoutMs) {
+      long platformSessionCallbackAggregationTimeoutMs,
+      boolean allowDeviceVolumeCommandsForLocalPlayback) {
     super(
         context,
         token,
@@ -299,7 +326,8 @@ public final class MediaBrowser extends MediaController {
         connectionCallback,
         bitmapLoader,
         maxCommandsForMediaItems,
-        platformSessionCallbackAggregationTimeoutMs);
+        platformSessionCallbackAggregationTimeoutMs,
+        allowDeviceVolumeCommandsForLocalPlayback);
   }
 
   @Override
@@ -311,7 +339,8 @@ public final class MediaBrowser extends MediaController {
       Bundle connectionHints,
       Looper applicationLooper,
       @Nullable BitmapLoader bitmapLoader,
-      long platformSessionCallbackAggregationTimeoutMs) {
+      long platformSessionCallbackAggregationTimeoutMs,
+      boolean allowDeviceVolumeCommandsForLocalPlayback) {
     MediaBrowserImpl impl;
     if (token.isLegacySession()) {
       impl =
@@ -324,7 +353,14 @@ public final class MediaBrowser extends MediaController {
               checkNotNull(bitmapLoader),
               platformSessionCallbackAggregationTimeoutMs);
     } else {
-      impl = new MediaBrowserImplBase(context, this, token, connectionHints, applicationLooper);
+      impl =
+          new MediaBrowserImplBase(
+              context,
+              this,
+              token,
+              connectionHints,
+              applicationLooper,
+              allowDeviceVolumeCommandsForLocalPlayback);
     }
     this.impl = impl;
     return impl;
@@ -359,7 +395,7 @@ public final class MediaBrowser extends MediaController {
   public ListenableFuture<LibraryResult<Void>> subscribe(
       String parentId, @Nullable LibraryParams params) {
     verifyApplicationThread();
-    checkNotEmpty(parentId, "parentId must not be empty");
+    checkArgument(!TextUtils.isEmpty(parentId), "parentId must not be empty");
     if (isConnected()) {
       return checkNotNull(impl).subscribe(parentId, params);
     }
@@ -378,7 +414,7 @@ public final class MediaBrowser extends MediaController {
    */
   public ListenableFuture<LibraryResult<Void>> unsubscribe(String parentId) {
     verifyApplicationThread();
-    checkNotEmpty(parentId, "parentId must not be empty");
+    checkArgument(!TextUtils.isEmpty(parentId), "parentId must not be empty");
     if (isConnected()) {
       return checkNotNull(impl).unsubscribe(parentId);
     }
@@ -402,7 +438,7 @@ public final class MediaBrowser extends MediaController {
       @IntRange(from = 1) int pageSize,
       @Nullable LibraryParams params) {
     verifyApplicationThread();
-    checkNotEmpty(parentId, "parentId must not be empty");
+    checkArgument(!TextUtils.isEmpty(parentId), "parentId must not be empty");
     checkArgument(page >= 0, "page must not be negative");
     checkArgument(pageSize >= 1, "pageSize must not be less than 1");
     if (isConnected()) {
@@ -421,7 +457,7 @@ public final class MediaBrowser extends MediaController {
    */
   public ListenableFuture<LibraryResult<MediaItem>> getItem(String mediaId) {
     verifyApplicationThread();
-    checkNotEmpty(mediaId, "mediaId must not be empty");
+    checkArgument(!TextUtils.isEmpty(mediaId), "mediaId must not be empty");
     if (isConnected()) {
       return checkNotNull(impl).getItem(mediaId);
     }
@@ -443,7 +479,7 @@ public final class MediaBrowser extends MediaController {
   public ListenableFuture<LibraryResult<Void>> search(
       String query, @Nullable LibraryParams params) {
     verifyApplicationThread();
-    checkNotEmpty(query, "query must not be empty");
+    checkArgument(!TextUtils.isEmpty(query), "query must not be empty");
     if (isConnected()) {
       return checkNotNull(impl).search(query, params);
     }
@@ -468,7 +504,7 @@ public final class MediaBrowser extends MediaController {
       @IntRange(from = 1) int pageSize,
       @Nullable LibraryParams params) {
     verifyApplicationThread();
-    checkNotEmpty(query, "query must not be empty");
+    checkArgument(!TextUtils.isEmpty(query), "query must not be empty");
     checkArgument(page >= 0, "page must not be negative");
     checkArgument(pageSize >= 1, "pageSize must not be less than 1");
     if (isConnected()) {

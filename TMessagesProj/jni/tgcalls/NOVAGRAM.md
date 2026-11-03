@@ -1,9 +1,9 @@
 # Vendored: tgcalls
 
-Upstream Telegram for Android (DrKLO/Telegram 13.0.2, f32ffeec7) pins this as a git submodule:
+Upstream Telegram for Android (DrKLO/Telegram 13.1.1, 3de37c8cf) pins this as a git submodule:
 
 - source: https://github.com/TelegramMessenger/tgcalls.git
-- commit: ccbb57965020768c94f5b205ea08547a7e0fe49d
+- commit: 1398c1648f52666b3249111ec3c5b531946e41e4
 
 This repository keeps no submodules, so the needed part is vendored here as plain files and a clone
 builds with no extra fetch. The whole `tgcalls/` source directory is kept (plus LICENSE): jni/voip/CMakeLists.txt

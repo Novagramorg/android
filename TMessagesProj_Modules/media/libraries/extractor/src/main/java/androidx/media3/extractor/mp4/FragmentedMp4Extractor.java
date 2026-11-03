@@ -15,12 +15,12 @@
  */
 package androidx.media3.extractor.mp4;
 
-import static androidx.media3.common.util.Assertions.checkNotNull;
-import static androidx.media3.common.util.Assertions.checkState;
 import static androidx.media3.common.util.Util.castNonNull;
 import static androidx.media3.common.util.Util.nullSafeArrayCopy;
 import static androidx.media3.extractor.mp4.BoxParser.parseTraks;
 import static androidx.media3.extractor.mp4.MimeTypeResolver.getContainerMimeType;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.max;
 import static java.lang.annotation.ElementType.TYPE_USE;
 
@@ -254,9 +254,9 @@ public class FragmentedMp4Extractor implements Extractor {
   // Whether extractorOutput.seekMap has been called.
   private boolean haveOutputSeekMap;
 
-  // Whether we've encountered and merged multiple sidx boxes with different start times and
-  // extractorOutput.seekMap has been called.
-  private boolean haveOutputSeekMapFromMultipleSidx;
+  // Whether the upfront forward scan for sidx boxes (triggered by FLAG_MERGE_FRAGMENTED_SIDX) has
+  // successfully completed and output the merged seek map.
+  private boolean upfrontSidxScanComplete;
 
   private long seekPositionBeforeSidxProcessing;
 
@@ -496,7 +496,10 @@ public class FragmentedMp4Extractor implements Extractor {
                   /* maximumSize= */ 0,
                   /* timestampsUs= */ new long[0],
                   /* flags= */ new int[0],
-                  /* durationUs= */ 0),
+                  /* syncSampleIndices= */ new int[0],
+                  /* hasOnlySyncSamples= */ false,
+                  /* durationUs= */ 0,
+                  /* sampleCount= */ 0),
               new DefaultSampleValues(
                   /* sampleDescriptionIndex= */ 0,
                   /* duration= */ 0,
@@ -537,7 +540,7 @@ public class FragmentedMp4Extractor implements Extractor {
               seekPosition.position = seekPositionBeforeSidxProcessing;
               seekPositionBeforeSidxProcessing = C.INDEX_UNSET;
               extractorOutput.seekMap(chunkIndexMerger.merge());
-              haveOutputSeekMapFromMultipleSidx = true;
+              upfrontSidxScanComplete = true;
               return Extractor.RESULT_SEEK;
             } else {
               reorderingBufferQueue.flush();
@@ -595,8 +598,14 @@ public class FragmentedMp4Extractor implements Extractor {
     }
 
     if (atomSize < atomHeaderBytesRead) {
-      throw ParserException.createForUnsupportedContainerFeature(
-          "Atom size less than header length (unsupported).");
+      if (atomType == Mp4Box.TYPE_free && atomHeaderBytesRead == Mp4Box.HEADER_SIZE) {
+        // Workaround for writers that could create a malformed 'free' box with a size less than
+        // its header, causing file corruption. [See internal: b/438187097].
+        atomSize = atomHeaderBytesRead;
+      } else {
+        throw ParserException.createForUnsupportedContainerFeature(
+            "Atom size less than header length (unsupported).");
+      }
     }
 
     if (seekPositionBeforeSidxProcessing != C.INDEX_UNSET) {
@@ -713,12 +722,14 @@ public class FragmentedMp4Extractor implements Extractor {
     } else if (leaf.type == Mp4Box.TYPE_sidx) {
       Pair<Long, ChunkIndex> result = parseSidx(leaf.data, input.getPosition());
       chunkIndexMerger.add(result.second);
-      if (!haveOutputSeekMap) {
-        segmentIndexEarliestPresentationTimeUs = result.first;
-        extractorOutput.seekMap(result.second);
+      segmentIndexEarliestPresentationTimeUs = result.first;
+      if (!upfrontSidxScanComplete) {
+        extractorOutput.seekMap(
+            chunkIndexMerger.size() == 1 ? result.second : chunkIndexMerger.merge());
         haveOutputSeekMap = true;
-      } else if ((flags & FLAG_MERGE_FRAGMENTED_SIDX) != 0
-          && !haveOutputSeekMapFromMultipleSidx
+      }
+      if ((flags & FLAG_MERGE_FRAGMENTED_SIDX) != 0
+          && !upfrontSidxScanComplete
           && chunkIndexMerger.size() > 1) {
         seekPositionBeforeSidxProcessing = input.getPosition();
       }
@@ -782,7 +793,8 @@ public class FragmentedMp4Extractor implements Extractor {
             drmInitData,
             /* ignoreEditLists= */ (flags & FLAG_WORKAROUND_IGNORE_EDIT_LISTS) != 0,
             /* isQuickTime= */ false,
-            this::modifyTrack);
+            this::modifyTrack,
+            /* omitTrackSampleTable= */ false);
 
     int trackCount = sampleTables.size();
     if (trackBundles.size() == 0) {
@@ -1737,7 +1749,7 @@ public class FragmentedMp4Extractor implements Extractor {
           processSeiNalUnitPayload =
               ceaTrackOutputs.length > 0
                   && numberOfNalUnitHeaderBytesToRead > 0
-                  && NalUnitUtil.isNalUnitSei(track.format, nalPrefixData[4]);
+                  && NalUnitUtil.isNalUnitSei(track.format, nalPrefixData, /* offset= */ 4);
           // Write the extra NAL unit bytes to the output.
           output.sampleData(nalPrefix, numberOfNalUnitHeaderBytesToRead);
           sampleBytesWritten += numberOfNalUnitHeaderBytesToRead;

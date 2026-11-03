@@ -15,7 +15,8 @@
  */
 package androidx.media3.exoplayer.source;
 
-import static androidx.media3.common.util.Assertions.checkNotNull;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 
@@ -24,12 +25,12 @@ import android.os.Handler;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.C.DataType;
+import androidx.media3.common.DataReader;
 import androidx.media3.common.Format;
 import androidx.media3.common.Metadata;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.ParserException;
 import androidx.media3.common.TrackGroup;
-import androidx.media3.common.util.Assertions;
 import androidx.media3.common.util.ConditionVariable;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.NullableType;
@@ -59,6 +60,7 @@ import androidx.media3.extractor.DiscardingTrackOutput;
 import androidx.media3.extractor.Extractor;
 import androidx.media3.extractor.ExtractorOutput;
 import androidx.media3.extractor.ForwardingSeekMap;
+import androidx.media3.extractor.ForwardingTrackOutput;
 import androidx.media3.extractor.IndexSeekMap;
 import androidx.media3.extractor.PositionHolder;
 import androidx.media3.extractor.SeekMap;
@@ -66,12 +68,16 @@ import androidx.media3.extractor.SeekMap.SeekPoints;
 import androidx.media3.extractor.SeekMap.Unseekable;
 import androidx.media3.extractor.TrackOutput;
 import androidx.media3.extractor.metadata.icy.IcyHeaders;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HttpHeaders;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.checkerframework.checker.nullness.qual.EnsuresNonNull;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
@@ -120,6 +126,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
   private final Allocator allocator;
   @Nullable private final String customCacheKey;
   private final long continueLoadingCheckIntervalBytes;
+  private final boolean loadOnlySelectedTracks;
   private final int singleTrackId;
   @Nullable private final Format singleTrackFormat;
   private final long singleSampleDurationUs;
@@ -132,6 +139,9 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
   @Nullable private Callback callback;
   @Nullable private IcyHeaders icyHeaders;
+  // TODO(b/457738425) - Consider merging controledTrackOutputs, sampleQueues together, since they
+  // are essentially the same objects.
+  private ControlledTrackOutput[] controlledTrackOutputs;
   private SampleQueue[] sampleQueues;
   private TrackId[] sampleQueueTrackIds;
   private boolean sampleQueuesBuilt;
@@ -144,6 +154,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
   private long durationUs;
   private boolean isLive;
   private @DataType int dataType;
+  private long endPositionUs;
 
   private boolean seenFirstTrackSelection;
   private boolean notifyDiscontinuity;
@@ -175,6 +186,8 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
    *     indexing. May be null.
    * @param continueLoadingCheckIntervalBytes The number of bytes that should be loaded between each
    *     invocation of {@link Callback#onContinueLoadingRequested(SequenceableLoader)}.
+   * @param loadOnlySelectedTracks Whether to load only the tracks selected by the track selection
+   *     policy.
    * @param singleTrackId The ID of the track configured by {@code singleTrackFormat}. Ignored if
    *     {@code singleTrackFormat} is null.
    * @param singleTrackFormat The format of the single track this period is known to emit, allowing
@@ -197,6 +210,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       Allocator allocator,
       @Nullable String customCacheKey,
       int continueLoadingCheckIntervalBytes,
+      boolean loadOnlySelectedTracks,
       int singleTrackId,
       @Nullable Format singleTrackFormat,
       long singleSampleDurationUs,
@@ -211,8 +225,10 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     this.allocator = allocator;
     this.customCacheKey = customCacheKey;
     this.continueLoadingCheckIntervalBytes = continueLoadingCheckIntervalBytes;
+    this.loadOnlySelectedTracks = loadOnlySelectedTracks;
     this.singleTrackId = singleTrackId;
     this.singleTrackFormat = singleTrackFormat;
+    this.endPositionUs = C.TIME_END_OF_SOURCE;
     loader =
         downloadExecutor != null
             ? new Loader(downloadExecutor)
@@ -230,6 +246,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     handler = Util.createHandlerForCurrentLooper();
     sampleQueueTrackIds = new TrackId[0];
     sampleQueues = new SampleQueue[0];
+    controlledTrackOutputs = new ControlledTrackOutput[0];
     pendingResetPositionUs = C.TIME_UNSET;
     dataType = C.DATA_TYPE_MEDIA;
   }
@@ -308,7 +325,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     for (int i = 0; i < selections.length; i++) {
       if (streams[i] != null && (selections[i] == null || !mayRetainStreamFlags[i])) {
         int track = ((SampleStreamImpl) streams[i]).track;
-        Assertions.checkState(trackEnabledStates[track]);
+        checkState(trackEnabledStates[track]);
         enabledTrackCount--;
         trackEnabledStates[track] = false;
         streams[i] = null;
@@ -323,15 +340,22 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     for (int i = 0; i < selections.length; i++) {
       if (streams[i] == null && selections[i] != null) {
         ExoTrackSelection selection = selections[i];
-        Assertions.checkState(selection.length() == 1);
-        Assertions.checkState(selection.getIndexInTrackGroup(0) == 0);
+        checkState(selection.length() == 1);
+        checkState(selection.getIndexInTrackGroup(0) == 0);
         int track = tracks.indexOf(selection.getTrackGroup());
-        Assertions.checkState(!trackEnabledStates[track]);
+        checkState(!trackEnabledStates[track]);
         enabledTrackCount++;
         trackEnabledStates[track] = true;
         pendingInitialDiscontinuity |= selection.getSelectedFormat().hasPrerollSamples;
         streams[i] = new SampleStreamImpl(track);
         streamResetFlags[i] = true;
+
+        if (loadOnlySelectedTracks) {
+          // If we reenable a track, it needs to be seeked since it was not previously loaded.
+          seekRequired |= seenFirstTrackSelection;
+          continue;
+        }
+
         // If there's still a chance of avoiding a seek, try and seek within the sample queue.
         if (!seekRequired) {
           SampleQueue sampleQueue = sampleQueues[track];
@@ -344,6 +368,13 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
         }
       }
     }
+
+    if (loadOnlySelectedTracks) {
+      for (int i = 0; i < controlledTrackOutputs.length; i++) {
+        controlledTrackOutputs[i].updateSelectionState(trackEnabledStates[i]);
+      }
+    }
+
     if (enabledTrackCount == 0) {
       pendingDeferredRetry = false;
       notifyDiscontinuity = false;
@@ -392,7 +423,10 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
   @Override
   public void reevaluateBuffer(long positionUs) {
-    // Do nothing.
+    if (enabledTrackCount > 0 && !isPendingReset() && haveSampleQueuesReachedEndTimeUs()) {
+      loadingFinished = true;
+      // TODO: b/474538573 - Actually cancel ongoing load and restart later if required.
+    }
   }
 
   @Override
@@ -413,7 +447,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
   @Override
   public boolean isLoading() {
-    return loader.isLoading() && loadCondition.isOpen();
+    return !loadingFinished && loader.isLoading() && loadCondition.isOpen();
   }
 
   @Override
@@ -521,6 +555,15 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
         positionUs, seekPoints.first.timeUs, seekPoints.second.timeUs);
   }
 
+  @Override
+  public long setEndPositionUs(long endPositionUs) {
+    this.endPositionUs = endPositionUs;
+    for (SampleQueue sampleQueue : sampleQueues) {
+      sampleQueue.setReadEndTimeUs(endPositionUs);
+    }
+    return endPositionUs;
+  }
+
   // SampleStream methods.
 
   /* package */ boolean isReady(int track) {
@@ -565,6 +608,22 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       maybeStartDeferredRetry(track);
     }
     return skipCount;
+  }
+
+  private boolean haveSampleQueuesReachedEndTimeUs() {
+    if (endPositionUs == C.TIME_END_OF_SOURCE) {
+      return false;
+    }
+    assertPrepared();
+    boolean endPositionReached = true;
+    for (int i = 0; i < sampleQueues.length; i++) {
+      // Ignore non-AV tracks, which may be sparse or poorly interleaved.
+      if (trackState.trackEnabledStates[i]
+          && (trackState.trackIsAudioVideoFlags[i] || !haveAudioVideoTracks)) {
+        endPositionReached &= sampleQueues[i].hasQueuedTimestampsUpToReadEndTimeUs();
+      }
+    }
+    return endPositionReached;
   }
 
   private void maybeNotifyDownstreamFormat(int track) {
@@ -809,16 +868,24 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       Log.w(TAG, "Extractor added new track (id=" + id.id + ") after finishing tracks.");
       return new DiscardingTrackOutput();
     }
-    SampleQueue trackOutput =
+    SampleQueue sampleQueue =
         SampleQueue.createWithDrm(allocator, drmSessionManager, drmEventDispatcher);
-    trackOutput.setUpstreamFormatChangeListener(this);
+    ControlledTrackOutput trackOutput = new ControlledTrackOutput(sampleQueue);
+    sampleQueue.setUpstreamFormatChangeListener(this);
     @NullableType
     TrackId[] sampleQueueTrackIds = Arrays.copyOf(this.sampleQueueTrackIds, trackCount + 1);
     sampleQueueTrackIds[trackCount] = id;
     this.sampleQueueTrackIds = Util.castNonNullTypeArray(sampleQueueTrackIds);
+
     @NullableType SampleQueue[] sampleQueues = Arrays.copyOf(this.sampleQueues, trackCount + 1);
-    sampleQueues[trackCount] = trackOutput;
+    sampleQueues[trackCount] = sampleQueue;
     this.sampleQueues = Util.castNonNullTypeArray(sampleQueues);
+
+    @NullableType
+    ControlledTrackOutput[] controlledTrackOutputs =
+        Arrays.copyOf(this.controlledTrackOutputs, trackCount + 1);
+    controlledTrackOutputs[trackCount] = trackOutput;
+    this.controlledTrackOutputs = Util.castNonNullTypeArray(controlledTrackOutputs);
     return trackOutput;
   }
 
@@ -845,6 +912,17 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     }
     loadCondition.close();
     int trackCount = sampleQueues.length;
+    int primaryTrackIndex = 0;
+    @C.TrackType int primaryTrackIndexType = C.TRACK_TYPE_UNKNOWN;
+    for (int i = 0; i < trackCount; i++) {
+      @C.TrackType
+      int trackType =
+          MimeTypes.getTrackType(checkNotNull(sampleQueues[i].getUpstreamFormat()).sampleMimeType);
+      if (getTrackTypePriority(trackType) > getTrackTypePriority(primaryTrackIndexType)) {
+        primaryTrackIndex = i;
+        primaryTrackIndexType = trackType;
+      }
+    }
     TrackGroup[] trackArray = new TrackGroup[trackCount];
     boolean[] trackIsAudioVideoFlags = new boolean[trackCount];
     for (int i = 0; i < trackCount; i++) {
@@ -877,8 +955,16 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
         }
       }
       trackFormat = trackFormat.copyWithCryptoType(drmSessionManager.getCryptoType(trackFormat));
+      if (i != primaryTrackIndex) {
+        trackFormat =
+            trackFormat
+                .buildUpon()
+                .setPrimaryTrackGroupId(Integer.toString(primaryTrackIndex))
+                .build();
+      }
       trackArray[i] = new TrackGroup(/* id= */ Integer.toString(i), trackFormat);
       pendingInitialDiscontinuity |= trackFormat.hasPrerollSamples;
+      sampleQueues[i].setReadEndTimeUs(endPositionUs);
     }
     trackState = new TrackState(new TrackGroupArray(trackArray), trackIsAudioVideoFlags);
     if (isSingleSample && durationUs == C.TIME_UNSET) {
@@ -901,8 +987,9 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
         new ExtractingLoadable(
             uri, dataSource, progressiveMediaExtractor, /* extractorOutput= */ this, loadCondition);
     if (prepared) {
-      Assertions.checkState(isPendingReset());
-      if (durationUs != C.TIME_UNSET && pendingResetPositionUs > durationUs) {
+      checkState(isPendingReset());
+      long maxLoadPositionUs = endPositionUs != C.TIME_END_OF_SOURCE ? endPositionUs : durationUs;
+      if (maxLoadPositionUs != C.TIME_UNSET && pendingResetPositionUs > maxLoadPositionUs) {
         loadingFinished = true;
         pendingResetPositionUs = C.TIME_UNSET;
         return;
@@ -977,6 +1064,11 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     int trackCount = sampleQueues.length;
     for (int i = 0; i < trackCount; i++) {
       SampleQueue sampleQueue = sampleQueues[i];
+      // For the tracks that do not get buffered, we don't need to seek.
+      if (!controlledTrackOutputs[i].isSelected()) {
+        continue;
+      }
+
       if (sampleQueue.getReadIndex() == 0 && isSameAsLastSeekPosition) {
         continue;
       }
@@ -1020,7 +1112,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
   @EnsuresNonNull({"trackState", "seekMap"})
   private void assertPrepared() {
-    Assertions.checkState(prepared);
+    checkState(prepared);
     checkNotNull(trackState);
     checkNotNull(seekMap);
   }
@@ -1089,7 +1181,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       this.positionHolder = new PositionHolder();
       this.pendingExtractorSeek = true;
       loadTaskId = LoadEventInfo.getNewId();
-      dataSpec = buildDataSpec(/* position= */ 0);
+      dataSpec = buildDataSpec(/* position= */ 0, /* etag= */ null);
     }
 
     // Loadable implementation.
@@ -1102,14 +1194,17 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     @Override
     public void load() throws IOException {
       int result = Extractor.RESULT_CONTINUE;
+      String etag = null;
       while (result == Extractor.RESULT_CONTINUE && !loadCanceled) {
         try {
           long position = positionHolder.position;
-          dataSpec = buildDataSpec(position);
+          dataSpec = buildDataSpec(position, etag);
           long length = dataSource.open(dataSpec);
           if (loadCanceled) {
             break;
           }
+          @Nullable List<String> etags = dataSource.getResponseHeaders().get(HttpHeaders.ETAG);
+          etag = etags != null && !etags.isEmpty() ? etags.get(0) : null;
           if (length != C.LENGTH_UNSET) {
             length += position;
             onLengthKnown();
@@ -1182,16 +1277,24 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
     // Internal methods.
 
-    private DataSpec buildDataSpec(long position) {
-      // Disable caching if the content length cannot be resolved, since this is indicative of a
-      // progressive live stream.
+    private DataSpec buildDataSpec(long position, @Nullable String etag) {
+      Map<String, String> requestHeaders = ICY_METADATA_HEADERS;
+      if (etag != null && !etag.startsWith("W/")) {
+        requestHeaders =
+            ImmutableMap.<String, String>builder()
+                .putAll(requestHeaders)
+                .put(HttpHeaders.IF_RANGE, etag)
+                .buildKeepingLast();
+      }
       return new DataSpec.Builder()
           .setUri(uri)
           .setPosition(position)
           .setKey(customCacheKey)
+          // Disable caching if the content length cannot be resolved, since this is indicative of a
+          // progressive live stream.
           .setFlags(
               DataSpec.FLAG_DONT_CACHE_IF_LENGTH_UNKNOWN | DataSpec.FLAG_ALLOW_CACHE_FRAGMENTATION)
-          .setHttpRequestHeaders(ICY_METADATA_HEADERS)
+          .setHttpRequestHeaders(requestHeaders)
           .build();
     }
 
@@ -1254,5 +1357,110 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
         IcyHeaders.REQUEST_HEADER_ENABLE_METADATA_NAME,
         IcyHeaders.REQUEST_HEADER_ENABLE_METADATA_VALUE);
     return Collections.unmodifiableMap(headers);
+  }
+
+  private static int getTrackTypePriority(@C.TrackType int trackType) {
+    switch (trackType) {
+      case C.TRACK_TYPE_VIDEO:
+        return 4;
+      case C.TRACK_TYPE_AUDIO:
+        return 3;
+      case C.TRACK_TYPE_IMAGE:
+        return 2;
+      case C.TRACK_TYPE_TEXT:
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  /** A track output that can discard samples when not selected. */
+  private static class ControlledTrackOutput extends ForwardingTrackOutput {
+    private final SampleQueue sampleQueue;
+    private final DiscardingTrackOutput discardingTrackOutput;
+    private final AtomicReference<OutputMode> outputMode;
+
+    /** The mode of operation for the controlled track output. */
+    static enum OutputMode {
+      /** Pass samples through to the downstream track output. */
+      PASS_THROUGH,
+      /**
+       * Pass samples through to the downstream track output, but discard after the next sample
+       * metadata is received.
+       */
+      DISCARD_AFTER_NEXT_SAMPLE_METADATA,
+      /** Discards all samples. */
+      DISCARDING,
+    };
+
+    ControlledTrackOutput(SampleQueue sampleQueue) {
+      super(sampleQueue);
+      this.sampleQueue = sampleQueue;
+      this.discardingTrackOutput = new DiscardingTrackOutput();
+      this.outputMode = new AtomicReference<>(OutputMode.PASS_THROUGH);
+    }
+
+    @Override
+    public int sampleData(DataReader input, int length, boolean allowEndOfInput)
+        throws IOException {
+      return getCurrentOutput().sampleData(input, length, allowEndOfInput);
+    }
+
+    @Override
+    public int sampleData(
+        DataReader input, int length, boolean allowEndOfInput, @SampleDataPart int sampleDataPart)
+        throws IOException {
+      return getCurrentOutput().sampleData(input, length, allowEndOfInput, sampleDataPart);
+    }
+
+    @Override
+    public void sampleData(ParsableByteArray data, int length) {
+      getCurrentOutput().sampleData(data, length);
+    }
+
+    @Override
+    public void sampleData(ParsableByteArray data, int length, @SampleDataPart int sampleDataPart) {
+      getCurrentOutput().sampleData(data, length, sampleDataPart);
+    }
+
+    @Override
+    public void sampleMetadata(
+        long timeUs,
+        @C.BufferFlags int flags,
+        int size,
+        int offset,
+        @Nullable CryptoData cryptoData) {
+      getCurrentOutput().sampleMetadata(timeUs, flags, size, offset, cryptoData);
+      if (outputMode.get() == OutputMode.DISCARD_AFTER_NEXT_SAMPLE_METADATA) {
+        sampleQueue.reset();
+        outputMode.set(OutputMode.DISCARDING);
+      }
+    }
+
+    /**
+     * Updates the selection state of the track.
+     *
+     * @param selected Whether the track is selected.
+     */
+    void updateSelectionState(boolean selected) {
+      // Since there could still be some samples within the internal SampleDataQueue, we will be
+      // confident about releasing them all after the next sample metadata is received.
+      outputMode.set(
+          selected ? OutputMode.PASS_THROUGH : OutputMode.DISCARD_AFTER_NEXT_SAMPLE_METADATA);
+      // In case the existing samples are taking too much memory, preventing further load, release
+      // them optimistically.
+      if (!selected) {
+        sampleQueue.discardToEnd();
+      }
+    }
+
+    /** Returns whether the track is selected. */
+    boolean isSelected() {
+      return outputMode.get() == OutputMode.PASS_THROUGH;
+    }
+
+    private TrackOutput getCurrentOutput() {
+      return outputMode.get() == OutputMode.DISCARDING ? discardingTrackOutput : sampleQueue;
+    }
   }
 }

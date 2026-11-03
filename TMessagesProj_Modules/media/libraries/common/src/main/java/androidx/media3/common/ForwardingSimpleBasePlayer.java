@@ -123,6 +123,7 @@ public class ForwardingSimpleBasePlayer extends SimpleBasePlayer {
     if (player.isCommandAvailable(Player.COMMAND_GET_AUDIO_ATTRIBUTES)) {
       state.setAudioAttributes(player.getAudioAttributes());
     }
+    state.setAudioSessionId(player.getAudioSessionId());
     state.setAvailableCommands(player.getAvailableCommands());
     if (player.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)) {
       state.setContentBufferedPositionMs(positionSuppliers.contentBufferedPositionSupplier);
@@ -242,9 +243,25 @@ public class ForwardingSimpleBasePlayer extends SimpleBasePlayer {
     return Futures.immediateVoidFuture();
   }
 
+  @SuppressWarnings("deprecation") // Calling deprecated method.
   @Override
-  protected ListenableFuture<?> handleSetVolume(float volume) {
+  protected final ListenableFuture<?> handleSetVolume(float volume) {
     player.setVolume(volume);
+    return Futures.immediateVoidFuture();
+  }
+
+  @Override
+  protected ListenableFuture<?> handleSetVolume(
+      float volume, @C.VolumeOperationType int volumeOperationType) {
+    if (volumeOperationType == C.VOLUME_OPERATION_TYPE_SET_VOLUME) {
+      player.setVolume(volume);
+    } else if (volumeOperationType == C.VOLUME_OPERATION_TYPE_MUTE) {
+      player.mute();
+    } else if (volumeOperationType == C.VOLUME_OPERATION_TYPE_UNMUTE) {
+      player.unmute();
+    } else {
+      throw new IllegalStateException("Unknown volume operation type: " + volumeOperationType);
+    }
     return Futures.immediateVoidFuture();
   }
 
@@ -436,7 +453,7 @@ public class ForwardingSimpleBasePlayer extends SimpleBasePlayer {
   }
 
   @EnsuresNonNull({
-    "player",
+    "this.player",
     "lastTimedMetadata",
     "playWhenReadyChangeReason",
     "pendingDiscontinuityReason",

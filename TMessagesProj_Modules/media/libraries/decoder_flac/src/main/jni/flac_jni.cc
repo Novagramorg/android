@@ -32,17 +32,17 @@
 #define DECODER_FUNC(RETURN_TYPE, NAME, ...)                              \
   extern "C" {                                                            \
   JNIEXPORT RETURN_TYPE                                                   \
-  Java_androidx_media3_decoder_flac_FlacDecoderJni_##NAME(JNIEnv *env,    \
+  Java_androidx_media3_decoder_flac_FlacDecoderJni_##NAME(JNIEnv* env,    \
                                                           jobject thiz,   \
                                                           ##__VA_ARGS__); \
   }                                                                       \
   JNIEXPORT RETURN_TYPE                                                   \
   Java_androidx_media3_decoder_flac_FlacDecoderJni_##NAME(                \
-      JNIEnv *env, jobject thiz, ##__VA_ARGS__)
+      JNIEnv* env, jobject thiz, ##__VA_ARGS__)
 
 class JavaDataSource : public DataSource {
  public:
-  void setFlacDecoderJni(JNIEnv *env, jobject flacDecoderJni) {
+  void setFlacDecoderJni(JNIEnv* env, jobject flacDecoderJni) {
     this->env = env;
     this->flacDecoderJni = flacDecoderJni;
     if (mid == NULL) {
@@ -52,7 +52,7 @@ class JavaDataSource : public DataSource {
     }
   }
 
-  ssize_t readAt(off64_t offset, void *const data, size_t size) {
+  ssize_t readAt(off64_t offset, void* const data, size_t size) {
     jobject byteBuffer = env->NewDirectByteBuffer(data, size);
     int result = env->CallIntMethod(flacDecoderJni, mid, byteBuffer);
     if (env->ExceptionCheck()) {
@@ -64,14 +64,14 @@ class JavaDataSource : public DataSource {
   }
 
  private:
-  JNIEnv *env;
+  JNIEnv* env;
   jobject flacDecoderJni;
   jmethodID mid;
 };
 
 struct Context {
-  JavaDataSource *source;
-  FLACParser *parser;
+  JavaDataSource* source;
+  FLACParser* parser;
 
   Context() {
     source = new JavaDataSource();
@@ -84,8 +84,31 @@ struct Context {
   }
 };
 
+static jstring createSafeString(JNIEnv* env, const std::string& str,
+                                jclass stringClass, jmethodID stringConstructor,
+                                jstring charsetName) {
+  if (env->PushLocalFrame(10) < 0) {
+    return nullptr;
+  }
+  jbyteArray bytes = env->NewByteArray(str.size());
+  if (!bytes || env->ExceptionCheck()) {
+    return static_cast<jstring>(env->PopLocalFrame(nullptr));
+  }
+  env->SetByteArrayRegion(bytes, 0, str.size(),
+                          reinterpret_cast<const jbyte*>(str.data()));
+  if (env->ExceptionCheck()) {
+    return static_cast<jstring>(env->PopLocalFrame(nullptr));
+  }
+  jobject result =
+      env->NewObject(stringClass, stringConstructor, bytes, charsetName);
+  if (env->ExceptionCheck()) {
+    return static_cast<jstring>(env->PopLocalFrame(nullptr));
+  }
+  return static_cast<jstring>(env->PopLocalFrame(result));
+}
+
 DECODER_FUNC(jlong, flacInit) {
-  Context *context = new Context;
+  Context* context = new Context;
   if (!context->parser->init()) {
     delete context;
     return 0;
@@ -94,10 +117,24 @@ DECODER_FUNC(jlong, flacInit) {
 }
 
 DECODER_FUNC(jobject, flacDecodeMetadata, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   context->source->setFlacDecoderJni(env, thiz);
   if (!context->parser->decodeMetadata()) {
-    return NULL;
+    return nullptr;
+  }
+
+  jclass stringClass = env->FindClass("java/lang/String");
+  if (!stringClass || env->ExceptionCheck()) {
+    return nullptr;
+  }
+  jmethodID stringConstructor =
+      env->GetMethodID(stringClass, "<init>", "([BLjava/lang/String;)V");
+  if (!stringConstructor || env->ExceptionCheck()) {
+    return nullptr;
+  }
+  jstring charsetName = env->NewStringUTF("UTF-8");
+  if (!charsetName || env->ExceptionCheck()) {
+    return nullptr;
   }
 
   jclass arrayListClass = env->FindClass("java/util/ArrayList");
@@ -113,9 +150,12 @@ DECODER_FUNC(jobject, flacDecodeMetadata, jlong jContext) {
     for (std::vector<std::string>::const_iterator vorbisComment =
              vorbisComments.begin();
          vorbisComment != vorbisComments.end(); ++vorbisComment) {
-      jstring commentString = env->NewStringUTF((*vorbisComment).c_str());
-      env->CallBooleanMethod(commentList, arrayListAddMethod, commentString);
-      env->DeleteLocalRef(commentString);
+      jstring commentString = createSafeString(env, *vorbisComment, stringClass,
+                                               stringConstructor, charsetName);
+      if (commentString != nullptr) {
+        env->CallBooleanMethod(commentList, arrayListAddMethod, commentString);
+        env->DeleteLocalRef(commentString);
+      }
     }
   }
 
@@ -130,11 +170,31 @@ DECODER_FUNC(jobject, flacDecodeMetadata, jlong jContext) {
                          "(ILjava/lang/String;Ljava/lang/String;IIII[B)V");
     for (std::vector<FlacPicture>::const_iterator picture = pictures.begin();
          picture != pictures.end(); ++picture) {
-      jstring mimeType = env->NewStringUTF(picture->mimeType.c_str());
-      jstring description = env->NewStringUTF(picture->description.c_str());
+      jstring mimeType = createSafeString(env, picture->mimeType, stringClass,
+                                          stringConstructor, charsetName);
+      if (mimeType == nullptr) {
+        if (env->ExceptionCheck()) return nullptr;
+        continue;
+      }
+
+      jstring description =
+          createSafeString(env, picture->description, stringClass,
+                           stringConstructor, charsetName);
+      if (description == nullptr) {
+        env->DeleteLocalRef(mimeType);
+        if (env->ExceptionCheck()) return nullptr;
+        continue;
+      }
+
       jbyteArray pictureData = env->NewByteArray(picture->data.size());
+      if (pictureData == nullptr) {
+        env->DeleteLocalRef(mimeType);
+        env->DeleteLocalRef(description);
+        if (env->ExceptionCheck()) return nullptr;
+        continue;
+      }
       env->SetByteArrayRegion(pictureData, 0, picture->data.size(),
-                              (signed char *)&picture->data[0]);
+                              (signed char*)&picture->data[0]);
       jobject pictureFrame = env->NewObject(
           pictureFrameClass, pictureFrameConstructor, picture->type, mimeType,
           description, picture->width, picture->height, picture->depth,
@@ -146,7 +206,7 @@ DECODER_FUNC(jobject, flacDecodeMetadata, jlong jContext) {
     }
   }
 
-  const FLAC__StreamMetadata_StreamInfo &streamInfo =
+  const FLAC__StreamMetadata_StreamInfo& streamInfo =
       context->parser->getStreamInfo();
 
   jclass flacStreamMetadataClass = env->FindClass(
@@ -165,17 +225,17 @@ DECODER_FUNC(jobject, flacDecodeMetadata, jlong jContext) {
 }
 
 DECODER_FUNC(jint, flacDecodeToBuffer, jlong jContext, jobject jOutputBuffer) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   context->source->setFlacDecoderJni(env, thiz);
-  void *outputBuffer = env->GetDirectBufferAddress(jOutputBuffer);
+  void* outputBuffer = env->GetDirectBufferAddress(jOutputBuffer);
   jint outputSize = env->GetDirectBufferCapacity(jOutputBuffer);
   return context->parser->readBuffer(outputBuffer, outputSize);
 }
 
 DECODER_FUNC(jint, flacDecodeToArray, jlong jContext, jbyteArray jOutputArray) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   context->source->setFlacDecoderJni(env, thiz);
-  jbyte *outputBuffer = env->GetByteArrayElements(jOutputArray, NULL);
+  jbyte* outputBuffer = env->GetByteArrayElements(jOutputArray, NULL);
   jint outputSize = env->GetArrayLength(jOutputArray);
   int count = context->parser->readBuffer(outputBuffer, outputSize);
   env->ReleaseByteArrayElements(jOutputArray, outputBuffer, 0);
@@ -183,28 +243,28 @@ DECODER_FUNC(jint, flacDecodeToArray, jlong jContext, jbyteArray jOutputArray) {
 }
 
 DECODER_FUNC(jlong, flacGetDecodePosition, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   return context->parser->getDecodePosition();
 }
 
 DECODER_FUNC(jlong, flacGetLastFrameTimestamp, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   return context->parser->getLastFrameTimestamp();
 }
 
 DECODER_FUNC(jlong, flacGetLastFrameFirstSampleIndex, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   return context->parser->getLastFrameFirstSampleIndex();
 }
 
 DECODER_FUNC(jlong, flacGetNextFrameFirstSampleIndex, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   return context->parser->getNextFrameFirstSampleIndex();
 }
 
 DECODER_FUNC(jboolean, flacGetSeekPoints, jlong jContext, jlong timeUs,
              jlongArray outSeekPoints) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   std::array<int64_t, 4> result;
   bool success = context->parser->getSeekPositions(timeUs, result);
   if (success) {
@@ -214,27 +274,27 @@ DECODER_FUNC(jboolean, flacGetSeekPoints, jlong jContext, jlong timeUs,
 }
 
 DECODER_FUNC(jstring, flacGetStateString, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
-  const char *str = context->parser->getDecoderStateString();
+  Context* context = reinterpret_cast<Context*>(jContext);
+  const char* str = context->parser->getDecoderStateString();
   return env->NewStringUTF(str);
 }
 
 DECODER_FUNC(jboolean, flacIsDecoderAtEndOfStream, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   return context->parser->isDecoderAtEndOfStream();
 }
 
 DECODER_FUNC(void, flacFlush, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   context->parser->flush();
 }
 
 DECODER_FUNC(void, flacReset, jlong jContext, jlong newPosition) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   context->parser->reset(newPosition);
 }
 
 DECODER_FUNC(void, flacRelease, jlong jContext) {
-  Context *context = reinterpret_cast<Context *>(jContext);
+  Context* context = reinterpret_cast<Context*>(jContext);
   delete context;
 }

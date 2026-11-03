@@ -16,7 +16,7 @@
 
 package androidx.media3.transformer;
 
-import static androidx.media3.common.util.Assertions.checkState;
+import static com.google.common.base.Preconditions.checkState;
 
 import android.content.Context;
 import android.media.MediaCodec.BufferInfo;
@@ -26,7 +26,7 @@ import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
-import androidx.media3.common.util.UnstableApi;
+import androidx.media3.common.util.ExperimentalApi;
 import androidx.media3.decoder.DecoderInputBuffer;
 import androidx.media3.exoplayer.video.PlaceholderSurface;
 import com.google.common.collect.ImmutableList;
@@ -42,7 +42,7 @@ import org.checkerframework.checker.nullness.qual.EnsuresNonNullIf;
  *
  * <p>This class is experimental and will be renamed or removed in a future release.
  */
-@UnstableApi
+@ExperimentalApi // TODO: b/470383732 - Make class non-experimental.
 public final class ExperimentalAnalyzerModeFactory {
 
   private ExperimentalAnalyzerModeFactory() {}

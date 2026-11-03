@@ -16,13 +16,14 @@
 package androidx.media3.exoplayer;
 
 import static androidx.media3.common.C.TRACK_TYPE_AUDIO;
+import static androidx.media3.common.C.TRACK_TYPE_IMAGE;
 import static androidx.media3.common.C.TRACK_TYPE_VIDEO;
-import static androidx.media3.common.util.Assertions.checkNotNull;
-import static androidx.media3.common.util.Assertions.checkState;
 import static androidx.media3.exoplayer.Renderer.MSG_TRANSFER_RESOURCES;
 import static androidx.media3.exoplayer.Renderer.STATE_DISABLED;
 import static androidx.media3.exoplayer.Renderer.STATE_ENABLED;
 import static androidx.media3.exoplayer.Renderer.STATE_STARTED;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.min;
 import static java.lang.annotation.ElementType.TYPE_USE;
 
@@ -31,6 +32,8 @@ import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.Timeline;
+import androidx.media3.common.util.Log;
+import androidx.media3.exoplayer.image.ImageMetadataListener;
 import androidx.media3.exoplayer.metadata.MetadataRenderer;
 import androidx.media3.exoplayer.source.MediaPeriod;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -48,6 +51,8 @@ import java.util.Objects;
 
 /** Holds a {@link Renderer renderer}. */
 /* package */ class RendererHolder {
+  private static final String TAG = "RendererHolder";
+
   private final Renderer primaryRenderer;
   // Index of renderer in renderer list held by the {@link Player}.
   private final int index;
@@ -611,9 +616,19 @@ import java.util.Objects;
             || prewarmingState == RENDERER_PREWARMING_STATE_PREWARMING_PRIMARY;
     boolean isSecondaryActiveRenderer =
         prewarmingState == RENDERER_PREWARMING_STATE_TRANSITIONING_TO_PRIMARY;
-    disableRenderer(
-        isPrewarmingPrimary ? primaryRenderer : checkNotNull(secondaryRenderer), mediaClock);
-    maybeResetRenderer(/* resetPrimary= */ isPrewarmingPrimary);
+    try {
+      disableRenderer(
+          isPrewarmingPrimary ? primaryRenderer : checkNotNull(secondaryRenderer), mediaClock);
+    } catch (RuntimeException e) {
+      // There's nothing we can do.
+      Log.e(TAG, "Disable prewarming failed.", e);
+    }
+    try {
+      maybeResetRenderer(/* resetPrimary= */ isPrewarmingPrimary);
+    } catch (RuntimeException e) {
+      // There's nothing we can do.
+      Log.e(TAG, "Reset prewarming failed.", e);
+    }
     prewarmingState =
         isSecondaryActiveRenderer
             ? RENDERER_PREWARMING_STATE_NOT_PREWARMING_USING_SECONDARY
@@ -647,7 +662,7 @@ import java.util.Objects;
         disableRenderer(renderer, mediaClock);
       } else if (streamReset) {
         // The renderer will continue to consume from its current stream, but needs to be reset.
-        renderer.resetPosition(rendererPositionUs);
+        renderer.resetPosition(rendererPositionUs, /* sampleStreamIsResetToKeyFrame= */ true);
       }
     }
   }
@@ -679,12 +694,26 @@ import java.util.Objects;
    *
    * @see Renderer#resetPosition
    */
-  public void resetPosition(MediaPeriodHolder playingPeriod, long positionUs)
+  public void resetPosition(
+      MediaPeriodHolder playingPeriod, long positionUs, boolean sampleStreamIsResetToKeyFrame)
       throws ExoPlaybackException {
     Renderer renderer = getRendererReadingFromPeriod(playingPeriod);
     if (renderer != null) {
-      renderer.resetPosition(positionUs);
+      renderer.resetPosition(positionUs, sampleStreamIsResetToKeyFrame);
     }
+  }
+
+  /**
+   * Returns {@code true} if a {@link Renderer} is enabled on the provided {@link MediaPeriodHolder
+   * media period} and if it will support a {@link Renderer#resetPosition} invocation without
+   * resetting the sample stream to a key frame.
+   *
+   * @see Renderer#supportsResetPositionWithoutKeyFrameReset
+   */
+  public boolean supportsResetPositionWithoutKeyFrameReset(
+      MediaPeriodHolder playingPeriod, long positionUs) {
+    Renderer renderer = getRendererReadingFromPeriod(playingPeriod);
+    return renderer != null && renderer.supportsResetPositionWithoutKeyFrameReset(positionUs);
   }
 
   /**
@@ -813,6 +842,18 @@ import java.util.Objects;
     if (secondaryRenderer != null) {
       secondaryRenderer.handleMessage(
           Renderer.MSG_SET_VIDEO_FRAME_METADATA_LISTENER, videoFrameMetadataListener);
+    }
+  }
+
+  public void setImageMetadataListener(ImageMetadataListener imageMetadataListener)
+      throws ExoPlaybackException {
+    if (getTrackType() != TRACK_TYPE_IMAGE) {
+      return;
+    }
+    primaryRenderer.handleMessage(Renderer.MSG_SET_IMAGE_METADATA_LISTENER, imageMetadataListener);
+    if (secondaryRenderer != null) {
+      secondaryRenderer.handleMessage(
+          Renderer.MSG_SET_IMAGE_METADATA_LISTENER, imageMetadataListener);
     }
   }
 

@@ -142,6 +142,12 @@ public class ForwardingAudioSink implements AudioSink {
   }
 
   @Override
+  @Nullable
+  public AudioCapabilities getAudioCapabilities() {
+    return sink.getAudioCapabilities();
+  }
+
+  @Override
   public void setAudioSessionId(int audioSessionId) {
     sink.setAudioSessionId(audioSessionId);
   }
@@ -151,10 +157,14 @@ public class ForwardingAudioSink implements AudioSink {
     sink.setAuxEffectInfo(auxEffectInfo);
   }
 
-  @RequiresApi(23)
   @Override
   public void setPreferredDevice(@Nullable AudioDeviceInfo audioDeviceInfo) {
     sink.setPreferredDevice(audioDeviceInfo);
+  }
+
+  @Override
+  public void setVirtualDeviceId(int virtualDeviceId) {
+    sink.setVirtualDeviceId(virtualDeviceId);
   }
 
   @Override
@@ -187,6 +197,11 @@ public class ForwardingAudioSink implements AudioSink {
   @RequiresApi(29)
   public void setOffloadDelayPadding(int delayInFrames, int paddingInFrames) {
     sink.setOffloadDelayPadding(delayInFrames, paddingInFrames);
+  }
+
+  @Override
+  public void setAudioOutputProvider(AudioOutputProvider audioOutputProvider) {
+    sink.setAudioOutputProvider(audioOutputProvider);
   }
 
   @Override

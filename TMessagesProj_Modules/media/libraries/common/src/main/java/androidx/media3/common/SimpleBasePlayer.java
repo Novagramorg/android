@@ -15,11 +15,11 @@
  */
 package androidx.media3.common;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
-import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.common.util.Util.castNonNull;
 import static androidx.media3.common.util.Util.msToUs;
 import static androidx.media3.common.util.Util.usToMs;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 
@@ -43,6 +43,7 @@ import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -52,6 +53,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.checkerframework.checker.nullness.qual.EnsuresNonNull;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.RequiresNonNull;
@@ -116,7 +118,9 @@ public abstract class SimpleBasePlayer extends BasePlayer {
       private PlaybackParameters playbackParameters;
       private TrackSelectionParameters trackSelectionParameters;
       private AudioAttributes audioAttributes;
+      private int audioSessionId;
       private float volume;
+      private float unmuteVolume;
       private VideoSize videoSize;
       private CueGroup currentCues;
       private DeviceInfo deviceInfo;
@@ -161,7 +165,9 @@ public abstract class SimpleBasePlayer extends BasePlayer {
         playbackParameters = PlaybackParameters.DEFAULT;
         trackSelectionParameters = TrackSelectionParameters.DEFAULT;
         audioAttributes = AudioAttributes.DEFAULT;
+        audioSessionId = C.AUDIO_SESSION_ID_UNSET;
         volume = 1f;
+        unmuteVolume = 1f;
         videoSize = VideoSize.UNKNOWN;
         currentCues = CueGroup.EMPTY_TIME_ZERO;
         deviceInfo = DeviceInfo.UNKNOWN;
@@ -206,7 +212,9 @@ public abstract class SimpleBasePlayer extends BasePlayer {
         this.playbackParameters = state.playbackParameters;
         this.trackSelectionParameters = state.trackSelectionParameters;
         this.audioAttributes = state.audioAttributes;
+        this.audioSessionId = state.audioSessionId;
         this.volume = state.volume;
+        this.unmuteVolume = state.unmuteVolume;
         this.videoSize = state.videoSize;
         this.currentCues = state.currentCues;
         this.deviceInfo = state.deviceInfo;
@@ -426,6 +434,18 @@ public abstract class SimpleBasePlayer extends BasePlayer {
       }
 
       /**
+       * Sets the current audio session ID.
+       *
+       * @param audioSessionId The current audio session ID.
+       * @return This builder.
+       */
+      @CanIgnoreReturnValue
+      public Builder setAudioSessionId(int audioSessionId) {
+        this.audioSessionId = audioSessionId;
+        return this;
+      }
+
+      /**
        * Sets the current audio volume, with 0 being silence and 1 being unity gain (signal
        * unchanged).
        *
@@ -436,7 +456,24 @@ public abstract class SimpleBasePlayer extends BasePlayer {
       @CanIgnoreReturnValue
       public Builder setVolume(@FloatRange(from = 0, to = 1.0) float volume) {
         checkArgument(volume >= 0.0f && volume <= 1.0f);
+        this.unmuteVolume = (volume != 0) ? volume : this.volume;
         this.volume = volume;
+        return this;
+      }
+
+      /**
+       * Sets the unmute audio volume, with 0 being silence and 1 being unity gain (signal
+       * unchanged). This value corresponds to volume that the Player will get after a successful
+       * {@link Player#unmute()} call.
+       *
+       * @param unmuteVolume The unmuted audio volume, with 0 being silence and 1 being unity gain
+       *     (signal unchanged).
+       * @return This builder.
+       */
+      @CanIgnoreReturnValue
+      public Builder setUnmuteVolume(@FloatRange(from = 0, to = 1.0) float unmuteVolume) {
+        checkArgument(unmuteVolume >= 0.0f && unmuteVolume <= 1.0f);
+        this.unmuteVolume = unmuteVolume;
         return this;
       }
 
@@ -856,9 +893,16 @@ public abstract class SimpleBasePlayer extends BasePlayer {
     /** The current {@link AudioAttributes}. */
     public final AudioAttributes audioAttributes;
 
+    /** The current audio session ID. */
+    public final int audioSessionId;
+
     /** The current audio volume, with 0 being silence and 1 being unity gain (signal unchanged). */
     @FloatRange(from = 0, to = 1.0)
     public final float volume;
+
+    /** The unmute audio volume, with 0 being silence and 1 being unity gain (signal unchanged). */
+    @FloatRange(from = 0, to = 1.0)
+    public final float unmuteVolume;
 
     /** The current video size. */
     public final VideoSize videoSize;
@@ -1070,7 +1114,9 @@ public abstract class SimpleBasePlayer extends BasePlayer {
       this.playbackParameters = builder.playbackParameters;
       this.trackSelectionParameters = builder.trackSelectionParameters;
       this.audioAttributes = builder.audioAttributes;
+      this.audioSessionId = builder.audioSessionId;
       this.volume = builder.volume;
+      this.unmuteVolume = builder.unmuteVolume;
       this.videoSize = builder.videoSize;
       this.currentCues = builder.currentCues;
       this.deviceInfo = builder.deviceInfo;
@@ -1148,6 +1194,7 @@ public abstract class SimpleBasePlayer extends BasePlayer {
           && trackSelectionParameters.equals(state.trackSelectionParameters)
           && audioAttributes.equals(state.audioAttributes)
           && volume == state.volume
+          && unmuteVolume == state.unmuteVolume
           && videoSize.equals(state.videoSize)
           && currentCues.equals(state.currentCues)
           && deviceInfo.equals(state.deviceInfo)
@@ -1193,6 +1240,7 @@ public abstract class SimpleBasePlayer extends BasePlayer {
       result = 31 * result + trackSelectionParameters.hashCode();
       result = 31 * result + audioAttributes.hashCode();
       result = 31 * result + Float.floatToRawIntBits(volume);
+      result = 31 * result + Float.floatToRawIntBits(unmuteVolume);
       result = 31 * result + videoSize.hashCode();
       result = 31 * result + currentCues.hashCode();
       result = 31 * result + deviceInfo.hashCode();
@@ -2170,7 +2218,7 @@ public abstract class SimpleBasePlayer extends BasePlayer {
   private final ListenerSet<Listener> listeners;
   private final Looper applicationLooper;
   private final HandlerWrapper applicationHandler;
-  private final HashSet<ListenableFuture<?>> pendingOperations;
+  private final Set<ListenableFuture<?>> pendingOperations;
   private final Timeline.Period period;
 
   private @MonotonicNonNull State state;
@@ -2196,7 +2244,7 @@ public abstract class SimpleBasePlayer extends BasePlayer {
   protected SimpleBasePlayer(Looper applicationLooper, Clock clock) {
     this.applicationLooper = applicationLooper;
     applicationHandler = clock.createHandler(applicationLooper, /* callback= */ null);
-    pendingOperations = new HashSet<>();
+    pendingOperations = Sets.newIdentityHashSet();
     period = new Timeline.Period();
     @SuppressWarnings("nullness:argument.type.incompatible") // Using this in constructor.
     ListenerSet<Player.Listener> listenerSet =
@@ -2762,6 +2810,12 @@ public abstract class SimpleBasePlayer extends BasePlayer {
   }
 
   @Override
+  public final int getAudioSessionId() {
+    verifyApplicationThreadAndInitState();
+    return state.audioSessionId;
+  }
+
+  @Override
   public final void setVolume(float volume) {
     verifyApplicationThreadAndInitState();
     // Use a local copy to ensure the lambda below uses the current state value.
@@ -2770,7 +2824,7 @@ public abstract class SimpleBasePlayer extends BasePlayer {
       return;
     }
     updateStateForPendingOperation(
-        /* pendingOperation= */ handleSetVolume(volume),
+        /* pendingOperation= */ handleSetVolume(volume, C.VOLUME_OPERATION_TYPE_SET_VOLUME),
         /* placeholderStateSupplier= */ () -> state.buildUpon().setVolume(volume).build());
   }
 
@@ -2778,6 +2832,36 @@ public abstract class SimpleBasePlayer extends BasePlayer {
   public final float getVolume() {
     verifyApplicationThreadAndInitState();
     return state.volume;
+  }
+
+  @Override
+  public final void mute() {
+    verifyApplicationThreadAndInitState();
+    State state = this.state;
+    if (!shouldHandleCommand(Player.COMMAND_SET_VOLUME)) {
+      return;
+    }
+    if (this.state.volume != 0f) {
+      updateStateForPendingOperation(
+          /* pendingOperation= */ handleSetVolume(0, C.VOLUME_OPERATION_TYPE_MUTE),
+          /* placeholderStateSupplier= */ () -> state.buildUpon().setVolume(0).build());
+    }
+  }
+
+  @Override
+  public final void unmute() {
+    verifyApplicationThreadAndInitState();
+    State state = this.state;
+    if (!shouldHandleCommand(Player.COMMAND_SET_VOLUME)) {
+      return;
+    }
+    if (this.state.volume == 0f) {
+      updateStateForPendingOperation(
+          /* pendingOperation= */ handleSetVolume(
+              state.unmuteVolume, C.VOLUME_OPERATION_TYPE_UNMUTE),
+          /* placeholderStateSupplier= */ () ->
+              state.buildUpon().setVolume(state.unmuteVolume).build());
+    }
   }
 
   @Override
@@ -3274,18 +3358,31 @@ public abstract class SimpleBasePlayer extends BasePlayer {
   }
 
   /**
+   * @deprecated Use {@link #handleSetVolume(float, int)} instead.
+   */
+  @Deprecated
+  @ForOverride
+  protected ListenableFuture<?> handleSetVolume(@FloatRange(from = 0, to = 1.0) float volume) {
+    throw new IllegalStateException("Missing implementation to handle COMMAND_SET_VOLUME");
+  }
+
+  /**
    * Handles calls to {@link Player#setVolume}.
    *
    * <p>Will only be called if {@link Player#COMMAND_SET_VOLUME} is available.
    *
    * @param volume The requested audio volume, with 0 being silence and 1 being unity gain (signal
    *     unchanged).
+   * @param volumeOperationType The {@link C.VolumeOperationType} that corresponds to the original
+   *     command for changing of the volume.
    * @return A {@link ListenableFuture} indicating the completion of all immediate {@link State}
    *     changes caused by this call.
    */
   @ForOverride
-  protected ListenableFuture<?> handleSetVolume(@FloatRange(from = 0, to = 1.0) float volume) {
-    throw new IllegalStateException("Missing implementation to handle COMMAND_SET_VOLUME");
+  protected ListenableFuture<?> handleSetVolume(
+      @FloatRange(from = 0, to = 1.0) float volume,
+      @C.VolumeOperationType int volumeOperationType) {
+    return handleSetVolume(volume);
   }
 
   /**
@@ -3722,6 +3819,11 @@ public abstract class SimpleBasePlayer extends BasePlayer {
           Player.EVENT_AUDIO_ATTRIBUTES_CHANGED,
           listener -> listener.onAudioAttributesChanged(newState.audioAttributes));
     }
+    if (previousState.audioSessionId != newState.audioSessionId) {
+      listeners.queueEvent(
+          Player.EVENT_AUDIO_SESSION_ID,
+          listener -> listener.onAudioSessionIdChanged(newState.audioSessionId));
+    }
     if (!previousState.videoSize.equals(newState.videoSize)) {
       listeners.queueEvent(
           Player.EVENT_VIDEO_SIZE_CHANGED,
@@ -4001,10 +4103,9 @@ public abstract class SimpleBasePlayer extends BasePlayer {
     @Nullable Object windowUid = null;
     @Nullable Object periodUid = null;
     int mediaItemIndex = getCurrentMediaItemIndexInternal(state);
-    int periodIndex = C.INDEX_UNSET;
+    int periodIndex = getCurrentPeriodIndexInternal(state, window, period);
     @Nullable MediaItem mediaItem = null;
     if (!state.timeline.isEmpty()) {
-      periodIndex = getCurrentPeriodIndexInternal(state, window, period);
       periodUid = state.timeline.getPeriod(periodIndex, period, /* setIds= */ true).uid;
       windowUid = state.timeline.getWindow(mediaItemIndex, window).uid;
       mediaItem = window.mediaItem;

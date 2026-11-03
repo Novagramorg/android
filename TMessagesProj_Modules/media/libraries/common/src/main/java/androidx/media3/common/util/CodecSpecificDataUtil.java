@@ -15,10 +15,11 @@
  */
 package androidx.media3.common.util;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
+import static com.google.common.base.Preconditions.checkArgument;
 
 import android.annotation.SuppressLint;
 import android.media.MediaCodecInfo;
+import android.media.MediaCodecInfo.CodecProfileLevel;
 import android.util.Pair;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
@@ -26,9 +27,13 @@ import androidx.media3.common.ColorInfo;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.UnsignedBytes;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -47,6 +52,10 @@ public final class CodecSpecificDataUtil {
   private static final int EXTENDED_PAR = 0x0F;
   private static final int RECTANGULAR = 0x00;
 
+  // IAMF OBU types.
+  private static final int OBU_IA_CODEC_CONFIG = 0x00;
+  private static final int OBU_IA_SEQUENCE_HEADER = 0x1F;
+
   // Codecs to constant mappings.
   // H263
   private static final String CODEC_ID_H263 = "s263";
@@ -58,14 +67,50 @@ public final class CodecSpecificDataUtil {
   // HEVC.
   private static final String CODEC_ID_HEV1 = "hev1";
   private static final String CODEC_ID_HVC1 = "hvc1";
+  // VVC.
+  private static final String CODEC_ID_VVC1 = "vvc1";
+  private static final String CODEC_ID_VVI1 = "vvi1";
   // AV1.
   private static final String CODEC_ID_AV01 = "av01";
+  // APV.
+  private static final String CODEC_ID_APV1 = "apv1";
   // MP4A AAC.
   private static final String CODEC_ID_MP4A = "mp4a";
   // AC-4
   private static final String CODEC_ID_AC4 = "ac-4";
   // IAMF
   private static final String CODEC_ID_IAMF = "iamf";
+
+  // TODO(b/482032815): Replace VVC literal constants with MediaCodecInfo.CodecProfileLevel
+  // constants when compile SDK is updated to 37.
+  private static final int VVC_PROFILE_MAIN_8 = 0x01;
+  private static final int VVC_PROFILE_MAIN_10 = 0x02;
+  private static final int VVC_PROFILE_MAIN_10_STILL = 0x04;
+  private static final int VVC_PROFILE_MAIN_10_HDR10 = 0x1000;
+
+  private static final int VVC_MAIN_TIER_LEVEL_1_0 = 0x01;
+  private static final int VVC_MAIN_TIER_LEVEL_2_0 = 0x02;
+  private static final int VVC_MAIN_TIER_LEVEL_2_1 = 0x04;
+  private static final int VVC_MAIN_TIER_LEVEL_3_0 = 0x08;
+  private static final int VVC_MAIN_TIER_LEVEL_3_1 = 0x10;
+  private static final int VVC_MAIN_TIER_LEVEL_4_0 = 0x20;
+  private static final int VVC_HIGH_TIER_LEVEL_4_0 = 0x40;
+  private static final int VVC_MAIN_TIER_LEVEL_4_1 = 0x80;
+  private static final int VVC_HIGH_TIER_LEVEL_4_1 = 0x100;
+  private static final int VVC_MAIN_TIER_LEVEL_5_0 = 0x200;
+  private static final int VVC_HIGH_TIER_LEVEL_5_0 = 0x400;
+  private static final int VVC_MAIN_TIER_LEVEL_5_1 = 0x800;
+  private static final int VVC_HIGH_TIER_LEVEL_5_1 = 0x1000;
+  private static final int VVC_MAIN_TIER_LEVEL_5_2 = 0x2000;
+  private static final int VVC_HIGH_TIER_LEVEL_5_2 = 0x4000;
+  private static final int VVC_MAIN_TIER_LEVEL_6_0 = 0x8000;
+  private static final int VVC_HIGH_TIER_LEVEL_6_0 = 0x10000;
+  private static final int VVC_MAIN_TIER_LEVEL_6_1 = 0x20000;
+  private static final int VVC_HIGH_TIER_LEVEL_6_1 = 0x40000;
+  private static final int VVC_MAIN_TIER_LEVEL_6_2 = 0x80000;
+  private static final int VVC_HIGH_TIER_LEVEL_6_2 = 0x100000;
+  private static final int VVC_MAIN_TIER_LEVEL_6_3 = 0x200000;
+  private static final int VVC_HIGH_TIER_LEVEL_6_3 = 0x400000;
 
   private static final Pattern PROFILE_PATTERN = Pattern.compile("^\\D?(\\d+)$");
 
@@ -76,15 +121,17 @@ public final class CodecSpecificDataUtil {
    * href="https://github.com/macosforge/alac/blob/master/ALACMagicCookieDescription.txt">ALACSpecificConfig</a>).
    *
    * @param audioSpecificConfig A byte array containing the AudioSpecificConfig to parse.
-   * @return A pair consisting of the sample rate in Hz and the channel count.
+   * @return An int array consisting of the sample rate in Hz, the channel count and the bit depth.
    */
-  public static Pair<Integer, Integer> parseAlacAudioSpecificConfig(byte[] audioSpecificConfig) {
+  public static int[] parseAlacAudioSpecificConfig(byte[] audioSpecificConfig) {
     ParsableByteArray byteArray = new ParsableByteArray(audioSpecificConfig);
+    byteArray.setPosition(5);
+    int bitDepth = byteArray.readUnsignedByte();
     byteArray.setPosition(9);
     int channelCount = byteArray.readUnsignedByte();
     byteArray.setPosition(20);
     int sampleRate = byteArray.readUnsignedIntToInt();
-    return Pair.create(sampleRate, channelCount);
+    return new int[] {sampleRate, channelCount, bitDepth};
   }
 
   /**
@@ -105,38 +152,73 @@ public final class CodecSpecificDataUtil {
    * href="https://aomediacodec.github.io/iamf/#codecsparameter">IAMF Codec Parameters String</a>
    * specification.
    */
+  @Nullable
   public static String buildIamfCodecString(byte[] initializationData) {
     ParsableByteArray parsableByteArray = new ParsableByteArray(initializationData);
-    parsableByteArray.skipLeb128(); // configOBUs_size
-    // IASequenceHeaderOBU
-    parsableByteArray.skipBytes(4); // ia_code (4 bytes)
-    int primaryProfile = parsableByteArray.readUnsignedByte(); // primary_profile (1 byte)
-    int additionalProfile = parsableByteArray.readUnsignedByte(); // additional_profile (1 byte)
 
-    // OBUHeader
-    // obu_type (5 bits) + obu_redundant_copy (1 bit) + obu_trimming_status_flag  (1 bit) +
-    // obu_extension_flag (1 bit)
-    parsableByteArray.skipBytes(1);
-    parsableByteArray.skipLeb128(); // obu_size
+    @Nullable String iaSequenceHeader = null;
+    @Nullable String codecConfigCodecId = null;
 
-    // CodecConfigOBU
-    parsableByteArray.skipLeb128(); // codec_config_id
-    String codecId = parsableByteArray.readString(4); // codec_id (4 bytes)
+    while (parsableByteArray.bytesLeft() > 0
+        && (iaSequenceHeader == null || codecConfigCodecId == null)) {
+      // OBUHeader
+      // obu_type (5 bits) + obu_redundant_copy (1 bit) + obu_trimming_status_flag  (1 bit) +
+      // obu_extension_flag (1 bit)
+      int obuHeaderByte = parsableByteArray.readUnsignedByte();
+      int obuType = obuHeaderByte >> 3; // obu_type (5 bits)
+      // skip obu_redundant_copy (1 bit)
+      boolean obuTrimmingStatusFlag = (obuHeaderByte & 0x2) != 0; // obu_trimming_status (1 bit)
+      boolean obuExtensionFlag = (obuHeaderByte & 0x1) != 0; // obu_extension (1 bit)
 
-    if (codecId.equals("mp4a")) {
-      parsableByteArray.skipLeb128(); // num_samples_per_frame
-      parsableByteArray.skipBytes(2); // audio_roll_distance (2 bytes)
+      int obuSize = parsableByteArray.readUnsignedLeb128ToInt(); // obu_size
 
-      ParsableBitArray decoderConfigBitArray = new ParsableBitArray();
-      decoderConfigBitArray.reset(parsableByteArray);
-      int audioObjectType = decoderConfigBitArray.readBits(5);
-      // If audioObjectType is an escape value, then we need to read 6 bits.
-      if (audioObjectType == 0x1F) {
-        audioObjectType = 32 + decoderConfigBitArray.readBits(6);
+      if ((obuType > 4 && obuType < 24) && obuTrimmingStatusFlag) {
+        parsableByteArray.skipLeb128(); // num_samples_to_trim_at_end
+        parsableByteArray.skipLeb128(); // num_samples_to_trim_at_start
       }
-      codecId += ".40." + audioObjectType;
+      if (obuExtensionFlag) {
+        int extensionHeaderSize =
+            parsableByteArray.readUnsignedLeb128ToInt(); // extension_header_size
+        parsableByteArray.skipBytes(extensionHeaderSize); // extension_header_bytes
+      }
+
+      int nextObuPosition = parsableByteArray.getPosition() + obuSize;
+      if (obuType == OBU_IA_SEQUENCE_HEADER) { // OBU_IA_Sequence_Header
+        // IASequenceHeaderOBU
+        parsableByteArray.skipBytes(4); // ia_code (4 bytes)
+        int primaryProfile = parsableByteArray.readUnsignedByte(); // primary_profile (1 byte)
+        int additionalProfile = parsableByteArray.readUnsignedByte(); // additional_profile (1 byte)
+        iaSequenceHeader =
+            Util.formatInvariant("iamf.%03X.%03X", primaryProfile, additionalProfile);
+      } else if (obuType == OBU_IA_CODEC_CONFIG) { // OBU_IA_Codec_Config
+        // CodecConfigOBU
+        parsableByteArray.skipLeb128(); // codec_config_id
+        codecConfigCodecId = parsableByteArray.readString(4); // codec_id (4 bytes)
+
+        if (codecConfigCodecId.equals(CODEC_ID_MP4A)) {
+          parsableByteArray.skipLeb128(); // num_samples_per_frame
+          parsableByteArray.skipBytes(2); // audio_roll_distance (2 bytes)
+
+          ParsableBitArray decoderConfigBitArray = new ParsableBitArray();
+          decoderConfigBitArray.reset(parsableByteArray);
+          int audioObjectType = decoderConfigBitArray.readBits(5);
+          // If audioObjectType is an escape value, then we need to read extra 6 bits.
+          // Refer to ISO/IEC 14496-3 (2005) Table 1.14 for more details.
+          if (audioObjectType == 0x1F) {
+            audioObjectType = 32 + decoderConfigBitArray.readBits(6);
+          }
+          codecConfigCodecId += ".40." + audioObjectType;
+        }
+      }
+
+      parsableByteArray.setPosition(nextObuPosition);
     }
-    return Util.formatInvariant("iamf.%03X.%03X.%s", primaryProfile, additionalProfile, codecId);
+
+    if (iaSequenceHeader != null && codecConfigCodecId != null) {
+      return iaSequenceHeader + "." + codecConfigCodecId;
+    } else {
+      return null;
+    }
   }
 
   /**
@@ -183,12 +265,98 @@ public final class CodecSpecificDataUtil {
   }
 
   /**
+   * Creates the Vorbis initialization data (CodecPrivate).
+   *
+   * <p>The format is as follows:
+   *
+   * <ul>
+   *   <li>Byte 1: The number of packets minus one. This is 2 for Vorbis, representing the
+   *       Identification, Comment, and Setup headers.
+   *   <li>Bytes 2..n: The lengths of the first two packets (Identification and Comment headers),
+   *       encoded using Xiph lacing. The length of the final packet (Setup header) is not
+   *       explicitly stored.
+   *   <li>Bytes n+1 onwards: The Vorbis identification header, Vorbis comment header and the codec
+   *       setup header.
+   * </ul>
+   *
+   * See <a href="https://www.matroska.org/technical/codec_specs.html">A_VORBIS</a> for CodecPrivate
+   * format of Vorbis.
+   *
+   * @param format The {@link Format}.
+   * @return A {@link ByteBuffer} containing the assembled Vorbis CodecPrivate data.
+   */
+  public static ByteBuffer getVorbisInitializationData(Format format) {
+    checkArgument(
+        format.initializationData.size() > 1, "csd-0 and csd-1 must be present for Vorbis.");
+
+    byte[] identificationHeader = format.initializationData.get(0);
+    byte[] setupHeader = format.initializationData.get(1);
+    byte[] commentHeader =
+        new byte[] {
+          3, 'v', 'o', 'r', 'b', 'i', 's', 7, 0, 0, 0, 'a', 'n', 'd', 'r', 'o', 'i', 'd', 0, 0, 0,
+          0, 1
+        };
+
+    int identificationHeaderSize = identificationHeader.length;
+    int commentHeaderSize = commentHeader.length;
+    int setupHeaderSize = setupHeader.length;
+
+    byte[] identificationHeaderLaced = xiphLaceEnc(identificationHeaderSize);
+    byte[] commentHeaderLaced = xiphLaceEnc(commentHeaderSize);
+
+    int codecPrivateSize =
+        /* headers count size */ 1
+            + identificationHeaderLaced.length
+            + commentHeaderLaced.length
+            + identificationHeaderSize
+            + commentHeaderSize
+            + setupHeaderSize;
+
+    ByteBuffer codecPrivateBuf = ByteBuffer.allocate(codecPrivateSize);
+
+    codecPrivateBuf.put((byte) 0x02); // Number of headers - 1 (Id, Comment, Setup)
+
+    // Encode and put Xiph laced lengths
+    codecPrivateBuf.put(identificationHeaderLaced);
+    codecPrivateBuf.put(commentHeaderLaced);
+
+    codecPrivateBuf.put(identificationHeader);
+    codecPrivateBuf.put(commentHeader);
+    codecPrivateBuf.put(setupHeader);
+
+    codecPrivateBuf.flip();
+
+    return codecPrivateBuf;
+  }
+
+  /**
+   * Encodes size into a byte array using Xiph lacing.
+   *
+   * <p>The lacing size is split into 255 values, stored as unsigned octets – for example, 500 is
+   * coded 255;245 or [0xFF 0xF5]. A frame with a size multiple of 255 is coded with a 0 at the end
+   * of the size – for example, 765 is coded 255;255;255;0 or [0xFF 0xFF 0xFF 0x00].
+   *
+   * @param size The size to encode.
+   * @return A byte array containing the Xiph-laced representation of {@code size}.
+   */
+  private static byte[] xiphLaceEnc(int size) {
+    byte[] xiphLacedSizeArray = new byte[(size / 255) + 1];
+
+    Arrays.fill(xiphLacedSizeArray, (byte) 0xFF);
+
+    xiphLacedSizeArray[xiphLacedSizeArray.length - 1] = (byte) (size % 255);
+    return xiphLacedSizeArray;
+  }
+
+  /**
    * Returns initialization data for Dolby Vision according to <a
    * href="https://dolby.my.salesforce.com/sfc/p/#700000009YuG/a/4u000000l6FB/076wHYEmyEfz09m0V1bo85_25hlUJjaiWTbzorNmYY4">Dolby
    * Vision ISO MediaFormat (section 2.2) specification</a>.
    *
-   * @param profile The Dolby Vision codec profile.
-   * @param level The Dolby Vision codec level.
+   * @param profile The Dolby Vision codec profile. This is the integer profile, not the {@link
+   *     MediaCodecInfo.CodecProfileLevel} constant.
+   * @param level The Dolby Vision codec level. This is the integer level, not the {@link
+   *     MediaCodecInfo.CodecProfileLevel} constant.
    */
   public static byte[] buildDolbyVisionInitializationData(int profile, int level) {
     byte[] dolbyVisionCsd = new byte[24];
@@ -214,6 +382,44 @@ public final class CodecSpecificDataUtil {
     dolbyVisionCsd[4] = (byte) (blCompatibilityId << 4); // dv_bl_signal_compatibility_id
     dolbyVisionCsd[4] = (byte) (dolbyVisionCsd[4] | (mdCompression << 2)); // dv_md_compression
     return dolbyVisionCsd;
+  }
+
+  /**
+   * Returns initialization data for Opus according to <a
+   * href="https://tools.ietf.org/html/rfc7845#section-5.1">RFC 7845: 5.1</a>.
+   *
+   * @param format The {@link Format}.
+   * @return A byte array containing the Opus initialization data.
+   */
+  public static byte[] getOpusInitializationData(Format format) {
+    checkArgument(!format.initializationData.isEmpty(), "csd-0 must be present for Opus.");
+    // If csd0 starts with "AOPUSHDR", it indicates a custom CSD structure of:
+    // Marker (AOPUSHDR) | Length (Length of OpusIdentificationHeader) |
+    // OpusIdentificationHeader("OpusHead" + data).
+    //     8 bytes       |                    8 bytes                  |   Length no. of bytes
+    // Reference:
+    // https://cs.android.com/android/platform/superproject/main/+/main:frameworks/av/media/module/foundation/include/media/stagefright/foundation/OpusHeader.h;l=28
+    int aopushdrSignatureLength = 8;
+    int opusHeadSignatureLength = 8;
+    byte[] csd0 = format.initializationData.get(0);
+    checkArgument(csd0.length >= opusHeadSignatureLength);
+    ParsableByteArray parsableCsd0 = new ParsableByteArray(csd0);
+    int payloadOffset = 0;
+    int payloadLength = csd0.length;
+    String csd0SignatureString = parsableCsd0.readString(aopushdrSignatureLength);
+    if (csd0SignatureString.equals("AOPUSHDR")) {
+      // The offset of the OpusIdentificationHeader data within the "AOPUSHDR" custom CSD.
+      int opusIdentificationHeaderOffset = 16;
+      checkArgument(csd0.length >= opusIdentificationHeaderOffset + opusHeadSignatureLength);
+      long identificationHeaderLength = parsableCsd0.readLittleEndianLong();
+      checkArgument(opusIdentificationHeaderOffset + identificationHeaderLength <= csd0.length);
+      payloadOffset = opusIdentificationHeaderOffset;
+      payloadLength = (int) identificationHeaderLength;
+    } else {
+      // Otherwise, the OpusIdentificationHeader must start with "OpusHead" signature.
+      checkArgument(csd0SignatureString.equals("OpusHead"));
+    }
+    return Arrays.copyOfRange(csd0, payloadOffset, payloadOffset + payloadLength);
   }
 
   /**
@@ -340,6 +546,31 @@ public final class CodecSpecificDataUtil {
     return builder.toString();
   }
 
+  /**
+   * Returns an APV codec string based on the provided initialization data.
+   *
+   * <p>Reference: <a
+   * href="https://github.com/AcademySoftwareFoundation/openapv/blob/main/readme/apv_isobmff.md#sub-parameters-for-the-mime-tyype-codecs-parameter">
+   * Codecs Parameter in APV ISO Base Media File Format</a>
+   *
+   * @param initializationData The initialization data containing profile, level, and band
+   *     information.
+   * @return The generated APV codec string.
+   */
+  public static String buildApvCodecString(byte[] initializationData) {
+    checkArgument(
+        initializationData.length >= 17, "Invalid APV CSD length: %s", initializationData.length);
+    checkArgument(
+        initializationData[0] == 0x01,
+        "Invalid APV CSD version: %s",
+        initializationData[0]); // configurationVersion == 1
+
+    int profile = UnsignedBytes.toInt(initializationData[5]);
+    int level = UnsignedBytes.toInt(initializationData[6]);
+    int band = UnsignedBytes.toInt(initializationData[7]);
+    return Util.formatInvariant("apv1.apvf%d.apvl%d.apvb%d", profile, level, band);
+  }
+
   /** Builds an RFC 6381 H263 codec string using profile and level. */
   public static String buildH263CodecString(int profile, int level) {
     return Util.formatInvariant("s263.%d.%d", profile, level);
@@ -391,14 +622,138 @@ public final class CodecSpecificDataUtil {
       case CODEC_ID_HEV1:
       case CODEC_ID_HVC1:
         return getHevcProfileAndLevel(format.codecs, parts, format.colorInfo);
+      case CODEC_ID_VVC1:
+      case CODEC_ID_VVI1:
+        return getVvcProfileAndLevel(format.codecs, parts, format.colorInfo);
       case CODEC_ID_AV01:
         return getAv1ProfileAndLevel(format.codecs, parts, format.colorInfo);
+      case CODEC_ID_APV1:
+        return getApvProfileAndLevel(format.codecs, parts);
       case CODEC_ID_MP4A:
         return getAacCodecProfileAndLevel(format.codecs, parts);
       case CODEC_ID_AC4:
         return getAc4CodecProfileAndLevel(format.codecs, parts);
       case CODEC_ID_IAMF:
         return getIamfCodecProfileAndLevel(format.codecs, parts);
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Returns VVC profile and level corresponding to the codec description string (as defined by
+   * ISO/IEC 14496-15:2021, Annex E.3) and its {@link ColorInfo}.
+   *
+   * @param codec The codec description string.
+   * @param parts The codec string split by ".".
+   * @param colorInfo The {@link ColorInfo}.
+   * @return A pair (profile constant, level constant) if profile and level are recognized, or
+   *     {@code null} otherwise.
+   */
+  @Nullable
+  private static Pair<Integer, Integer> getVvcProfileAndLevel(
+      String codec, String[] parts, @Nullable ColorInfo colorInfo) {
+    if (parts.length < 3) {
+      Log.w(TAG, "Ignoring malformed VVC codec string: " + codec);
+      return null;
+    }
+
+    int profileIdc;
+    try {
+      profileIdc = Integer.parseInt(parts[1]);
+    } catch (NumberFormatException e) {
+      Log.w(TAG, "Ignoring malformed VVC codec string: " + codec);
+      return null;
+    }
+
+    int profile;
+    if (profileIdc == 1) {
+      if (colorInfo != null && colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084) {
+        profile = VVC_PROFILE_MAIN_10_HDR10;
+      } else if (colorInfo != null && colorInfo.lumaBitdepth == 8) {
+        profile = VVC_PROFILE_MAIN_8;
+      } else {
+        profile = VVC_PROFILE_MAIN_10;
+      }
+    } else if (profileIdc == 65) {
+      profile = VVC_PROFILE_MAIN_10_STILL;
+    } else {
+      Log.w(TAG, "Unknown VVC profile IDC: " + parts[1]);
+      return null;
+    }
+
+    @Nullable String levelString = parts[2];
+    @Nullable Integer level = vvcCodecStringToProfileLevel(levelString);
+    if (level == null) {
+      Log.w(TAG, "Unknown VVC level string: " + levelString);
+      return null;
+    }
+    return new Pair<>(profile, level);
+  }
+
+  /**
+   * Returns the VVC level constant corresponding to the tier and level string (as defined by
+   * ISO/IEC 14496-15:2021, Annex E.3).
+   *
+   * <p>The string consists of a tier indicator ('L' for Main, 'H' for High) followed by the
+   * general_level_idc.
+   *
+   * @param codecString The VVC tier and level string (e.g., "L16" or "H64").
+   * @return The VVC level constant, or {@code null} if the level is not recognized.
+   * @see <a href="https://www.itu.int/rec/T-REC-H.266">ITU-T Rec. H.266, Annex A</a>
+   */
+  @Nullable
+  private static Integer vvcCodecStringToProfileLevel(@Nullable String codecString) {
+    if (codecString == null) {
+      return null;
+    }
+    switch (codecString) {
+      case "L16":
+        return VVC_MAIN_TIER_LEVEL_1_0;
+      case "L32":
+        return VVC_MAIN_TIER_LEVEL_2_0;
+      case "L35":
+        return VVC_MAIN_TIER_LEVEL_2_1;
+      case "L48":
+        return VVC_MAIN_TIER_LEVEL_3_0;
+      case "L51":
+        return VVC_MAIN_TIER_LEVEL_3_1;
+      case "L64":
+        return VVC_MAIN_TIER_LEVEL_4_0;
+      case "H64":
+        return VVC_HIGH_TIER_LEVEL_4_0;
+      case "L67":
+        return VVC_MAIN_TIER_LEVEL_4_1;
+      case "H67":
+        return VVC_HIGH_TIER_LEVEL_4_1;
+      case "L80":
+        return VVC_MAIN_TIER_LEVEL_5_0;
+      case "H80":
+        return VVC_HIGH_TIER_LEVEL_5_0;
+      case "L83":
+        return VVC_MAIN_TIER_LEVEL_5_1;
+      case "H83":
+        return VVC_HIGH_TIER_LEVEL_5_1;
+      case "L86":
+        return VVC_MAIN_TIER_LEVEL_5_2;
+      case "H86":
+        return VVC_HIGH_TIER_LEVEL_5_2;
+      case "L96":
+        return VVC_MAIN_TIER_LEVEL_6_0;
+      case "H96":
+        return VVC_HIGH_TIER_LEVEL_6_0;
+      case "L112":
+        return VVC_MAIN_TIER_LEVEL_6_1;
+      case "H112":
+        return VVC_HIGH_TIER_LEVEL_6_1;
+      case "L128":
+        return VVC_MAIN_TIER_LEVEL_6_2;
+      case "H128":
+        return VVC_HIGH_TIER_LEVEL_6_2;
+      case "L144":
+        return VVC_MAIN_TIER_LEVEL_6_3;
+      case "H144":
+        return VVC_HIGH_TIER_LEVEL_6_3;
       default:
         return null;
     }
@@ -649,6 +1004,36 @@ public final class CodecSpecificDataUtil {
     return new Pair<>(profile, level);
   }
 
+  /**
+   * Returns a Dolby Vision base layer codec MIME type of the provided {@link Format}.
+   *
+   * @param format The media format.
+   * @return A Dolby Vision base layer MIME type, or {@code null} if a Dolby Vision profile is not
+   *     identified.
+   */
+  @Nullable
+  public static String getDolbyVisionBaseLayerMimeType(Format format) {
+    if (!Objects.equals(format.sampleMimeType, MimeTypes.VIDEO_DOLBY_VISION)) {
+      return null;
+    }
+    @Nullable Pair<Integer, Integer> codecProfileAndLevel = getCodecProfileAndLevel(format);
+    if (codecProfileAndLevel == null) {
+      return null;
+    }
+    switch (codecProfileAndLevel.first) {
+      case CodecProfileLevel.DolbyVisionProfileDvheDtr: // profile 4
+      case CodecProfileLevel.DolbyVisionProfileDvheStn: // profile 5
+      case CodecProfileLevel.DolbyVisionProfileDvheSt: // profile 8
+        return MimeTypes.VIDEO_H265;
+      case CodecProfileLevel.DolbyVisionProfileDvavSe: // profile 9
+        return MimeTypes.VIDEO_H264;
+      case CodecProfileLevel.DolbyVisionProfileDvav110: // profile 10
+        return MimeTypes.VIDEO_AV1;
+      default:
+        return null;
+    }
+  }
+
   /** Returns H263 profile and level from codec string. */
   private static Pair<Integer, Integer> getH263ProfileAndLevel(String codec, String[] parts) {
     Pair<Integer, Integer> defaultProfileAndLevel =
@@ -788,6 +1173,42 @@ public final class CodecSpecificDataUtil {
   }
 
   @Nullable
+  private static Pair<Integer, Integer> getApvProfileAndLevel(String codec, String[] parts) {
+    if (parts.length < 4) {
+      Log.w(TAG, "Ignoring malformed APV codec string: " + codec);
+      return null;
+    }
+    int profileInteger;
+    int levelInteger;
+    int bandInteger;
+    try {
+      profileInteger = Integer.parseInt(parts[1].substring(4));
+      levelInteger = Integer.parseInt(parts[2].substring(4));
+      bandInteger = Integer.parseInt(parts[3].substring(4));
+    } catch (NumberFormatException e) {
+      Log.w(TAG, "Ignoring malformed APV codec string: " + codec, e);
+      return null;
+    }
+
+    int profile = 0;
+    if (profileInteger == 33) {
+      profile = MediaCodecInfo.CodecProfileLevel.APVProfile422_10;
+    } else if (profileInteger == 44) {
+      profile = MediaCodecInfo.CodecProfileLevel.APVProfile422_10HDR10Plus;
+    } else {
+      Log.w(TAG, "Ignoring invalid APV profile: " + profileInteger);
+      return null;
+    }
+    int levelNum = (levelInteger / 30) * 2;
+    if (levelInteger % 30 == 0) {
+      levelNum -= 1;
+    }
+    int level = ((0x100 << (levelNum - 1)) | (1 << bandInteger));
+
+    return new Pair<>(profile, level);
+  }
+
+  @Nullable
   private static Pair<Integer, Integer> getAacCodecProfileAndLevel(String codec, String[] parts) {
     if (parts.length != 3) {
       Log.w(TAG, "Ignoring malformed MP4A codec string: " + codec);
@@ -865,7 +1286,6 @@ public final class CodecSpecificDataUtil {
     int profileBitmask = 0x1 << (16 + primaryProfileValue);
     int versionBitmask = 0x1 << 24;
     int auxiliaryProfileValue = 0;
-
     switch (parts[3]) {
       case "Opus":
         auxiliaryProfileValue = 0x1; // Bit 0

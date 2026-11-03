@@ -16,12 +16,12 @@
 
 package androidx.media3.transformer;
 
-import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.decoder.DecoderInputBuffer.BUFFER_REPLACEMENT_MODE_DISABLED;
 import static androidx.media3.exoplayer.source.SampleStream.FLAG_REQUIRE_FORMAT;
 import static androidx.media3.transformer.AssetLoader.SUPPORTED_OUTPUT_TYPE_DECODED;
 import static androidx.media3.transformer.AssetLoader.SUPPORTED_OUTPUT_TYPE_ENCODED;
 import static androidx.media3.transformer.TransformerUtil.getProcessedTrackType;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
@@ -192,6 +192,15 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
   protected abstract boolean feedConsumerFromDecoder() throws ExportException;
 
   /**
+   * Returns whether the renderer can bypass decoding for the given {@code format}.
+   *
+   * @param format The input {@link Format} of the samples.
+   */
+  protected boolean shouldEnableBypass(Format format) {
+    return false;
+  }
+
+  /**
    * Attempts to read the input {@link Format} from the source, if not read.
    *
    * <p>After reading the format, {@link AssetLoader.Listener#onTrackAdded} is notified, and, if
@@ -212,15 +221,23 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
       @ReadDataResult
       int result =
           readSource(formatHolder, decoderInputBuffer, /* readFlags= */ FLAG_REQUIRE_FORMAT);
-      if (result != C.RESULT_FORMAT_READ) {
+      if (result == C.RESULT_BUFFER_READ && decoderInputBuffer.isEndOfStream()) {
+        formatHolder.format = getStreamFormats()[0];
+      } else if (result != C.RESULT_FORMAT_READ) {
         return false;
       }
       inputFormat = overrideInputFormat(checkNotNull(formatHolder.format));
       onInputFormatRead(inputFormat);
-      // TODO: b/332708880 - Bypass MediaCodec for raw audio input.
-      shouldInitDecoder =
+      if (inputFormat == null) {
+        return false;
+      }
+
+      // Always notify listeners regardless of whether bypass is available.
+      boolean shouldOutputDecodedSamples =
           assetLoaderListener.onTrackAdded(
               inputFormat, SUPPORTED_OUTPUT_TYPE_DECODED | SUPPORTED_OUTPUT_TYPE_ENCODED);
+
+      shouldInitDecoder = shouldOutputDecodedSamples && !shouldEnableBypass(inputFormat);
     }
 
     if (shouldInitDecoder) {

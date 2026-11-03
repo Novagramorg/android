@@ -15,8 +15,8 @@
  */
 package androidx.media3.effect;
 
-import static androidx.media3.common.util.Assertions.checkNotNull;
-import static androidx.media3.common.util.Assertions.checkState;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.GlObjectsProvider;
@@ -28,8 +28,13 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Changes the frame timestamps using the {@link TimestampMap}. */
+/**
+ * Changes the frame timestamps using the {@link TimestampMap}.
+ *
+ * @deprecated Use {@code EditedMediaItem.Builder#setSpeed(SpeedProvider)} instead.
+ */
 @UnstableApi
+@Deprecated
 public class TimestampAdjustmentShaderProgram implements GlShaderProgram {
 
   private final TimestampMap timestampMap;

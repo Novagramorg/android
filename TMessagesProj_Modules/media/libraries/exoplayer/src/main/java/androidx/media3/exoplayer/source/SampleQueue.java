@@ -15,12 +15,13 @@
  */
 package androidx.media3.exoplayer.source;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
-import static androidx.media3.common.util.Assertions.checkNotNull;
 import static androidx.media3.exoplayer.source.SampleStream.FLAG_OMIT_SAMPLE_DATA;
 import static androidx.media3.exoplayer.source.SampleStream.FLAG_PEEK;
 import static androidx.media3.exoplayer.source.SampleStream.FLAG_REQUIRE_FORMAT;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.Math.max;
+import static java.lang.Math.min;
 
 import android.os.Looper;
 import androidx.annotation.CallSuper;
@@ -32,7 +33,6 @@ import androidx.media3.common.DataReader;
 import androidx.media3.common.DrmInitData;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
-import androidx.media3.common.util.Assertions;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.NullableType;
 import androidx.media3.common.util.ParsableByteArray;
@@ -94,8 +94,10 @@ public class SampleQueue implements TrackOutput {
   private int readPosition;
 
   private long startTimeUs;
+  private long readEndTimeUs;
   private long largestDiscardedTimestampUs;
   private long largestQueuedTimestampUs;
+  private int readEndTimeAbsoluteIndex;
   private boolean isLastSampleQueued;
   private boolean upstreamKeyframeRequired;
   private boolean upstreamFormatRequired;
@@ -103,7 +105,7 @@ public class SampleQueue implements TrackOutput {
   @Nullable private Format unadjustedUpstreamFormat;
   @Nullable private Format upstreamFormat;
   private long upstreamSourceId;
-  private boolean allSamplesAreSyncSamples;
+  private boolean discardAllSamplesToStartTime;
   private boolean loggedUnexpectedNonSyncSample;
 
   private long sampleOffsetUs;
@@ -136,9 +138,7 @@ public class SampleQueue implements TrackOutput {
       DrmSessionManager drmSessionManager,
       DrmSessionEventListener.EventDispatcher drmEventDispatcher) {
     return new SampleQueue(
-        allocator,
-        Assertions.checkNotNull(drmSessionManager),
-        Assertions.checkNotNull(drmEventDispatcher));
+        allocator, checkNotNull(drmSessionManager), checkNotNull(drmEventDispatcher));
   }
 
   /**
@@ -154,9 +154,7 @@ public class SampleQueue implements TrackOutput {
       DrmSessionEventListener.EventDispatcher drmEventDispatcher) {
     drmSessionManager.setPlayer(playbackLooper, PlayerId.UNSET);
     return new SampleQueue(
-        allocator,
-        Assertions.checkNotNull(drmSessionManager),
-        Assertions.checkNotNull(drmEventDispatcher));
+        allocator, checkNotNull(drmSessionManager), checkNotNull(drmEventDispatcher));
   }
 
   protected SampleQueue(
@@ -181,7 +179,9 @@ public class SampleQueue implements TrackOutput {
     largestQueuedTimestampUs = Long.MIN_VALUE;
     upstreamFormatRequired = true;
     upstreamKeyframeRequired = true;
-    allSamplesAreSyncSamples = true;
+    discardAllSamplesToStartTime = true;
+    readEndTimeUs = C.TIME_END_OF_SOURCE;
+    readEndTimeAbsoluteIndex = C.INDEX_UNSET;
   }
 
   // Called by the consuming thread when there is no loading thread.
@@ -213,6 +213,7 @@ public class SampleQueue implements TrackOutput {
     absoluteFirstIndex = 0;
     relativeFirstIndex = 0;
     readPosition = 0;
+    readEndTimeAbsoluteIndex = C.INDEX_UNSET;
     upstreamKeyframeRequired = true;
     startTimeUs = Long.MIN_VALUE;
     largestDiscardedTimestampUs = Long.MIN_VALUE;
@@ -223,19 +224,52 @@ public class SampleQueue implements TrackOutput {
       unadjustedUpstreamFormat = null;
       upstreamFormat = null;
       upstreamFormatRequired = true;
-      allSamplesAreSyncSamples = true;
+      discardAllSamplesToStartTime = true;
     }
   }
 
   /**
-   * Sets the start time for the queue. Samples with earlier timestamps will be discarded if
-   * {@linkplain MimeTypes#allSamplesAreSyncSamples all samples are sync samples} in the given input
-   * format.
+   * Sets the start time for the queue. Samples with earlier timestamps will be discarded for audio
+   * formats if {@linkplain MimeTypes#allSamplesAreSyncSamples all samples are sync samples} in the
+   * given input format.
    *
    * @param startTimeUs The start time, in microseconds.
    */
   public final void setStartTimeUs(long startTimeUs) {
     this.startTimeUs = startTimeUs;
+  }
+
+  /**
+   * Sets the time at which reading the stream should stop.
+   *
+   * <p>The queue may offer samples beyond this time if they are out of order and required for
+   * decoding.
+   *
+   * <p>This setting does not influence the upstream write side of the queue.
+   *
+   * @param readEndTimeUs The desired read end time in microseconds, or {@link C#TIME_END_OF_SOURCE}
+   *     to not specify a read limit.
+   */
+  public final synchronized void setReadEndTimeUs(long readEndTimeUs) {
+    if (readEndTimeUs == this.readEndTimeUs) {
+      return;
+    }
+    if (readEndTimeUs == C.TIME_END_OF_SOURCE) {
+      readEndTimeAbsoluteIndex = C.INDEX_UNSET;
+      return;
+    }
+    // Check if we already have a suitable read end time sample index.
+    int readEndTimeRelativeIndex = -1;
+    if (readEndTimeUs <= largestQueuedTimestampUs) {
+      readEndTimeRelativeIndex =
+          findSampleAfter(
+              relativeFirstIndex, length, readEndTimeUs, /* allowTimeBeyondBuffer= */ false);
+    }
+    this.readEndTimeAbsoluteIndex =
+        readEndTimeRelativeIndex == -1
+            ? C.INDEX_UNSET
+            : absoluteFirstIndex + readEndTimeRelativeIndex;
+    this.readEndTimeUs = readEndTimeUs;
   }
 
   /**
@@ -301,7 +335,7 @@ public class SampleQueue implements TrackOutput {
   public void maybeThrowError() throws IOException {
     // TODO: Avoid throwing if the DRM error is not preventing a read operation.
     if (currentDrmSession != null && currentDrmSession.getState() == DrmSession.STATE_ERROR) {
-      throw Assertions.checkNotNull(currentDrmSession.getError());
+      throw checkNotNull(currentDrmSession.getError());
     }
   }
 
@@ -347,6 +381,14 @@ public class SampleQueue implements TrackOutput {
   }
 
   /**
+   * Returns whether all required samples to read up to the configured {@linkplain
+   * #setReadEndTimeUs(long) end time} have been queued.
+   */
+  public final synchronized boolean hasQueuedTimestampsUpToReadEndTimeUs() {
+    return readEndTimeAbsoluteIndex != C.INDEX_UNSET;
+  }
+
+  /**
    * Returns the largest sample timestamp that has been read since the last {@link #reset}.
    *
    * @return The largest sample timestamp that has been read, or {@link Long#MIN_VALUE} if no
@@ -388,12 +430,16 @@ public class SampleQueue implements TrackOutput {
   @SuppressWarnings("ReferenceEquality") // See comments in setUpstreamFormat
   @CallSuper
   public synchronized boolean isReady(boolean loadingFinished) {
+    int readIndex = getReadIndex();
+    if (readEndTimeAbsoluteIndex != C.INDEX_UNSET && readIndex >= readEndTimeAbsoluteIndex) {
+      return true;
+    }
     if (!hasNextSample()) {
       return loadingFinished
           || isLastSampleQueued
           || (upstreamFormat != null && upstreamFormat != downstreamFormat);
     }
-    if (sharedSampleMetadata.get(getReadIndex()).format != downstreamFormat) {
+    if (sharedSampleMetadata.get(readIndex).format != downstreamFormat) {
       // A format can be read.
       return true;
     }
@@ -458,6 +504,9 @@ public class SampleQueue implements TrackOutput {
     if (sampleIndex < absoluteFirstIndex || sampleIndex > absoluteFirstIndex + length) {
       return false;
     }
+    if (readEndTimeAbsoluteIndex != C.INDEX_UNSET && sampleIndex >= readEndTimeAbsoluteIndex) {
+      return false;
+    }
     startTimeUs = Long.MIN_VALUE;
     readPosition = sampleIndex - absoluteFirstIndex;
     return true;
@@ -466,7 +515,7 @@ public class SampleQueue implements TrackOutput {
   /**
    * Attempts to seek the read position to the keyframe before or at the specified time.
    *
-   * <p>For formats where {@linkplain MimeTypes#allSamplesAreSyncSamples all samples are sync
+   * <p>For audio formats where {@linkplain MimeTypes#allSamplesAreSyncSamples all samples are sync
    * samples}, it seeks the read position to the first sample at or after the specified time.
    *
    * @param timeUs The time to seek to.
@@ -477,13 +526,17 @@ public class SampleQueue implements TrackOutput {
   public final synchronized boolean seekTo(long timeUs, boolean allowTimeBeyondBuffer) {
     rewind();
     int relativeReadIndex = getRelativeIndex(readPosition);
+    long maxPossibleSeekTimeUs =
+        readEndTimeUs != C.TIME_END_OF_SOURCE
+            ? min(largestQueuedTimestampUs, readEndTimeUs)
+            : largestQueuedTimestampUs;
     if (!hasNextSample()
         || timeUs < timesUs[relativeReadIndex]
-        || (timeUs > largestQueuedTimestampUs && !allowTimeBeyondBuffer)) {
+        || (timeUs > maxPossibleSeekTimeUs && !allowTimeBeyondBuffer)) {
       return false;
     }
     int offset =
-        allSamplesAreSyncSamples
+        discardAllSamplesToStartTime
             ? findSampleAfter(
                 relativeReadIndex, length - readPosition, timeUs, allowTimeBeyondBuffer)
             : findSampleBefore(
@@ -616,7 +669,7 @@ public class SampleQueue implements TrackOutput {
       int offset,
       @Nullable CryptoData cryptoData) {
     if (upstreamFormatAdjustmentRequired) {
-      format(Assertions.checkStateNotNull(unadjustedUpstreamFormat));
+      format(checkNotNull(unadjustedUpstreamFormat));
     }
 
     boolean isKeyframe = (flags & C.BUFFER_FLAG_KEY_FRAME) != 0;
@@ -628,10 +681,8 @@ public class SampleQueue implements TrackOutput {
     }
 
     timeUs += sampleOffsetUs;
-    if (allSamplesAreSyncSamples) {
+    if (discardAllSamplesToStartTime) {
       if (timeUs < startTimeUs) {
-        // If we know that all samples are sync samples, we can discard those that come before the
-        // start time on the write side of the queue.
         return;
       }
       if ((flags & C.BUFFER_FLAG_KEY_FRAME) == 0) {
@@ -701,20 +752,23 @@ public class SampleQueue implements TrackOutput {
       boolean loadingFinished,
       SampleExtrasHolder extrasHolder) {
     buffer.waitingForKeys = false;
-    if (!hasNextSample()) {
-      if (loadingFinished || isLastSampleQueued) {
+    int readIndex = getReadIndex();
+    boolean readEndTimeReached =
+        readEndTimeAbsoluteIndex != C.INDEX_UNSET && readIndex >= readEndTimeAbsoluteIndex;
+    if (!hasNextSample() || readEndTimeReached) {
+      if (loadingFinished || isLastSampleQueued || readEndTimeReached) {
         buffer.setFlags(C.BUFFER_FLAG_END_OF_STREAM);
         buffer.timeUs = C.TIME_END_OF_SOURCE;
         return C.RESULT_BUFFER_READ;
       } else if (upstreamFormat != null && (formatRequired || upstreamFormat != downstreamFormat)) {
-        onFormatResult(Assertions.checkNotNull(upstreamFormat), formatHolder);
+        onFormatResult(checkNotNull(upstreamFormat), formatHolder);
         return C.RESULT_FORMAT_READ;
       } else {
         return C.RESULT_NOTHING_READ;
       }
     }
 
-    Format format = sharedSampleMetadata.get(getReadIndex()).format;
+    Format format = sharedSampleMetadata.get(readIndex).format;
     if (formatRequired || format != downstreamFormat) {
       onFormatResult(format, formatHolder);
       return C.RESULT_FORMAT_READ;
@@ -756,8 +810,8 @@ public class SampleQueue implements TrackOutput {
     } else {
       upstreamFormat = format;
     }
-    allSamplesAreSyncSamples &=
-        MimeTypes.allSamplesAreSyncSamples(upstreamFormat.sampleMimeType, upstreamFormat.codecs);
+    discardAllSamplesToStartTime &=
+        canDiscardAllSamplesToStartTime(upstreamFormat.sampleMimeType, upstreamFormat.codecs);
     loggedUnexpectedNonSyncSample = false;
     return true;
   }
@@ -814,6 +868,11 @@ public class SampleQueue implements TrackOutput {
 
     isLastSampleQueued = (sampleFlags & C.BUFFER_FLAG_LAST_SAMPLE) != 0;
     largestQueuedTimestampUs = max(largestQueuedTimestampUs, timeUs);
+    if (readEndTimeUs != C.TIME_END_OF_SOURCE
+        && readEndTimeAbsoluteIndex == C.INDEX_UNSET
+        && timeUs >= readEndTimeUs) {
+      readEndTimeAbsoluteIndex = absoluteFirstIndex + length;
+    }
 
     int relativeEndIndex = getRelativeIndex(length);
     timesUs[relativeEndIndex] = timeUs;
@@ -895,6 +954,9 @@ public class SampleQueue implements TrackOutput {
     length -= discardCount;
     largestQueuedTimestampUs = max(largestDiscardedTimestampUs, getLargestTimestamp(length));
     isLastSampleQueued = discardCount == 0 && isLastSampleQueued;
+    if (readEndTimeAbsoluteIndex != C.INDEX_UNSET && discardFromIndex < readEndTimeAbsoluteIndex) {
+      readEndTimeAbsoluteIndex = C.INDEX_UNSET;
+    }
     sharedSampleMetadata.discardFrom(discardFromIndex);
     if (length != 0) {
       int relativeLastWriteIndex = getRelativeIndex(length - 1);
@@ -1106,6 +1168,16 @@ public class SampleQueue implements TrackOutput {
   private int getRelativeIndex(int offset) {
     int relativeIndex = relativeFirstIndex + offset;
     return relativeIndex < capacity ? relativeIndex : relativeIndex - capacity;
+  }
+
+  private static boolean canDiscardAllSamplesToStartTime(
+      @Nullable String mimeType, @Nullable String codec) {
+    // We can only discard up to the start time immediately if the samples are guaranteed to be all
+    // sync samples. This optimization is also only possible for audio tracks where the inherent
+    // duration of a sample is negligible, and it doesn't affect playback if a partial sample is
+    // dropped.
+    @C.TrackType int trackType = MimeTypes.getTrackType(mimeType);
+    return trackType == C.TRACK_TYPE_AUDIO && MimeTypes.allSamplesAreSyncSamples(mimeType, codec);
   }
 
   /** A holder for sample metadata not held by {@link DecoderInputBuffer}. */

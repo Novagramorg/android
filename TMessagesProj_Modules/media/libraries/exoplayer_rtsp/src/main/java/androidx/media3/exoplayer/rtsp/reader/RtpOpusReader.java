@@ -15,19 +15,19 @@
  */
 package androidx.media3.exoplayer.rtsp.reader;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
-import static androidx.media3.common.util.Assertions.checkStateNotNull;
 import static androidx.media3.exoplayer.rtsp.reader.RtpReaderUtils.toSampleTimeUs;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.ParsableByteArray;
 import androidx.media3.common.util.Util;
+import androidx.media3.container.OpusUtil;
 import androidx.media3.exoplayer.rtsp.RtpPacket;
 import androidx.media3.exoplayer.rtsp.RtpPayloadFormat;
 import androidx.media3.extractor.ExtractorOutput;
-import androidx.media3.extractor.OpusUtil;
 import androidx.media3.extractor.TrackOutput;
 import java.util.List;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
@@ -79,7 +79,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
   @Override
   public void consume(
       ParsableByteArray data, long timestamp, int sequenceNumber, boolean rtpMarker) {
-    checkStateNotNull(trackOutput);
+    checkNotNull(trackOutput);
 
     /* RFC7845 Section 3.
      * +---------+ +----------------+ +--------------------+ +-----

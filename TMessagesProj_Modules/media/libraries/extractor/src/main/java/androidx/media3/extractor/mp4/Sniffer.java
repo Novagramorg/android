@@ -147,20 +147,37 @@ public final class Sniffer {
       }
 
       if (atomSize < headerSize) {
-        // The file is invalid because the atom size is too small for its header.
-        return new AtomSizeTooSmallSniffFailure(atomType, atomSize, headerSize);
+        if (atomType == Mp4Box.TYPE_free && headerSize == Mp4Box.HEADER_SIZE) {
+          // Workaround for writers that could create a malformed 'free' box with a size less than
+          // its header, causing file corruption. [See internal: b/438187097].
+          atomSize = headerSize;
+        } else {
+          // The file is invalid because the atom size is too small for its header.
+          return new AtomSizeTooSmallSniffFailure(atomType, atomSize, headerSize);
+        }
       }
       bytesSearched += headerSize;
 
-      if (atomType == Mp4Box.TYPE_moov) {
-        // We have seen the moov atom. We increase the search size to make sure we don't miss an
-        // mvex atom because the moov's size exceeds the search length.
+      if (atomType == Mp4Box.TYPE_moov || atomType == Mp4Box.TYPE_uuid) {
+        // These boxes can both be quite large, so we increase the search size, either to sniff
+        // additional boxes after the uuid box, or to make sure we don't miss an mvex box inside
+        // the moov.
         bytesToSearch += (int) atomSize;
         if (inputLength != C.LENGTH_UNSET && bytesToSearch > inputLength) {
           // Make sure we don't exceed the file size.
           bytesToSearch = (int) inputLength;
         }
-        // Check for an mvex atom inside the moov atom to identify whether the file is fragmented.
+        if (atomType == Mp4Box.TYPE_moov) {
+          // Check for an mvex atom inside the moov atom to identify whether the file is fragmented.
+          continue;
+        }
+      }
+
+      // Peek inside the boxes that will lead to stbl, so that a very large stbl box can be used to
+      // short-circuit the fragmented/non-fragmented decision.
+      if (atomType == Mp4Box.TYPE_trak
+          || atomType == Mp4Box.TYPE_mdia
+          || atomType == Mp4Box.TYPE_minf) {
         continue;
       }
 
@@ -174,6 +191,13 @@ public final class Sniffer {
         // The original QuickTime specification did not require files to begin with the ftyp atom.
         // See https://developer.apple.com/standards/qtff-2001.pdf.
         foundGoodFileType = true;
+      }
+
+      if (atomType == Mp4Box.TYPE_stbl && atomSize > 1_000_000) {
+        // We exit early as soon as we found a moof atom, so this must be nested inside a moov atom.
+        // An stbl this large would only be in a non-fragmented MP4.
+        isFragmented = false;
+        break;
       }
 
       if (bytesSearched + atomSize - headerSize >= bytesToSearch) {

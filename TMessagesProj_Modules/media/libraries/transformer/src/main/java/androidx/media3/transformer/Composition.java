@@ -15,20 +15,29 @@
  */
 package androidx.media3.transformer;
 
-import static androidx.media3.common.util.Assertions.checkArgument;
+import static androidx.media3.common.C.TRACK_TYPE_AUDIO;
+import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.annotation.ElementType.TYPE_USE;
 import static java.lang.annotation.RetentionPolicy.SOURCE;
 
 import androidx.annotation.IntDef;
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.VideoCompositorSettings;
+import androidx.media3.common.util.ExperimentalApi;
+import androidx.media3.common.util.Log;
 import androidx.media3.common.util.UnstableApi;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 import java.util.List;
+import java.util.Set;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * A composition of {@link MediaItem} instances, with transformations to apply to them.
@@ -120,8 +129,8 @@ public final class Composition {
     }
 
     /**
-     * @deprecated Use {@link
-     *     EditedMediaItemSequence.Builder#experimentalSetForceAudioTrack(boolean)} instead.
+     * @deprecated Use {@link EditedMediaItemSequence.Builder#Builder(Set)} to set sequence track
+     *     types instead.
      */
     @Deprecated
     @CanIgnoreReturnValue
@@ -145,9 +154,10 @@ public final class Composition {
      * EditedMediaItemSequence} and have the same sample format for that track). Any transcoding
      * effects requested will be ignored.
      *
-     * <p>Requesting audio transmuxing and {@linkplain #experimentalSetForceAudioTrack(boolean)
-     * forcing an audio track} are not allowed together because generating silence requires
-     * transcoding.
+     * <p>Requesting audio transmuxing while also requiring silence generation is not allowed, as
+     * generating silence requires transcoding. Silence generation is needed when a sequence has
+     * {@link C#TRACK_TYPE_AUDIO} and contains {@link EditedMediaItemSequence.Builder#addGap(long)
+     * gaps} or an audio-less {@link EditedMediaItem}.
      *
      * @param transmuxAudio Whether to transmux the audio tracks.
      * @return This builder.
@@ -222,6 +232,7 @@ public final class Composition {
      * @return This builder.
      */
     @CanIgnoreReturnValue
+    @ExperimentalApi // TODO: b/470383726 - Remove or enable permanently.
     public Builder experimentalSetRetainHdrFromUltraHdrImage(boolean retainHdrFromUltraHdrImage) {
       this.retainHdrFromUltraHdrImage = retainHdrFromUltraHdrImage;
       return this;
@@ -230,12 +241,22 @@ public final class Composition {
     /** Builds a {@link Composition} instance. */
     public Composition build() {
       ImmutableList<EditedMediaItemSequence> updatedSequences;
+      // TODO: b/445884217 - Remove deprecated Composition level forceAudioTrack
       if (forceAudioTrack) {
         ImmutableList.Builder<EditedMediaItemSequence> updatedSequencesBuilder =
             new ImmutableList.Builder<>();
         for (int i = 0; i < sequences.size(); i++) {
+          EditedMediaItemSequence oldSequence = sequences.get(i);
+          ImmutableSet.Builder<Integer> trackTypesBuilder = new ImmutableSet.Builder<>();
+          trackTypesBuilder.addAll(oldSequence.trackTypes);
+          if (!oldSequence.trackTypes.contains(TRACK_TYPE_AUDIO)) {
+            trackTypesBuilder.add(TRACK_TYPE_AUDIO);
+          }
           updatedSequencesBuilder.add(
-              sequences.get(i).buildUpon().experimentalSetForceAudioTrack(forceAudioTrack).build());
+              new EditedMediaItemSequence.Builder(trackTypesBuilder.build())
+                  .addItems(oldSequence.editedMediaItems)
+                  .setIsLooping(oldSequence.isLooping)
+                  .build());
         }
         updatedSequences = updatedSequencesBuilder.build();
       } else {
@@ -341,6 +362,7 @@ public final class Composition {
    *
    * <p>This field is experimental, and will be renamed or removed in a future release.
    */
+  @ExperimentalApi // TODO: b/470381951 - Make constant non-experimental.
   public static final int HDR_MODE_EXPERIMENTAL_FORCE_INTERPRET_HDR_AS_SDR = 3;
 
   /**
@@ -360,8 +382,9 @@ public final class Composition {
   public final Effects effects;
 
   /**
-   * @deprecated Use {@link EditedMediaItemSequence.Builder#experimentalSetForceAudioTrack(boolean)}
-   *     to set the flag and {@link EditedMediaItemSequence#forceAudioTrack} to read the flag.
+   * @deprecated Use {@link EditedMediaItemSequence.Builder#Builder(Set)} to set the track types of
+   *     the sequence, and {@code trackTypes.contains(C.TRACK_TYPE_AUDIO)} to check for the presence
+   *     of an audio track.
    */
   @Deprecated public final boolean forceAudioTrack;
 
@@ -424,6 +447,11 @@ public final class Composition {
     this.retainHdrFromUltraHdrImage = retainHdrFromUltraHdrImage;
   }
 
+  @Override
+  public String toString() {
+    return toJsonObject().toString();
+  }
+
   /**
    * Return whether any {@linkplain EditedMediaItemSequence sequences} contain a {@linkplain
    * EditedMediaItemSequence.Builder#addGap(long) gap}.
@@ -435,6 +463,27 @@ public final class Composition {
       }
     }
     return false;
+  }
+
+  /** Returns a {@link JSONObject} that represents the {@code Composition}. */
+  /* package */ JSONObject toJsonObject() {
+    JSONObject jsonObject = new JSONObject();
+    try {
+      JSONArray sequencesJsonArray = new JSONArray();
+      for (int i = 0; i < sequences.size(); i++) {
+        sequencesJsonArray.put(sequences.get(i).toJsonObject());
+      }
+      jsonObject.put("sequences", sequencesJsonArray);
+      jsonObject.put("effects", effects.toJsonObject());
+      jsonObject.put("transmuxAudio", transmuxAudio);
+      jsonObject.put("transmuxVideo", transmuxVideo);
+      jsonObject.put("hdrMode", hdrMode);
+      jsonObject.put("retainHdrFromUltraHdrImage", retainHdrFromUltraHdrImage);
+      return jsonObject;
+    } catch (JSONException e) {
+      Log.w(/* tag= */ "Composition", "JSON conversion failed.", e);
+      return new JSONObject();
+    }
   }
 
   private static boolean hasNonLoopingSequence(List<EditedMediaItemSequence> sequences) {

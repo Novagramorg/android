@@ -15,9 +15,10 @@
  */
 package androidx.media3.exoplayer;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
-import androidx.media3.common.util.Assertions;
 import androidx.media3.exoplayer.source.MediaPeriod;
 import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId;
 import java.util.Objects;
@@ -30,6 +31,12 @@ import java.util.Objects;
 
   /** The start position of the media to play within the media period, in microseconds. */
   public final long startPositionUs;
+
+  /**
+   * The applied forward projection of the start position when preloading live streams in
+   * microseconds, or {@link C#TIME_UNSET} if no projection was applied.
+   */
+  public final long liveStreamStartPositionProjectionUs;
 
   /**
    * The requested next start position for the current timeline period, in microseconds, or {@link
@@ -87,6 +94,7 @@ import java.util.Objects;
   MediaPeriodInfo(
       MediaPeriodId id,
       long startPositionUs,
+      long liveStreamStartPositionProjectionUs,
       long requestedContentPositionUs,
       long endPositionUs,
       long durationUs,
@@ -95,13 +103,14 @@ import java.util.Objects;
       boolean isLastInTimelinePeriod,
       boolean isLastInTimelineWindow,
       boolean isFinal) {
-    Assertions.checkArgument(!isFinal || isLastInTimelinePeriod);
-    Assertions.checkArgument(!isLastInTimelineWindow || isLastInTimelinePeriod);
-    Assertions.checkArgument(
+    checkArgument(!isFinal || isLastInTimelinePeriod);
+    checkArgument(!isLastInTimelineWindow || isLastInTimelinePeriod);
+    checkArgument(
         !isFollowedByTransitionToSameStream
             || (!isLastInTimelinePeriod && !isLastInTimelineWindow && !isFinal));
     this.id = id;
     this.startPositionUs = startPositionUs;
+    this.liveStreamStartPositionProjectionUs = liveStreamStartPositionProjectionUs;
     this.requestedContentPositionUs = requestedContentPositionUs;
     this.endPositionUs = endPositionUs;
     this.durationUs = durationUs;
@@ -113,15 +122,18 @@ import java.util.Objects;
   }
 
   /**
-   * Returns a copy of this instance with the start position set to the specified value. May return
-   * the same instance if nothing changed.
+   * Returns a copy of this instance with the start position and its projection set to the specified
+   * value. May return the same instance if nothing changed.
    */
-  public MediaPeriodInfo copyWithStartPositionUs(long startPositionUs) {
+  public MediaPeriodInfo copyWithStartPositionUs(
+      long startPositionUs, long liveStreamStartPositionProjectionUs) {
     return startPositionUs == this.startPositionUs
+            && liveStreamStartPositionProjectionUs == this.liveStreamStartPositionProjectionUs
         ? this
         : new MediaPeriodInfo(
             id,
             startPositionUs,
+            liveStreamStartPositionProjectionUs,
             requestedContentPositionUs,
             endPositionUs,
             durationUs,
@@ -142,6 +154,7 @@ import java.util.Objects;
         : new MediaPeriodInfo(
             id,
             startPositionUs,
+            liveStreamStartPositionProjectionUs,
             requestedContentPositionUs,
             endPositionUs,
             durationUs,
