@@ -456,7 +456,7 @@ public class QrShareView extends View {
         logo.setMasterParent(this);
         logo.setAutoRepeat(1);
         logo.setCallback(this);
-        logo.start();
+        // Novagram: not started, the Novagram logo is drawn instead; running unseen it would still redraw every frame.
         cutPaint.setStyle(Paint.Style.STROKE);
         cutPaint.setStrokeCap(Paint.Cap.ROUND);
         cutPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
@@ -2067,6 +2067,8 @@ public class QrShareView extends View {
     /** The frame of the plane logo for a shared image, as the stock QR screen takes it. */
     private static final int LOGO_OPTIMAL_FRAME = 33;
     private @Nullable Bitmap logoOptimal;
+    /** Novagram: the logo drawn in the middle of the code instead of the plane (see the card drawing). */
+    private @Nullable Bitmap novagramLogo;
     private final Paint logoOptimalPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private boolean sharing;
 
@@ -3826,31 +3828,23 @@ public class QrShareView extends View {
             c.save();
             c.scale(ls, ls, lcx, lcy);
             if (lp < 1f) c.saveLayerAlpha(lcx - lr - 2, lcy - lr - 2, lcx + lr + 2, lcy + lr + 2, (int) (255 * lp));
-            fill.setColor(color);
-            c.drawCircle(lcx, lcy, lr, fill);
-            // the plane flies in from the circle's bottom-left (0.55 r), 0.5 → 1, clipped to the circle; lands by ~400 ms
+            // Novagram: our logo (a blue disc of its own) in place of the qr-coloured circle with Telegram's flying
+            // plane, as on the QR screen before 13.1. It grows in from half size over the plane's timing; a shared
+            // image takes it whole.
             final long be = qr.buildElapsedMs();
             final float pu = sharing || be == Long.MAX_VALUE ? 1f : be < 0 ? 0f : Utilities.clamp01(be / 500f);
             final float pe = pu >= 1f ? 1f : 1f - (float) Math.pow(1f - pu, 3) + 0.015f * (float) Math.sin(Math.PI * pu) * pu; // ≤ 2% settle
             if (pe > 0.004f) {
-                c.save();
-                logoClip.rewind();
-                logoClip.addCircle(lcx, lcy, lr, Path.Direction.CW);
-                c.clipPath(logoClip);
-                final float off = (1f - Math.min(1f, pe)) * lr * 0.55f, psc = 0.5f + 0.5f * pe;
-                c.translate(-off, off);
-                c.scale(psc, psc, lcx, lcy);
-                if (sharing && logoOptimal != null) {
-                    // a shared image takes the plane's best frame, not the one the animation is at
-                    rect3.set(lcx - lr, lcy - lr, lcx + lr, lcy + lr);
-                    c.drawBitmap(logoOptimal, null, rect3, logoOptimalPaint);
-                } else {
-                    logo.setAlpha((int) (255 * Utilities.clamp01(pu * 2f)));
-                    logo.setBounds((int) (lcx - lr), (int) (lcy - lr), (int) (lcx + lr), (int) (lcy + lr));
-                    logo.draw(c);
-                    logo.setAlpha(255);
+                if (novagramLogo == null) {
+                    novagramLogo = android.graphics.BitmapFactory.decodeResource(getResources(), R.drawable.qr_logo_novagram);
                 }
-                c.restore();
+                if (novagramLogo != null) {
+                    final float r = lr * (0.5f + 0.5f * Math.min(1f, pe));
+                    rect3.set(lcx - r, lcy - r, lcx + r, lcy + r);
+                    logoOptimalPaint.setAlpha((int) (255 * Utilities.clamp01(pu * 2f)));
+                    c.drawBitmap(novagramLogo, null, rect3, logoOptimalPaint);
+                    logoOptimalPaint.setAlpha(255);
+                }
             }
             if (lp < 1f) c.restore();
             c.restore();
@@ -7161,6 +7155,10 @@ public class QrShareView extends View {
         if (logoOptimal != null) {
             logoOptimal.recycle();
             logoOptimal = null;
+        }
+        if (novagramLogo != null) {
+            novagramLogo.recycle();
+            novagramLogo = null;
         }
         if (toastSave != null) {
             toastSave.recycle(false);
