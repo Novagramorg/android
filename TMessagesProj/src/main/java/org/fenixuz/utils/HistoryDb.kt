@@ -318,19 +318,42 @@ object HistoryDb {
         return gone
     }
 
+    /** [keptKind]: an ordinary message, kept as usual. */
+    const val KIND_KEEP = 0
+
     /**
-     * Whether [data] (a stored message) is the "History cleared" placeholder Telegram puts in place of a chat's last
-     * message when the user clears the chat (MessagesController.deleteDialog). Storage thread.
+     * [keptKind]: the "History cleared" placeholder Telegram puts in place of a chat's last message when the user clears
+     * the chat (MessagesController.deleteDialog). The server deleting it later is the user's own clear.
      */
+    const val KIND_CLEARED = 1
+
+    /**
+     * [keptKind]: a message of a chat with auto-delete whose time has run out. Its delete is that timer's, not the other
+     * side's: the server deletes it when the time is up, and so does this app's own timer (MessagesController's delete
+     * task, which deletes as the user). The app's timer only starts once the account's chat list has loaded, so a
+     * hidden or background account, or one not open when the time ran out, gets the server's delete first.
+     */
+    const val KIND_AUTO_DELETED = 2
+
+    /** The server's auto-delete may arrive a little before this phone's clock reaches the due time. */
+    private const val AUTO_DELETE_LEEWAY_SECONDS = 30L
+
+    /** Which [data] (a stored message) is, for delete-save, at [now] (server time, seconds). Storage thread. */
     @JvmStatic
-    fun isClearedPlaceholder(data: ByteArray?): Boolean {
-        if (data == null || data.size < 4) return false
+    fun keptKind(data: ByteArray?, now: Int): Int {
+        if (data == null || data.size < 4) return KIND_KEEP
         val stream = SerializedData(data)
         return try {
             val message = TLRPC.Message.TLdeserialize(stream, stream.readInt32(false), false)
-            message is TLRPC.TL_messageService && message.action is TLRPC.TL_messageActionHistoryClear
+            when {
+                message == null -> KIND_KEEP
+                message is TLRPC.TL_messageService && message.action is TLRPC.TL_messageActionHistoryClear -> KIND_CLEARED
+                message.ttl_period > 0 &&
+                    message.date.toLong() + message.ttl_period <= now + AUTO_DELETE_LEEWAY_SECONDS -> KIND_AUTO_DELETED
+                else -> KIND_KEEP
+            }
         } catch (e: Exception) {
-            false
+            KIND_KEEP
         } finally {
             stream.cleanup()
         }

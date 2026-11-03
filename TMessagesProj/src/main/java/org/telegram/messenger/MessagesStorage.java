@@ -14577,7 +14577,11 @@ public class MessagesStorage extends BaseController {
                 // cache. Done once here rather than inside a mutating per-row loop, so a multi-message delete can
                 // never double-save entries or drop some.
                 ArrayList<HistoryDb.Kept> found = new ArrayList<>();
+                // Messages whose auto-delete time has run out, in a delete not by the user: the timer's delete (see
+                // HistoryDb.KIND_AUTO_DELETED), handled below as the app's own timer deletes them, By.Me.
+                ArrayList<HistoryDb.Kept> timed = new ArrayList<>();
                 int who = DeletedMsg.whoCode(whoDeleted);
+                int now = getConnectionsManager().getCurrentTime();
                 try {
                     String myIds = TextUtils.join(",", savable);
                     if (dialogId != 0) {
@@ -14587,13 +14591,19 @@ public class MessagesStorage extends BaseController {
                     }
                     while (cursor.next()) {
                         byte[] data = cursor.byteArrayValue(2);
+                        int kind = HistoryDb.keptKind(data, now);
                         // The "History cleared" placeholder Telegram writes in place of a chat's last message when
                         // the user clears the chat: the server deleting that message later is the user's own clear,
                         // not a deletion to keep. Left out here, it is hard-deleted below as usual.
-                        if (HistoryDb.isClearedPlaceholder(data)) {
+                        if (kind == HistoryDb.KIND_CLEARED) {
                             continue;
                         }
-                        found.add(new HistoryDb.Kept(cursor.longValue(0), cursor.intValue(1), who, data));
+                        HistoryDb.Kept kept = new HistoryDb.Kept(cursor.longValue(0), cursor.intValue(1), who, data);
+                        if (kind == HistoryDb.KIND_AUTO_DELETED && By.Me != whoDeleted) {
+                            timed.add(kept);
+                        } else {
+                            found.add(kept);
+                        }
                     }
                 } catch (Exception e) {
                 } finally {
@@ -14628,6 +14638,28 @@ public class MessagesStorage extends BaseController {
                         for (int i = 0; i < toKeep.size(); i++) {
                             messages.remove(Integer.valueOf(toKeep.get(i).getMsgId()));
                         }
+                    }
+                }
+                if (!timed.isEmpty()) {
+                    // As the By.Me branches above: hard-deleted below and a kept copy forgotten; in the "all" mode,
+                    // which keeps the user's own deletes too, kept as deleted by the user unless kept already.
+                    long accountUid = getUserConfig().getClientUserId();
+                    if (DeletedMsg.ALL == deletedType) {
+                        ArrayList<HistoryDb.Kept> alreadySaved = HistoryDb.INSTANCE.keptAmong(accountUid, timed);
+                        ArrayList<HistoryDb.Kept> toKeep = new ArrayList<>();
+                        for (int i = 0; i < timed.size(); i++) {
+                            HistoryDb.Kept k = timed.get(i);
+                            if (!alreadySaved.contains(k)) {
+                                toKeep.add(new HistoryDb.Kept(k.getDialogId(), k.getMsgId(), HistoryDb.WHO_ME, k.getData()));
+                            }
+                        }
+                        HistoryDb.INSTANCE.removeDeleted(accountUid, alreadySaved);
+                        HistoryDb.INSTANCE.addDeleted(accountUid, toKeep);
+                        for (int i = 0; i < toKeep.size(); i++) {
+                            messages.remove(Integer.valueOf(toKeep.get(i).getMsgId()));
+                        }
+                    } else {
+                        HistoryDb.INSTANCE.removeDeleted(accountUid, timed);
                     }
                 }
             }
