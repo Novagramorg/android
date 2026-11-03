@@ -3,6 +3,9 @@ apply plugin: 'com.android.application'
 // compiled by this plugin into localization_<lang>.bin assets plus string_resource_ids.bin, which
 // LocaleController loads at runtime. Without it this build would ship no localization assets.
 apply plugin: 'org.telegram.build-app-plugin'
+// Novagram: Firebase Crashlytics, mirrored from TMessagesProj_App. Reports go to this module's own Firebase project
+// (the google-services.json here), not the Play app's.
+apply plugin: 'com.google.firebase.crashlytics'
 
 repositories {
     mavenCentral()
@@ -24,6 +27,10 @@ dependencies {
     implementation 'androidx.core:core:1.16.0'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
+
+    // Novagram: Crashlytics — same versions as TMessagesProj_App (why 19.x: see there).
+    implementation 'com.google.firebase:firebase-crashlytics:19.4.4'
+    implementation 'com.google.firebase:firebase-crashlytics-ndk:19.4.4'
 }
 
 android {
@@ -88,6 +95,10 @@ android {
             multiDexEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
             ndk.debugSymbolLevel = 'FULL'
+            firebaseCrashlytics {
+                // the R8 mapping goes up by default; native symbols only when asked (see the task hook below)
+                nativeSymbolUploadEnabled true
+            }
         }
     }
 
@@ -160,6 +171,16 @@ android {
 
     lintOptions {
         checkReleaseBuilds false
+    }
+}
+
+// Novagram: native symbols go up with every release build, as in TMessagesProj_App.
+android.applicationVariants.all { variant ->
+    if (variant.buildType.name == 'release') {
+        def v = variant.name.capitalize()
+        tasks.matching { it.name == "assemble$v" || it.name == "bundle$v" }.configureEach {
+            finalizedBy "uploadCrashlyticsSymbolFile$v"
+        }
     }
 }
 

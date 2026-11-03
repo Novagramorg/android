@@ -1,5 +1,8 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.telegram.build-app-plugin'
+// Novagram: Firebase Crashlytics — Java, native and ANR crash reports of real users, sent to this module's own
+// Firebase project (google-services.json). Mirrored in TMessagesProj_AppRustore.
+apply plugin: 'com.google.firebase.crashlytics'
 
 repositories {
     mavenCentral()
@@ -19,6 +22,12 @@ dependencies {
     implementation project(':TMessagesProj')
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
+
+    // Novagram: Crashlytics. 19.x is the first line whose NDK libraries are 16 KB page-aligned (18.x fails Play's
+    // page-size check); 20.x+ would pull firebase-common 22+, even further from the 20.0.0 that messaging/config/
+    // firestore were built against. Keep both artifacts on the same version.
+    implementation 'com.google.firebase:firebase-crashlytics:19.4.4'
+    implementation 'com.google.firebase:firebase-crashlytics-ndk:19.4.4'
 }
 
 android {
@@ -102,6 +111,10 @@ android {
             multiDexEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
             ndk.debugSymbolLevel = 'FULL'
+            firebaseCrashlytics {
+                // the R8 mapping goes up by default; native symbols only when asked (see the task hook below)
+                nativeSymbolUploadEnabled true
+            }
         }
     }
 
@@ -191,6 +204,18 @@ android {
 
     lintOptions {
         checkReleaseBuilds false
+    }
+}
+
+// Novagram: the Crashlytics plugin uploads the R8 mapping by itself, but native symbols only through its
+// uploadCrashlyticsSymbolFile<Variant> task. Chain that task to every release APK/AAB build (Android Studio's
+// "Generate Signed Bundle / APK" included), so native crashes of a shipped build are always readable.
+android.applicationVariants.all { variant ->
+    if (variant.buildType.name == 'release') {
+        def v = variant.name.capitalize()
+        tasks.matching { it.name == "assemble$v" || it.name == "bundle$v" }.configureEach {
+            finalizedBy "uploadCrashlyticsSymbolFile$v"
+        }
     }
 }
 

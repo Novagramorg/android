@@ -66,8 +66,9 @@ dependencies {
     compileOnly 'org.checkerframework:checker-compat-qual:2.5.0'
     implementation 'com.google.firebase:firebase-messaging:22.0.0'
     implementation 'com.google.firebase:firebase-config:21.0.1'
-    // FenixUz analytics — anonymous install/account counters only (NO Firebase Analytics/GA4).
-    implementation 'com.google.firebase:firebase-firestore:24.0.0'
+    // Novagram: no firebase-firestore. The analytics counters (org.fenixuz.analytics.AnalyticsRemote) talk to
+    // Firestore's REST API since 573131856, so nothing uses the SDK any more — and 24.x carries its own copy of
+    // com.google.firebase.Timestamp, which collides with the firebase-common 21 that Crashlytics brings.
     implementation 'com.google.firebase:firebase-datatransport:18.1.0'
     implementation 'com.google.firebase:firebase-appindexing:20.0.0'
     implementation 'com.google.android.gms:play-services-maps:18.1.0'
