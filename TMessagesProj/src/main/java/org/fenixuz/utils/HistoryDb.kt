@@ -43,6 +43,9 @@ object HistoryDb {
     /** How long the one-time migration waits for an account's storage queue or a server answer. */
     private const val WAIT_SECONDS = 60L
 
+    /** Between two server requests of the one-time migration (see askServer). */
+    private const val SERVER_PAUSE_MS = 500L
+
     /** A message to keep as deleted: [data] is Telegram's stored row for it (null when it couldn't be read). */
     class Kept(val dialogId: Long, val msgId: Int, val who: Int, val data: ByteArray?)
 
@@ -864,10 +867,22 @@ object HistoryDb {
         }
     }
 
-    /** Of [msgIds] (ids of the account's own message box), those the server no longer has; null without an answer. */
+    /**
+     * Of [msgIds] (ids of the account's own message box), those the server no longer has; null without an answer (the
+     * marks then wait for a later start). Warm-up thread only: it pauses between requests, because a burst of
+     * messages.getMessages can get the account rate-limited (FLOOD_WAIT), and that limit would also hit Telegram's own
+     * getMessages calls meanwhile (reply previews, refreshing an expired media reference).
+     */
     private fun askServer(slot: Int, msgIds: List<Int>): Set<Int>? {
         val gone = HashSet<Int>()
-        for (chunk in msgIds.chunked(100)) {
+        for ((i, chunk) in msgIds.chunked(100).withIndex()) {
+            if (i > 0) {
+                try {
+                    Thread.sleep(SERVER_PAUSE_MS)
+                } catch (e: InterruptedException) {
+                    return null
+                }
+            }
             val req = TLRPC.TL_messages_getMessages()
             req.id.addAll(chunk)
             val latch = CountDownLatch(1)
