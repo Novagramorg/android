@@ -227,6 +227,11 @@ final class AudioRecorderV2Controller {
         return session.getStateInfo().getState() == AudioRecordingSession.State.PREVIEWING;
     }
 
+    /** Novagram: a pause asked for, its segment still being finished (togglePause ignores this state). */
+    boolean isPausing() {
+        return session.getStateInfo().getState() == AudioRecordingSession.State.PAUSING;
+    }
+
     private void completePendingFinish(@NonNull AudioRecordingSession.State state) {
         if (!finishRequested) return;
         if (state == AudioRecordingSession.State.RECORDING

@@ -1812,10 +1812,26 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // pause button's own condition; recordingAudioVideo is already false while paused). The pause may still
                 // be joining the parts (seconds for a long message on a slow phone): recordQueue runs in order, so the
                 // resume simply follows it, as a quick second tap on the pause button would.
-                if (pausedHere && sendButtonVisible && MediaController.getInstance().isRecordingPaused()) {
-                    toggleVoiceRecordingPause();
+                if (pausedHere) {
+                    resumeAfterVoiceChanger(VOICE_CHANGER_RESUME_TRIES);
                 }
             });
+        }
+
+        /** Novagram: recorder V2 may still be finishing the pause; tries every 100 ms, about 5 s in all. */
+        private static final int VOICE_CHANGER_RESUME_TRIES = 50;
+
+        private void resumeAfterVoiceChanger(int triesLeft) {
+            if (!sendButtonVisible) {
+                return;
+            }
+            final MediaController controller = MediaController.getInstance();
+            if (controller.isRecordingPaused()) {
+                toggleVoiceRecordingPause();
+            } else if (controller.isRecordingPausing() && triesLeft > 0) {
+                // A toggle now would be ignored: resume once the paused part is ready.
+                AndroidUtilities.runOnUIThread(() -> resumeAfterVoiceChanger(triesLeft - 1), 100);
+            }
         }
 
         /** What the pause button does for a voice message, either way. */

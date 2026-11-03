@@ -5038,6 +5038,14 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     /**
+     * Novagram: recorder V2 pauses in the background, and a toggle in between is ignored; true while that runs. The
+     * older recorder takes a toggle at once, so it is never "pausing".
+     */
+    public boolean isRecordingPausing() {
+        return audioRecorderV2Active && audioRecorderV2Controller != null && audioRecorderV2Controller.isPausing();
+    }
+
+    /**
      * Novagram: blocks recordQueue until fileEncodingQueue has run everything posted to it so far, and the UI thread
      * what those posted to it. The native recorder is one global encoder, also used by the join: writeFrame runs on
      * fileEncodingQueue, while a pause and a new recording close or replace the encoder on recordQueue. A frame still

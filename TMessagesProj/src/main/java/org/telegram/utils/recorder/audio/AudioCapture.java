@@ -75,6 +75,8 @@ final class AudioCapture {
             .order(ByteOrder.nativeOrder());
     private AudioRecorderNative encoder;
     private AudioNoiseSuppressor noiseSuppressor;
+    /** Novagram voice changer: the chosen effect for this segment, null for none (see RecorderEffect). */
+    private final org.fenixuz.voice.RecorderEffect voiceEffect;
     private Exception encoderFailure;
     private boolean encodingFinished;
     private long lastFlushMs;
@@ -104,6 +106,7 @@ final class AudioCapture {
         this.noiseSuppression = noiseSuppression;
         this.diagnostics = diagnostics;
         this.callback = callback;
+        voiceEffect = org.fenixuz.voice.RecorderEffect.create(SAMPLE_RATE, FRAME_SAMPLES);
         captureThread = new HandlerThread("AudioRecorderCapture", Process.THREAD_PRIORITY_AUDIO);
         captureThread.start();
         captureHandler = new Handler(captureThread.getLooper());
@@ -192,7 +195,8 @@ final class AudioCapture {
             long nowMs = SystemClock.elapsedRealtime();
             if (nowMs - lastProgressMs >= PROGRESS_INTERVAL_MS) {
                 double amplitude = sampleCount == 0 ? 0d : Math.sqrt((double) sum / sampleCount);
-                callback.onProgress(capturedSamples, amplitude);
+                // Novagram voice changer: the timer shows the message's length, which a tape speed changes.
+                callback.onProgress(voiceEffect != null ? voiceEffect.lengthOf(capturedSamples) : capturedSamples, amplitude);
                 lastProgressMs = nowMs;
             }
             captureHandler.post(this::readOnce);
@@ -330,7 +334,16 @@ final class AudioCapture {
             frameBuffer.position(0);
             frameBuffer.limit(byteCount);
         }
-        if (encoder == null || encoder.writeFrame(frameBuffer, byteCount) == 0) {
+        // Novagram voice changer: after RNNoise, the frame goes through the effect, which hands the encoder full frames.
+        if (voiceEffect != null) {
+            voiceEffect.push(frameBuffer, byteCount / 2, this::writeEncodedFrame);
+            return;
+        }
+        writeEncodedFrame(frameBuffer, byteCount);
+    }
+
+    private void writeEncodedFrame(@NonNull ByteBuffer frame, int byteCount) {
+        if (encoder == null || encoder.writeFrame(frame, byteCount) == 0) {
             throw new IllegalStateException("Native Opus encoding failed");
         }
     }
@@ -343,6 +356,10 @@ final class AudioCapture {
             if (failure == null && encoder != null && frameBuffer.position() > 0) {
                 encodeFrame(frameBuffer.position());
                 frameBuffer.clear();
+            }
+            // Novagram voice changer: the effect's tail, and then its short frame, the stream's last.
+            if (failure == null && encoder != null && voiceEffect != null) {
+                voiceEffect.finish(this::writeEncodedFrame);
             }
         } catch (Throwable error) {
             failure = asException(error);
@@ -375,7 +392,9 @@ final class AudioCapture {
                 + ", bytes=" + finalSize
                 + ", maxQueuedChunks=" + maximumQueuedChunks);
         if (failure == null) {
-            callback.onStopped(samples, finalSize);
+            // Novagram voice changer: the length the encoder got, which a tape speed changes; the session's duration
+            // and trim positions are taken from this count.
+            callback.onStopped(voiceEffect != null ? voiceEffect.getOutputSamples() : samples, finalSize);
         } else {
             callback.onError(failure);
         }
