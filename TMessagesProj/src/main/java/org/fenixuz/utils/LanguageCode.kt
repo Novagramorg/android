@@ -180,16 +180,16 @@ object LanguageCode {
             )
         )
         titlesLanguages.add(TitleLanguages(24, "", "", ""))
-        titlesLanguages.add(TitleLanguages(25, "Ghost on", "Ghost yoqilgan", "Гост-режим включен"))
+        titlesLanguages.add(TitleLanguages(25, "Ghost on", "Sharpa rejimi yoqildi", "Режим призрака включён"))
         titlesLanguages.add(
             TitleLanguages(
                 26,
                 "Ghost off",
-                "Ghost o'chirilgan",
-                "Гост-режим выключен"
+                "Sharpa rejimi o'chirildi",
+                "Режим призрака выключен"
             )
         )
-        titlesLanguages.add(TitleLanguages(27, "Ghost", "Ghost", "Гост"))
+        titlesLanguages.add(TitleLanguages(27, "Ghost", "Sharpa rejimi", "Режим призрака"))
         titlesLanguages.add(
             TitleLanguages(
                 28,
@@ -215,7 +215,7 @@ object LanguageCode {
                 "Сохранить удалённые сообщения"
             )
         )
-        titlesLanguages.add(TitleLanguages(32, "Ghost mode", "Ghost rejimi", "Режим призрака"))
+        titlesLanguages.add(TitleLanguages(32, "Ghost mode", "Sharpa rejimi", "Режим призрака"))
         titlesLanguages.add(TitleLanguages(33, "Common menu", "Umumiy menyusi", "Общее меню"))
         titlesLanguages.add(TitleLanguages(34, "Select language", "Tilni tanlang", "Выберите язык"))
         titlesLanguages.add(
@@ -824,7 +824,7 @@ object LanguageCode {
             TitleLanguages(
                 131,
                 "Story Ghost",
-                "Hikoya Ghost rejimi",
+                "Hikoya sharpa rejimi",
                 "Призрачный просмотр историй"
             )
         )
@@ -1014,7 +1014,7 @@ object LanguageCode {
                 "Количество участников и подписчиков канала PRO Messenger"
             )
         )
-        titlesLanguages.add(TitleLanguages(157, "Ghost button", "Ghost tugmasi", "Кнопка призрака"))
+        titlesLanguages.add(TitleLanguages(157, "Ghost button", "Sharpa tugmasi", "Кнопка призрака"))
         titlesLanguages.add(
             TitleLanguages(
                 158,
@@ -1035,8 +1035,8 @@ object LanguageCode {
             TitleLanguages(
                 160,
                 "Would you like to see a Ghost button at the top of the main dialog box ?",
-                "Asosiy dialoglar oynasida tepada Ghost(sharpa) tugmasini ko'rsatilishini xohlaysizmi ?",
-                "Хотите ли вы видеть кнопку «Ghost» в верхней части главного диалогового окна ?"
+                "Asosiy dialoglar oynasida tepada Sharpa tugmasini ko'rsatilishini xohlaysizmi ?",
+                "Хотите ли вы видеть кнопку призрака в верхней части главного диалогового окна ?"
             )
         )
         titlesLanguages.add(
@@ -1716,8 +1716,8 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(339, "This indicator is the number of active accounts added to the application.", "Bu raqam — ilovaga qo'shilgan faol akkauntlar soni.", "Данный показатель представляет собой количество активных аккаунтов, добавленных в приложение."))
         titlesLanguages.add(TitleLanguages(340, "Skip", "O'tkazib yuborish", "Пропустить"))
         titlesLanguages.add(TitleLanguages(341, "Lock this chat behind a passcode", "Bu suhbatni parol bilan himoyalang", "Заблокируйте этот чат паролем"))
-        titlesLanguages.add(TitleLanguages(342, "Ghost button on home", "Asosiy oynada Ghost tugmasi", "Кнопка призрака на главном экране"))
-        titlesLanguages.add(TitleLanguages(343, "Show a quick toggle next to search to turn Ghost mode on/off from the chat list", "Ghost rejimini suhbatlar ro'yxatidan tez yoqib-o'chirish uchun qidiruv yonida tugma chiqaradi", "Показывать кнопку рядом с поиском для быстрого включения/выключения режима призрака из списка чатов"))
+        titlesLanguages.add(TitleLanguages(342, "Ghost button on home", "Asosiy oynada Sharpa tugmasi", "Кнопка призрака на главном экране"))
+        titlesLanguages.add(TitleLanguages(343, "Show a quick toggle next to search to turn Ghost mode on/off from the chat list", "Sharpa rejimini suhbatlar ro'yxatidan tez yoqib-o'chirish uchun qidiruv yonida tugma chiqaradi", "Показывать кнопку рядом с поиском для быстрого включения/выключения режима призрака из списка чатов"))
         titlesLanguages.add(TitleLanguages(344, "Bots", "Botlar", "Боты"))
         titlesLanguages.add(TitleLanguages(345, "Novagram bots", "Novagram botlari", "Боты Novagram"))
         titlesLanguages.add(TitleLanguages(346, "Handy bots — tap to open and start", "Foydali botlar — bosib oching va ishga tushiring", "Полезные боты — нажмите, чтобы открыть и запустить"))
