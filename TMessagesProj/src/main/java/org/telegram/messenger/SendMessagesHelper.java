@@ -8,6 +8,7 @@
 
 package org.telegram.messenger;
 
+import org.fenixuz.utils.By;
 import android.annotation.SuppressLint;
 import android.content.ClipDescription;
 import android.content.Context;
@@ -2976,7 +2977,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                                         final long dialogId = MessageObject.getPeerId(newMsgObj1.peer_id);
                                                         final ArrayList<Integer> messagesToDelete = new ArrayList<>(1);
                                                         messagesToDelete.add(newMsgObj1.id);
-                                                        getMessagesStorage().markMessagesAsDeleted(dialogId, messagesToDelete, false, false, mode, (int) MessageObject.getTopicId(currentAccount, newMsgObj1, 0));
+                                                        getMessagesStorage().markMessagesAsDeleted(dialogId, messagesToDelete, false, false, mode, (int) MessageObject.getTopicId(currentAccount, newMsgObj1, 0), false, By.Me);
                                                         getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, -dialogId, messagesToDelete, null);
                                                         AndroidUtilities.runOnUIThread(() -> getMessagesController().markDialogMessageAsDeleted(dialogId, messagesToDelete));
                                                     }
@@ -8052,7 +8053,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                     final long dialogId = MessageObject.getPeerId(newMsgObj.peer_id);
                                     final ArrayList<Integer> messagesToDelete = new ArrayList<>(1);
                                     messagesToDelete.add(newMsgObj.id);
-                                    getMessagesStorage().markMessagesAsDeleted(dialogId, messagesToDelete, false, false, mode, (int) MessageObject.getTopicId(currentAccount, newMsgObj, 0));
+                                    getMessagesStorage().markMessagesAsDeleted(dialogId, messagesToDelete, false, false, mode, (int) MessageObject.getTopicId(currentAccount, newMsgObj, 0), false, By.Me);
                                     getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, -dialogId, messagesToDelete, null);
                                     AndroidUtilities.runOnUIThread(() -> getMessagesController().markDialogMessageAsDeleted(dialogId, messagesToDelete));
                                 }
@@ -8601,7 +8602,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                         final long dialogId = MessageObject.getPeerId(newMsgObj.peer_id);
                                         final ArrayList<Integer> messagesToDelete = new ArrayList<>(1);
                                         messagesToDelete.add(newMsgObj.id);
-                                        getMessagesStorage().markMessagesAsDeleted(dialogId, messagesToDelete, false, false, mode, (int) MessageObject.getTopicId(currentAccount, newMsgObj, 0));
+                                        getMessagesStorage().markMessagesAsDeleted(dialogId, messagesToDelete, false, false, mode, (int) MessageObject.getTopicId(currentAccount, newMsgObj, 0), false, By.Me);
                                         getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, -dialogId, messagesToDelete, null);
                                         AndroidUtilities.runOnUIThread(() -> getMessagesController().markDialogMessageAsDeleted(dialogId, messagesToDelete));
                                     }

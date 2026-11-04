@@ -9563,7 +9563,7 @@ public class MessagesController extends BaseController implements NotificationCe
         // same list to the UI thread. SharedMediaPreloader read it as it shrank and crashed on get().
         // Storage gets its own copy; observers keep the full list, which is what upstream always passed.
         final ArrayList<Integer> storageMessages = new ArrayList<>(messages);
-        getMessagesStorage().markMessagesAsDeleted(dialogId, storageMessages, true, true, ephemeralMessage.isWelcomeMessage() ? ChatActivity.MODE_WELCOME_MESSAGES : 0, topicId);
+        getMessagesStorage().markMessagesAsDeleted(dialogId, storageMessages, true, true, ephemeralMessage.isWelcomeMessage() ? ChatActivity.MODE_WELCOME_MESSAGES : 0, topicId, false, By.Me);
         getMessagesStorage().updateDialogsWithDeletedMessages(dialogId, channelId, storageMessages, null);
         // Novagram: an ephemeral message is only ever deleted by the user here (args[7], see deleteMessages).
         getNotificationCenter().postNotificationName(NotificationCenter.messagesDeleted, messages, channelId, false, false, false, 0, null, By.Me);

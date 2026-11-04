@@ -22981,6 +22981,10 @@ public class ChatActivity extends BaseFragment implements
             // send_state == SENT. Using send_state keeps this consistent with the storage layer and, unlike
             // an id>0 test, still keeps secret-chat messages, whose delivered messages carry negative ids.
             // A message not in memory can't be an in-progress send the user is watching, so it stays keepable.
+            // Never kept either, as in MessagesStorage: scheduled messages, quick replies and welcome messages (a
+            // scheduled one going out is deleted here, it must leave the list, not stay tagged "Deleted"), and
+            // ephemeral bot messages, which are meant to go away.
+            boolean fenixNeverKeep = chatMode == MODE_SCHEDULED || chatMode == MODE_QUICK_REPLIES || chatMode == MODE_WELCOME_MESSAGES;
             ArrayList<Integer> fenixUnsent = new ArrayList<>();
             ArrayList<Integer> fenixKeepable = new ArrayList<>();
             for (int i = 0; i < markAsDeletedMessages.size(); i++) {
@@ -22991,7 +22995,7 @@ public class ChatActivity extends BaseFragment implements
                 MessageObject fenixMsg = messagesDict[0].get(fenixId);
                 boolean fenixSending = fenixMsg != null && fenixMsg.messageOwner != null
                         && fenixMsg.messageOwner.send_state != MessageObject.MESSAGE_SEND_STATE_SENT;
-                if (fenixSending) {
+                if (fenixSending || fenixNeverKeep || MessageObject.isEphemeralMessageId(fenixId)) {
                     fenixUnsent.add(fenixId);
                 } else {
                     fenixKeepable.add(fenixId);

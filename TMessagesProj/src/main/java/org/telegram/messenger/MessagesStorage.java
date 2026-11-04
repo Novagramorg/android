@@ -14555,7 +14555,12 @@ public class MessagesStorage extends BaseController {
         // Fenix delete-save: capture deleted messages instead of removing them, depending on the chosen mode. A deletion
         // by the user (By.Me) is looked at in every mode: it removes a kept message for good, its saved copy included.
         int deletedType = DeletedMsg.INSTANCE.getCheckType();
-        if ((DeletedMsg.SECOND == deletedType || DeletedMsg.ALL == deletedType || By.Me == whoDeleted) && !clear) {
+        // Only chat messages are kept. Scheduled messages, quick replies and welcome messages live in their own tables
+        // and count their ids on their own: a scheduled message going out is deleted by the server under its scheduled
+        // id, and looking that id up in messages_v2 hit an unrelated chat message with the same id (ids start at 1 in
+        // both), which was then kept and tagged "Deleted" -- or, for the user's own delete, lost its kept copy.
+        boolean chatMessages = mode != ChatActivity.MODE_SCHEDULED && mode != ChatActivity.MODE_QUICK_REPLIES && mode != ChatActivity.MODE_WELCOME_MESSAGES;
+        if ((DeletedMsg.SECOND == deletedType || DeletedMsg.ALL == deletedType || By.Me == whoDeleted) && !clear && chatMessages) {
             // Only genuinely delivered messages may be "saved as deleted". A message the user is aborting
             // mid-send — pressing X on a still-uploading video — must NOT be preserved; it has to stay in
             // `messages` so it is hard-deleted below, otherwise the cancelled upload lingers with a "deleted"
@@ -14567,7 +14572,9 @@ public class MessagesStorage extends BaseController {
             ArrayList<Integer> savable = new ArrayList<>();
             for (int i = 0; i < messages.size(); i++) {
                 Integer id = messages.get(i);
-                if (id != null) {
+                // Ephemeral bot messages ("only you can see this") are meant to go away, like an auto-delete timer's:
+                // never kept, hard-deleted below.
+                if (id != null && !MessageObject.isEphemeralMessageId(id)) {
                     savable.add(id);
                 }
             }
