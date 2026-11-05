@@ -108,7 +108,14 @@ object DemoNumber {
         return numberString
     }
 
-    fun checkNumber(number: String): String {
+    /**
+     * The demo number when [number] is the Play Console reviewer's demo account, else "". [number] may be null: the
+     * login code screen can be shown before its phone is set (e.g. restored after Android killed the app while the
+     * user was reading the SMS), and a non-null parameter then crashed the login. Without a configured demo number
+     * nothing matches.
+     */
+    fun checkNumber(number: String?): String {
+        if (number == null || DEMO_NUMBER_FOR_PLAY_CONSOLE.isEmpty()) return ""
         val phoneNumber = number.replace(" ", "")
         return if (phoneNumber == DEMO_NUMBER_FOR_PLAY_CONSOLE) {
             phoneNumber

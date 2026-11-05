@@ -5323,7 +5323,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         codeFieldContainer.setText(s);
                         onNextPressed(null);
                     } else {
-                        Toast.makeText(getParentActivity().getApplicationContext(), "The demo account for testing is not working.", Toast.LENGTH_LONG).show();
+                        // The application context: the answer can come after the user has left the login screen,
+                        // when getParentActivity() is null.
+                        Toast.makeText(ApplicationLoader.applicationContext, "The demo account for testing is not working.", Toast.LENGTH_LONG).show();
                     }
                     return null;
                 });
