@@ -4130,11 +4130,22 @@ public class ChatActivity extends BaseFragment implements
                 } else if (id == join_all_accounts && currentChat != null) {
                     String joinUsername = ChatObject.getPublicUsername(currentChat);
                     if (joinUsername != null) {
-                        Toast.makeText(getContext(), org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(296), Toast.LENGTH_SHORT).show();
-                        org.fenixuz.utils.JoinAllAccounts.INSTANCE.joinOnAllAccounts(currentAccount, joinUsername, (joined, total) ->
+                        // Novagram: the accounts join one at a time with a pause in between (anti-spam), so the toast
+                        // says how many accounts and roughly how long, from the same numbers the run uses.
+                        // "All accounts" includes this one when the user has not joined the channel yet.
+                        boolean joinCurrent = ChatObject.isNotInChat(currentChat);
+                        int joinCount = org.fenixuz.utils.JoinAllAccounts.targetCount(currentAccount, joinCurrent);
+                        boolean started = org.fenixuz.utils.JoinAllAccounts.INSTANCE.joinOnAllAccounts(currentAccount, joinUsername, joinCurrent, (joined, total) ->
                                 Toast.makeText(org.telegram.messenger.ApplicationLoader.applicationContext,
                                         joined + " " + org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(295),
                                         Toast.LENGTH_SHORT).show());
+                        if (started) {
+                            int seconds = org.fenixuz.utils.JoinAllAccounts.estimateSeconds(joinCount);
+                            String eta = seconds < 60
+                                    ? String.format(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(523), joinCount, seconds)
+                                    : String.format(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(524), joinCount, (seconds + 59) / 60);
+                            Toast.makeText(getContext(), eta, Toast.LENGTH_LONG).show();
+                        }
                     }
                 } else if (id == voice_input) {
                     // Novagram: stop+translate if dictating, else open the voice-translate config sheet.

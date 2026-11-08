@@ -2039,6 +2039,15 @@ object LanguageCode {
             "Remove this message from the chat and the saved history for good?",
             "Bu xabar chatdan va saqlangan tarixdan butunlay o'chirilsinmi?",
             "Удалить это сообщение из чата и сохранённой истории навсегда?"))
+        // Join with all accounts: the run is one account at a time with a pause in between, so it says how long.
+        titlesLanguages.add(TitleLanguages(523,
+            "Joining on %1\$d accounts, about %2\$d sec…",
+            "%1\$d ta akkaunt bilan qo'shilmoqda, taxminan %2\$d soniya…",
+            "Вход %1\$d аккаунтами, около %2\$d сек…"))
+        titlesLanguages.add(TitleLanguages(524,
+            "Joining on %1\$d accounts, about %2\$d min…",
+            "%1\$d ta akkaunt bilan qo'shilmoqda, taxminan %2\$d daqiqa…",
+            "Вход %1\$d аккаунтами, около %2\$d мин…"))
     }
 
     /**
