@@ -39,10 +39,10 @@ import javax.crypto.spec.PBEKeySpec
  * Novagram: hidden accounts. The feature is turned on in Novagram settings by setting a code; then a long press on an
  * account in the account lists hides it. A hidden account is never listed with the others (only as the current account
  * while the user is in it): hidden accounts have a list of their own, [HiddenAccountsListScreen], which a long press on
- * "Add account" opens after the code. Entering the code unlocks hidden accounts until the app has been in the
- * background for [RELOCK_DELAY_MS], the screen turns off, or the process restarts; then the app leaves a hidden account
- * it is showing for a visible one, and the list needs the code again. With [hideOnBackground] off they stay unlocked
- * through all of that, until the lock button of the list.
+ * "Add account" opens after the code, every time. Entering the code unlocks hidden accounts until the app has been in
+ * the background for [RELOCK_DELAY_MS], the screen turns off, or the process restarts; then the app leaves a hidden
+ * account it is showing for a visible one. With [hideOnBackground] off they stay unlocked through all of that, until
+ * the lock button of the list.
  *
  * Accounts are remembered by Telegram user id, not by slot, so a reshuffle of slots never hides the wrong account,
  * and logging out of a hidden account forgets it: logging in again brings it back visible.
@@ -512,16 +512,15 @@ object HiddenAccounts {
     }
 
     /**
-     * The long press on "Add account": opens the list of hidden accounts, after the code unless they are unlocked
-     * already. Returns false (and does nothing) when the feature is off.
+     * The long press on "Add account": opens the list of hidden accounts, after the code. The code is asked EVERY time,
+     * even while hidden accounts are still unlocked (2026-11-08): the list used to open without it for up to
+     * [RELOCK_DELAY_MS] after the last entry, while the settings screen ([HiddenAccountsScreen.open]) always asked, and
+     * users read the difference as the lock not working. Unlocking after the code keeps the rest as it was: the user may
+     * stay in a hidden account, and the lock button leaves it. Returns false (and does nothing) when the feature is off.
      */
     @JvmStatic
     fun askUnlock(fragment: BaseFragment): Boolean {
         if (!hasCode()) return false
-        if (unlocked) {
-            fragment.presentFragment(HiddenAccountsListScreen())
-            return true
-        }
         return askCode(fragment) {
             unlock()
             fragment.presentFragment(HiddenAccountsListScreen(), false, true)
