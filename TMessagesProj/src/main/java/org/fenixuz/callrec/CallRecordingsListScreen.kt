@@ -69,6 +69,7 @@ class CallRecordingsListScreen : UniversalFragment() {
     fun reload() {
         Utilities.globalQueue.postRunnable {
             CallRecordingStorage.recover()
+            CallRecordingStorage.prune()
             val list = CallRecordingStorage.list()
             // Durations are measured here, off the UI thread, so the rows have them when they appear.
             list.forEach { it.durationMs }

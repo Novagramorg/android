@@ -338,6 +338,9 @@ object CallRecording {
     /** Finishes any stream a killed app left behind. Off the UI thread, cheap when there is none. */
     @JvmStatic
     fun recoverLeftovers() {
-        Utilities.globalQueue.postRunnable { CallRecordingStorage.recover() }
+        Utilities.globalQueue.postRunnable {
+            CallRecordingStorage.recover()
+            CallRecordingStorage.prune()
+        }
     }
 }

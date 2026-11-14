@@ -13,6 +13,10 @@ object CallRecordingSettings {
     private const val KEY_AUTO = "call_rec_auto"
     private const val KEY_WARNED = "call_rec_warned"
     private const val KEY_QUALITY = "call_rec_quality"
+    private const val KEY_KEEP_DAYS = "call_rec_keep_days"
+
+    /** The retention choices offered: 0 is "keep forever". */
+    val KEEP_DAYS_OPTIONS = intArrayOf(0, 7, 30, 90)
 
     /**
      * What a recording keeps of the call's video. Same keys as the iOS/macOS apps. The saver canvas is 480x848 on
@@ -54,6 +58,15 @@ object CallRecordingSettings {
     var quality: Quality
         get() = Quality.of(prefs.getString(KEY_QUALITY, null))
         set(value) { prefs.edit().putString(KEY_QUALITY, value.key).apply() }
+
+    /**
+     * Recordings older than this many days are deleted (0 = never). The files live in the app's private storage, where
+     * Telegram's own cache cleaner does not see them, so without this an automatic recorder fills the phone unnoticed.
+     */
+    @JvmStatic
+    var keepDays: Int
+        get() = prefs.getInt(KEY_KEEP_DAYS, 0)
+        set(value) { prefs.edit().putInt(KEY_KEEP_DAYS, value).apply() }
 
     /** The first-recording consent alert was accepted once. */
     @JvmStatic

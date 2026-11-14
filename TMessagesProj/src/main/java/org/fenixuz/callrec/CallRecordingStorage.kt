@@ -81,6 +81,21 @@ object CallRecordingStorage {
 
     fun totalSize(): Long = list().sumOf { it.size }
 
+    /**
+     * Deletes the recordings older than the "keep recordings" setting. Off the UI thread; run wherever the list is about
+     * to be read (before a recording starts, when the list or the settings open), so the limit holds without a job of
+     * its own. Returns how many were removed.
+     */
+    fun prune(): Int {
+        val days = CallRecordingSettings.keepDays
+        if (days <= 0) return 0
+        val cutoff = System.currentTimeMillis() - days * 86_400_000L
+        val old = list().filter { it.date < cutoff }
+        old.forEach { delete(it) }
+        if (old.isNotEmpty()) FileLog.d("CallRecording: pruned ${old.size} recordings older than $days days")
+        return old.size
+    }
+
     fun count(): Int = directory.listFiles { f -> isRecordingFile(f) }?.size ?: 0
 
     fun delete(recording: Recording): Boolean {
