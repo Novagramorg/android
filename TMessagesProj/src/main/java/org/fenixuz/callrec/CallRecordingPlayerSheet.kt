@@ -73,7 +73,8 @@ object CallRecordingPlayerSheet {
         content.addView(title, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22f, 12f, 22f, 2f))
 
         val subtitle = TextView(context)
-        subtitle.text = LocaleController.formatDateAudio(rec.date / 1000, true) + " · " + AndroidUtilities.formatFileSize(rec.size)
+        // "November 14, 15:09 · 68.8 KB": the day as the list's section header spells it, the time as the rows do.
+        subtitle.text = LocaleController.formatDateChat(rec.date / 1000) + ", " + android.text.format.DateFormat.getTimeFormat(context).format(rec.date) + " · " + AndroidUtilities.formatFileSize(rec.size)
         subtitle.setTextColor(Theme.getColor(Theme.key_dialogTextGray2, rp))
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14f)
         content.addView(subtitle, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22f, 0f, 22f, 12f))
@@ -191,20 +192,41 @@ object CallRecordingPlayerSheet {
                 false
             }
             AndroidUtilities.runOnUIThread {
-                Toast.makeText(context, LanguageCode.getMyTitles(if (!ok) 541 else if (video) 566 else 552), Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, LanguageCode.getMyTitles(if (!ok) 573 else if (video) 566 else 552), Toast.LENGTH_SHORT).show()
             }
         }
     }
 
+    /**
+     * Telegram refuses to upload anything that lives under the app's private data directory (its guard against another
+     * app's share intent smuggling the database out), and the recordings live there. What gets sent is a copy in the
+     * sharing cache, the same place Telegram stages files it receives from other apps; the cache cleaner removes it later.
+     */
     private fun sendToSavedMessages(rec: CallRecordingStorage.Recording) {
-        val file = rec.file
+        val source = rec.file
         val account = UserConfig.selectedAccount
         val self = UserConfig.getInstance(account).getClientUserId()
-        SendMessagesHelper.prepareSendingDocument(
-            AccountInstance.getInstance(account), file.absolutePath, file.absolutePath, null, null, rec.mimeType, self,
-            null, null, null, null, null, true, 0, null, null, false
-        )
-        Toast.makeText(ApplicationLoader.applicationContext, LanguageCode.getMyTitles(553), Toast.LENGTH_SHORT).show()
+        Utilities.globalQueue.postRunnable {
+            val copy = try {
+                val dir = AndroidUtilities.getSharingDirectory()
+                dir.mkdirs()
+                source.copyTo(File(dir, source.name), overwrite = true)
+            } catch (e: Exception) {
+                FileLog.e(e)
+                null
+            }
+            AndroidUtilities.runOnUIThread {
+                if (copy == null) {
+                    Toast.makeText(ApplicationLoader.applicationContext, LanguageCode.getMyTitles(573), Toast.LENGTH_SHORT).show()
+                    return@runOnUIThread
+                }
+                SendMessagesHelper.prepareSendingDocument(
+                    AccountInstance.getInstance(account), copy.absolutePath, copy.absolutePath, null, null, rec.mimeType, self,
+                    null, null, null, null, null, true, 0, null, null, false
+                )
+                Toast.makeText(ApplicationLoader.applicationContext, LanguageCode.getMyTitles(559), Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     // ---- the player ----
