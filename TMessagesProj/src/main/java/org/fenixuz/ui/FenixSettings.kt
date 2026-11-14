@@ -106,6 +106,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val VOICE_CHANGER = 35
     private val VOICE_CHANGER_CALL = 36
     private val HISTORY_CLEAR = 37
+    private val CALL_RECORDING = 40
 
     /** Size of this account's saved deleted messages and edit history, measured off the UI thread; null until then. */
     private var historySize: String? = null
@@ -140,6 +141,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         APK_SHIELD to "block_apk",
         VOICE_CHANGER to "voice_changer",
         VOICE_CHANGER_CALL to "voice_changer_call",
+        CALL_RECORDING to "call_recording",
         ROUND_CAMERA to "round_video_camera",
         ADMIN_FOLDERS to "admin_folders",
         AVATAR_PROFILE to "avatar_profile",
@@ -408,6 +410,9 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         items.add(UItem.asHeader(LanguageCode.getMyTitles(467)))
         items.add(ChoiceCell.Factory.of(VOICE_CHANGER, LanguageCode.getMyTitles(488), LanguageCode.getMyTitles(489), VoiceChanger.currentTitle()))
         items.add(ChoiceCell.Factory.of(VOICE_CHANGER_CALL, LanguageCode.getMyTitles(490), LanguageCode.getMyTitles(491), VoiceChanger.callTitle()))
+        // Call recording has a page of its own (switch, auto, the recordings, privacy), like on iOS.
+        items.add(ChoiceCell.Factory.of(CALL_RECORDING, LanguageCode.getMyTitles(527), LanguageCode.getMyTitles(529),
+            LanguageCode.getMyTitles(if (org.fenixuz.callrec.CallRecordingSettings.isEnabled) 557 else 558)))
         items.add(UItem.asShadow(null))
 
         // Round video note camera — a persistent choice (front by default) used every time a round
@@ -679,6 +684,7 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             }
             REMINDER_DELAY -> showReminderDelayPicker()
             REMINDER_SOUND -> showReminderSoundPicker()
+            CALL_RECORDING -> org.fenixuz.callrec.CallRecordingScreen.open(this)
             STRANGER_SHIELD -> {
                 if (!StrangerShield.isEnabled(currentAccount)) {
                     // Turning ON: explain exactly what happens, then ask for consent — so the user is
