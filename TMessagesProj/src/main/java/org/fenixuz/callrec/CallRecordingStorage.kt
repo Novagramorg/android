@@ -17,7 +17,8 @@ import java.util.Locale
  */
 object CallRecordingStorage {
 
-    class Recording(val file: File, val peerName: String, val date: Long, val size: Long) {
+    /** [peerAccount]/[peerId] are 0 when the recording predates them or was recovered without a call. */
+    class Recording(val file: File, val peerName: String, val date: Long, val size: Long, val peerAccount: Int, val peerId: Long) {
         /** Milliseconds; measured once per file and cached. */
         val durationMs: Long get() = durationOf(file)
         val isVideo: Boolean get() = file.name.endsWith(".$VIDEO_EXTENSION")
@@ -30,6 +31,7 @@ object CallRecordingStorage {
     private const val PARTIAL = ".partial"
     private const val DATE_FORMAT = "yyyy-MM-dd HH.mm"
     private const val DURATIONS_PREF = "call_rec_durations"
+    private const val PEERS_PREF = "call_rec_peers"
     private val stampPattern = Regex(" (\\d{4}-\\d{2}-\\d{2}) (\\d{2})\\.(\\d{2})( \\d+)?$")
 
     val directory: File
@@ -64,12 +66,17 @@ object CallRecordingStorage {
     /** Every recording, newest first. Off the UI thread: it stats every file. */
     fun list(): List<Recording> {
         val files = directory.listFiles { f -> isRecordingFile(f) } ?: return emptyList()
+        val peers = peerPrefs().all
         return files.map { f ->
             val base = f.name.substringBeforeLast('.')
             val m = stampPattern.find(base)
             val peer = if (m != null) base.substring(0, m.range.first).trim().ifEmpty { base } else base
             val date = if (m != null) parseStamp(m.groupValues[1], m.groupValues[2], m.groupValues[3]) ?: f.lastModified() else f.lastModified()
-            Recording(f, peer, date, f.length())
+            // "account:userId", written when the recording was finished.
+            val ids = (peers[f.name] as? String)?.split(':')
+            val peerAccount = ids?.getOrNull(0)?.toIntOrNull() ?: 0
+            val peerId = ids?.getOrNull(1)?.toLongOrNull() ?: 0L
+            Recording(f, peer, date, f.length(), peerAccount, peerId)
         }.sortedByDescending { it.date }
     }
 
@@ -100,7 +107,18 @@ object CallRecordingStorage {
 
     fun delete(recording: Recording): Boolean {
         forgetDuration(recording.file)
+        peerPrefs().edit().remove(recording.file.name).apply()
         return recording.file.delete()
+    }
+
+    // ---- who the call was with: the list shows their profile photo ----
+
+    private fun peerPrefs() = ApplicationLoader.applicationContext.getSharedPreferences(PEERS_PREF, Context.MODE_PRIVATE)
+
+    /** Ties [file] to the user it was recorded with, so the list can show the profile photo rather than initials. */
+    fun rememberPeer(file: File, account: Int, userId: Long) {
+        if (userId == 0L) return
+        peerPrefs().edit().putString(file.name, "$account:$userId").apply()
     }
 
     fun deleteAll() {

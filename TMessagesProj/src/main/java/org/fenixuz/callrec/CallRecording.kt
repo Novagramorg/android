@@ -210,7 +210,7 @@ object CallRecording {
         val startDate = System.currentTimeMillis()
         val rec = CallAudioRecorder(
             partial = CallRecordingStorage.newPartialFile("aac"),
-            finalFileFor = { ext -> CallRecordingStorage.finalFile(name, startDate, ext) },
+            finalFileFor = { ext -> CallRecordingStorage.finalFile(name, startDate, ext).also { CallRecordingStorage.rememberPeer(it, account, peerId) } },
             isMicMuted = { VoIPService.getSharedInstance()?.isMicMute ?: false },
         )
         // Read at each start: a change in Settings applies from the next recording. Video is followed for the whole

@@ -14,6 +14,8 @@ import org.fenixuz.utils.LanguageCode
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.messenger.LocaleController
+import org.telegram.messenger.MessagesController
+import org.telegram.messenger.UserConfig
 import org.telegram.messenger.R
 import org.telegram.messenger.Utilities
 import org.telegram.ui.ActionBar.ActionBar
@@ -164,9 +166,13 @@ class CallRecordingsListScreen : UniversalFragment() {
         return layout
     }
 
-    /** One recording: an initials avatar coloured by the name, the name, and "14:25 · 03:12 · 1.2 MB". */
+    /**
+     * One recording: the profile photo of the person called (initials coloured by the name when the user is not known
+     * any more), the name, and "14:25 · 03:12 · 1.2 MB".
+     */
     class RecordingCell(context: Context, resourcesProvider: Theme.ResourcesProvider?) : FrameLayout(context) {
         private val avatar = AvatarDrawable()
+        private val photo = BackupImageView(context)
         private val title = TextView(context)
         private val subtitle = TextView(context)
         private var divider = false
@@ -189,13 +195,23 @@ class CallRecordingsListScreen : UniversalFragment() {
             subtitle.gravity = start
             addView(subtitle, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT.toFloat(), start or Gravity.TOP, if (LocaleController.isRTL) 16f else 72f, 33f, if (LocaleController.isRTL) 72f else 16f, 0f))
             avatar.setTextSize(dp(18f))
+            photo.setRoundRadius(dp(20f))
+            addView(photo, LayoutHelper.createFrame(40, 40f, Gravity.CENTER_VERTICAL or start, 16f, 0f, 16f, 0f))
         }
 
         fun set(rec: CallRecordingStorage.Recording, divider: Boolean) {
-            // The same name always gets the same colour: the avatar id is a stable hash of it.
-            var hash = 0L
-            for (ch in rec.peerName) hash = (hash * 31 + ch.code) and 0x7fffffffL
-            avatar.setInfo(hash, rec.peerName, null)
+            // The user as this account knows them today; an account that is logged out, or a recording from before
+            // the id was kept, falls back to initials. The same name always gets the same colour: a stable hash.
+            val user = if (rec.peerId != 0L && UserConfig.getInstance(rec.peerAccount).isClientActivated) MessagesController.getInstance(rec.peerAccount).getUser(rec.peerId) else null
+            if (user != null) {
+                avatar.setInfo(rec.peerAccount, user)
+                photo.setForUserOrChat(user, avatar)
+            } else {
+                var hash = 0L
+                for (ch in rec.peerName) hash = (hash * 31 + ch.code) and 0x7fffffffL
+                avatar.setInfo(hash, rec.peerName, null)
+                photo.setImageDrawable(avatar)
+            }
             title.text = rec.peerName
             // The system time format (12/24 h) without seconds: a recording's time is known to the minute only.
             val time = android.text.format.DateFormat.getTimeFormat(context).format(rec.date)
@@ -211,10 +227,6 @@ class CallRecordingsListScreen : UniversalFragment() {
         }
 
         override fun onDraw(canvas: Canvas) {
-            val size = dp(40f)
-            val left = if (LocaleController.isRTL) width - dp(16f) - size else dp(16f)
-            avatar.setBounds(left, (height - size) / 2, left + size, (height + size) / 2)
-            avatar.draw(canvas)
             if (divider) {
                 val x = if (LocaleController.isRTL) 0f else dp(72f).toFloat()
                 val x2 = if (LocaleController.isRTL) (width - dp(72f)).toFloat() else width.toFloat()
