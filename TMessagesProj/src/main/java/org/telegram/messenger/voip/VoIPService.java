@@ -690,9 +690,22 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		private VideoSink background;
 
 		private long nativeInstance;
+		// Novagram call recording: which side of a 1:1 call this sink carries (CallVideoTap.SIDE_*), 0 for none.
+		private final int recordSide;
+
+		public ProxyVideoSink() {
+			this(0);
+		}
+
+		public ProxyVideoSink(int recordSide) {
+			this.recordSide = recordSide;
+		}
 
 		@Override
 		synchronized public void onFrame(VideoFrame frame) {
+			if (recordSide != 0) {
+				org.fenixuz.callrec.CallVideoTap.onFrame(frame, recordSide);
+			}
 			if (target != null) {
 				target.onFrame(frame);
 			}
@@ -827,8 +840,8 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		}
 		loadResources();
 		for (int a = 0; a < localSink.length; a++) {
-			localSink[a] = new ProxyVideoSink();
-			remoteSink[a] = new ProxyVideoSink();
+			localSink[a] = new ProxyVideoSink(org.fenixuz.callrec.CallVideoTap.SIDE_LOCAL);
+			remoteSink[a] = new ProxyVideoSink(org.fenixuz.callrec.CallVideoTap.SIDE_REMOTE);
 		}
 		try {
 			AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -4128,6 +4141,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (BuildVars.LOGS_ENABLED) {
 			FileLog.d("=============== VoIPService STOPPING ===============");
 		}
+		org.fenixuz.callrec.CallRecording.onServiceDestroyed(); // Novagram: a running recording is finished
 		stopForeground(true);
 		stopRinging();
 		if (currentAccount >= 0) {
@@ -4798,6 +4812,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			FileLog.d("== Call " + getCallID() + " state changed to " + state + " ==");
 		}
 		currentState = state;
+		org.fenixuz.callrec.CallRecording.onCallState(this, state); // Novagram: auto start / stop with the call
 		if (currentState == STATE_ESTABLISHED) {
 			destroyConverting();
 		}

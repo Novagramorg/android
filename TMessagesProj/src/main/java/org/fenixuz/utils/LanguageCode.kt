@@ -2048,6 +2048,57 @@ object LanguageCode {
             "Joining on %1\$d accounts, about %2\$d min…",
             "%1\$d ta akkaunt bilan qo'shilmoqda, taxminan %2\$d daqiqa…",
             "Вход %1\$d аккаунтами, около %2\$d мин…"))
+        titlesLanguages.add(TitleLanguages(525, "Rate Novagram", "Novagram'ni baholash", "Оценить Novagram"))
+        titlesLanguages.add(TitleLanguages(526, "Send feedback", "Fikr yuborish", "Отправить отзыв"))
+        // Call recording (org.fenixuz.callrec), 527–566: the same words as the iOS/macOS apps where they overlap.
+        // NOTE: getMyTitles() indexes this list by position, so an id is never removed, only emptied.
+        titlesLanguages.add(TitleLanguages(527, "Call recording", "Qo'ng'iroqni yozib olish", "Запись звонков"))
+        titlesLanguages.add(TitleLanguages(528, "Record", "Yozish", "Запись"))
+        titlesLanguages.add(TitleLanguages(529, "Adds a Record button to voice and video calls. The other person is told in the chat when a recording starts.", "Ovozli va video qo'ng'iroqlarga «Yozish» tugmasini qo'shadi. Yozish boshlanganda suhbatdoshga chatda xabar beriladi.", "Добавляет в аудио- и видеозвонки кнопку «Запись». Когда запись начинается, собеседник получает сообщение в чате."))
+        titlesLanguages.add(TitleLanguages(530, "Record every call automatically", "Har bir qo'ng'iroqni avtomatik yozib olish", "Записывать каждый звонок автоматически"))
+        titlesLanguages.add(TitleLanguages(531, "", "", "")) // unused: former settings footer; the list is positional, so the slot stays
+        titlesLanguages.add(TitleLanguages(532, "Call recordings", "Qo'ng'iroq yozuvlari", "Записи звонков"))
+        titlesLanguages.add(TitleLanguages(533, "", "", "")) // unused: former settings footer; the list is positional, so the slot stays
+        titlesLanguages.add(TitleLanguages(534, "", "", "")) // unused: former settings footer; the list is positional, so the slot stays
+        titlesLanguages.add(TitleLanguages(535, "", "", "")) // unused: former settings footer; the list is positional, so the slot stays
+        titlesLanguages.add(TitleLanguages(536, "🔴 I'm recording this call (Novagram)", "🔴 Men bu qo'ng'iroqni yozib olyapman (Novagram)", "🔴 Я записываю этот звонок (Novagram)"))
+        titlesLanguages.add(TitleLanguages(537, "Record this call?", "Qo'ng'iroq yozib olinsinmi?", "Записать звонок?"))
+        titlesLanguages.add(TitleLanguages(538, "The other person will get a message in this chat that you are recording the call. In some countries recording without consent is illegal. The recording stays on this device.", "Suhbatdoshingizga shu chatda qo'ng'iroqni yozib olayotganingiz haqida xabar boradi. Ba'zi mamlakatlarda roziliksiz yozib olish qonunga zid. Yozuv faqat shu qurilmada qoladi.", "Собеседник получит в этом чате сообщение о том, что вы записываете звонок. В некоторых странах запись без согласия запрещена законом. Запись остаётся только на этом устройстве."))
+        titlesLanguages.add(TitleLanguages(539, "Continue", "Davom etish", "Продолжить"))
+        titlesLanguages.add(TitleLanguages(540, "Call recording saved", "Qo'ng'iroq yozuvi saqlandi", "Запись звонка сохранена"))
+        titlesLanguages.add(TitleLanguages(541, "Call recording failed", "Qo'ng'iroqni yozib bo'lmadi", "Не удалось записать звонок"))
+        titlesLanguages.add(TitleLanguages(542, "Nothing was recorded: the call audio did not start", "Hech narsa yozilmadi: qo'ng'iroq ovozi ishga tushmadi", "Ничего не записано: звук звонка не запустился"))
+        titlesLanguages.add(TitleLanguages(543, "Recording stopped", "Yozish to'xtatildi", "Запись остановлена"))
+        titlesLanguages.add(TitleLanguages(544, "No recordings yet", "Hali yozuvlar yo'q", "Записей пока нет"))
+        titlesLanguages.add(TitleLanguages(545, "Share", "Ulashish", "Поделиться"))
+        titlesLanguages.add(TitleLanguages(546, "Save to device", "Qurilmaga saqlash", "Сохранить на устройство"))
+        titlesLanguages.add(TitleLanguages(547, "Send to Saved Messages", "Saqlangan xabarlarga yuborish", "Отправить в Избранное"))
+        titlesLanguages.add(TitleLanguages(548, "Delete", "O'chirish", "Удалить"))
+        titlesLanguages.add(TitleLanguages(549, "Delete all recordings", "Barcha yozuvlarni o'chirish", "Удалить все записи"))
+        titlesLanguages.add(TitleLanguages(550, "Delete this recording? This cannot be undone.", "Bu yozuv o'chirilsinmi? Buni qaytarib bo'lmaydi.", "Удалить эту запись? Это нельзя отменить."))
+        titlesLanguages.add(TitleLanguages(551, "Delete all %1\$d recordings? This cannot be undone.", "Barcha %1\$d ta yozuv o'chirilsinmi? Buni qaytarib bo'lmaydi.", "Удалить все записи (%1\$d)? Это нельзя отменить."))
+        titlesLanguages.add(TitleLanguages(552, "Saved to Music › Novagram Call Recordings", "Musiqa › Novagram Call Recordings papkasiga saqlandi", "Сохранено в Музыка › Novagram Call Recordings"))
+        titlesLanguages.add(TitleLanguages(553, "Stop recording", "Yozishni to'xtatish", "Остановить запись"))
+        titlesLanguages.add(TitleLanguages(554, "%1\$d recordings · %2\$s", "%1\$d ta yozuv · %2\$s", "Записей: %1\$d · %2\$s"))
+        titlesLanguages.add(TitleLanguages(555, "", "", "")) // unused: former section header; slot kept (positional list)
+        titlesLanguages.add(TitleLanguages(556, "Recordings", "Yozuvlar", "Записи"))
+        titlesLanguages.add(TitleLanguages(557, "On", "Yoqilgan", "Вкл."))
+        titlesLanguages.add(TitleLanguages(558, "Off", "O'chirilgan", "Выкл."))
+        titlesLanguages.add(TitleLanguages(559, "Sent to Saved Messages", "Saqlangan xabarlarga yuborildi", "Отправлено в Избранное"))
+        titlesLanguages.add(TitleLanguages(560, "Video quality", "Video sifati", "Качество видео"))
+        titlesLanguages.add(TitleLanguages(561, "Audio only", "Faqat ovoz", "Только звук"))
+        titlesLanguages.add(TitleLanguages(562, "Battery saver (15 fps)", "Batareyani tejash (15 kadr/s)", "Экономия заряда (15 кадр/с)"))
+        titlesLanguages.add(TitleLanguages(563, "High (30 fps)", "Yuqori sifat (30 kadr/s)", "Высокое (30 кадр/с)"))
+        titlesLanguages.add(TitleLanguages(564, "", "", "")) // unused: former settings footer; the list is positional, so the slot stays
+        titlesLanguages.add(TitleLanguages(565, "Video", "Video", "Видео"))
+        titlesLanguages.add(TitleLanguages(566, "Saved to Movies › Novagram Call Recordings", "Filmlar › Novagram Call Recordings papkasiga saqlandi", "Сохранено в Фильмы › Novagram Call Recordings"))
+        titlesLanguages.add(TitleLanguages(567, "Keep recordings", "Saqlash muddati", "Хранить записи"))
+        titlesLanguages.add(TitleLanguages(568, "Forever", "Doimiy", "Всегда"))
+        titlesLanguages.add(TitleLanguages(569, "1 week", "1 hafta", "1 неделя"))
+        titlesLanguages.add(TitleLanguages(570, "1 month", "1 oy", "1 месяц"))
+        titlesLanguages.add(TitleLanguages(571, "3 months", "3 oy", "3 месяца"))
+        titlesLanguages.add(TitleLanguages(572, "Recordings older than this are deleted automatically. They are stored on this phone only and are not counted in Telegram's storage usage.", "Bundan eski yozuvlar avtomatik o'chiriladi. Ular faqat shu telefonda saqlanadi va Telegramning xotira hisobiga kirmaydi.", "Записи старше этого срока удаляются автоматически. Они хранятся только на этом телефоне и не учитываются в статистике памяти Telegram."))
+        titlesLanguages.add(TitleLanguages(573, "Couldn't save the recording", "Yozuvni saqlab bo'lmadi", "Не удалось сохранить запись"))
     }
 
     /**

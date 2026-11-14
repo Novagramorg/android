@@ -178,6 +178,8 @@ public class WebRtcAudioTrack {
           byteBuffer.put(emptyBytes);
           byteBuffer.position(0);
         }
+        // Novagram call recording: the other person and the call tones, as the speaker plays them.
+        org.fenixuz.callrec.CallAudioTap.onPlayout(byteBuffer, sizeInBytes, sampleRate, audioTrack.getChannelCount());
         int bytesWritten = writeBytes(audioTrack, byteBuffer, sizeInBytes, blocking);
         if (bytesWritten != sizeInBytes) {
           Logging.e(TAG, "AudioTrack.write played invalid number of bytes: " + bytesWritten);

@@ -203,6 +203,8 @@ public class WebRtcAudioRecord {
               byteBuffer.putShort(a * 2, (short) mixed);
             }
           }
+          // Novagram call recording: our side, as the other person hears it (after mute and the voice changer).
+          org.fenixuz.callrec.CallAudioTap.onMic(byteBuffer, bytesRead, requestedSampleRate, requestedChannels);
           // It's possible we've been shut down during the read, and stopRecording() tried and
           // failed to join this thread. To be a bit safer, try to avoid calling any native methods
           // in case they've been unregistered after stopRecording() returned.

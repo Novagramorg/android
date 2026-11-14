@@ -185,6 +185,7 @@ public class VoIPFragment implements
     private ConferenceParticipantsView participantsView;
     private ImageView backIcon;
     private ImageView voiceChangerIcon;
+    private org.fenixuz.callrec.CallRecordCapsule recordCapsule; // Novagram: "● Record" / "● REC 00:12"
     private final Paint voiceChangerLitPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private ImageView addIcon;
     private int speakerPhoneIconResId;
@@ -495,6 +496,25 @@ public class VoIPFragment implements
         instance = null;
     }
 
+    /**
+     * Novagram call recording: what the screen shows, so the recording's picture-in-picture matches it:
+     * {small picture in the top half, small picture in the left half, our side is the big picture}, as 0/1.
+     */
+    public int[] novagramVideoLayout() {
+        boolean localFloating = currentUserCameraFloatingLayout != null && currentUserCameraFloatingLayout.getTag() != null && (int) currentUserCameraFloatingLayout.getTag() == STATE_FLOATING;
+        View pip = localFloating ? currentUserCameraFloatingLayout : callingUserMiniFloatingLayout;
+        boolean localBig = !localFloating;
+        int top = 0, left = 0;
+        if (pip != null && pip.getParent() instanceof View && pip.getMeasuredWidth() > 0) {
+            View parent = (View) pip.getParent();
+            float cx = pip.getX() + pip.getMeasuredWidth() / 2f;
+            float cy = pip.getY() + pip.getMeasuredHeight() / 2f;
+            top = cy < parent.getMeasuredHeight() / 2f ? 1 : 0;
+            left = cx < parent.getMeasuredWidth() / 2f ? 1 : 0;
+        }
+        return new int[]{top, left, localBig ? 1 : 0};
+    }
+
     public static VoIPFragment getInstance() {
         return instance;
     }
@@ -505,6 +525,7 @@ public class VoIPFragment implements
         ((FrameLayout.LayoutParams) acceptDeclineView.getLayoutParams()).bottomMargin = lastInsets.getSystemWindowInsetBottom();
         ((FrameLayout.LayoutParams) backIcon.getLayoutParams()).topMargin = lastInsets.getSystemWindowInsetTop();
         ((FrameLayout.LayoutParams) voiceChangerIcon.getLayoutParams()).topMargin = dp(56) + lastInsets.getSystemWindowInsetTop();
+        ((FrameLayout.LayoutParams) recordCapsule.getLayoutParams()).topMargin = dp(70) + lastInsets.getSystemWindowInsetTop();
         ((FrameLayout.LayoutParams) addIcon.getLayoutParams()).topMargin = lastInsets.getSystemWindowInsetTop();
         ((FrameLayout.LayoutParams) speakerPhoneIcon.getLayoutParams()).topMargin = dp(56) + lastInsets.getSystemWindowInsetTop();
         ((FrameLayout.LayoutParams) statusLayout.getLayoutParams()).topMargin = dp(135) + lastInsets.getSystemWindowInsetTop();
@@ -1202,6 +1223,18 @@ public class VoIPFragment implements
             org.fenixuz.voice.VoiceChangerSheet.show(context, new DarkBlueThemeResourcesProvider(), true, this::updateVoiceChangerIcon);
         });
 
+        // Novagram call recording: the capsule sits in the second row, between the voice changer and the speaker.
+        // A running recording keeps it on screen whatever the other controls do; it decides that itself.
+        recordCapsule = new org.fenixuz.callrec.CallRecordCapsule(context);
+        recordCapsule.setVisibility(View.GONE);
+        recordCapsule.setAlpha(0f);
+        frameLayout.addView(recordCapsule, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 70, 0, 0));
+        recordCapsule.setOnToggle(() -> {
+            if (lockOnScreen) return;
+            startWaitingFoHideUi();
+            org.fenixuz.callrec.CallRecording.toggle(activity);
+        });
+
         speakerPhoneIcon = new ImageView(context) {
             @Override
             public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
@@ -1516,6 +1549,7 @@ public class VoIPFragment implements
         speakerPhoneIcon.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         backIcon.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         voiceChangerIcon.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
+        recordCapsule.followControls(false, true);
         addIcon.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         emojiLayout.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         statusLayout.animate().alpha(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
@@ -1572,6 +1606,7 @@ public class VoIPFragment implements
             Animator animator = createPiPTransition(true);
             backIcon.setAlpha(0f);
             voiceChangerIcon.setAlpha(0f);
+            recordCapsule.followControls(false, false);
             addIcon.setAlpha(0f);
             emojiLayout.setAlpha(0f);
             statusLayout.setAlpha(0f);
@@ -1589,6 +1624,7 @@ public class VoIPFragment implements
                 speakerPhoneIcon.animate().setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
                 backIcon.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
                 voiceChangerIcon.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
+                recordCapsule.followControls(true, true);
                 addIcon.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
                 emojiLayout.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
                 statusLayout.animate().alpha(1f).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
@@ -2102,6 +2138,9 @@ public class VoIPFragment implements
         }
 
         final boolean showBack = currentState != VoIPService.STATE_ENDED && !lockOnScreen && uiVisible;
+        // Novagram call recording: the capsule follows the call's state and the setting; a running recording stays.
+        recordCapsule.setAvailable(!lockOnScreen && org.fenixuz.callrec.CallRecording.isAvailable(service));
+        recordCapsule.followControls(uiVisible, animated);
         final boolean showAdd = !showAcceptDeclineView && currentState != VoIPService.STATE_RINGING && currentState != VoIPService.STATE_ENDED && currentState != VoIPService.STATE_EXCHANGING_KEYS && currentState != VoIPService.STATE_REQUESTING && currentState != VoIPService.STATE_CREATING && !lockOnScreen && uiVisible && service != null && service.privateCall != null && service.privateCall.conference_supported;
         if (animated) {
             if (showBack) {
@@ -2343,6 +2382,7 @@ public class VoIPFragment implements
             speakerPhoneIcon.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             backIcon.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             voiceChangerIcon.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
+            recordCapsule.followControls(false, true);
             addIcon.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             emojiLayout.animate().alpha(0).translationY(-AndroidUtilities.dp(10)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             callingUserTitle.animate().alpha(0).setDuration(150).translationY(-AndroidUtilities.dp(10)).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
@@ -2366,6 +2406,7 @@ public class VoIPFragment implements
             speakerPhoneIcon.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             backIcon.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             voiceChangerIcon.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
+            recordCapsule.followControls(true, true);
             addIcon.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             emojiLayout.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
             buttonsLayout.animate().alpha(1f).translationY(0).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
