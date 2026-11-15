@@ -3766,6 +3766,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
         if (f != null && f.exists()) {
             MediaController.saveFile(f.toString(), getContext(), isVideo ? 1 : 0, null, null, uri -> {
                 BulletinFactory.createSaveToGalleryBulletin(storyContainer, isVideo, resourcesProvider).show();
+                org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.STORY_DOWNLOAD); // Novagram: review moment
             });
         } else {
             showDownloadAlert();

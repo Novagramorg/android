@@ -11435,6 +11435,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                 // an album and the server would reject the whole group. This backs up the PhotoViewer
                                 // single-selection gate in case a round flag survives onto an entry that then gets grouped.
                                 attributeVideo.round_message = videoEditedInfo != null && videoEditedInfo.roundVideo && !(groupMediaFinal && count > 1);
+                                if (attributeVideo.round_message) {
+                                    org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.ROUND_VIDEO); // Novagram review moment
+                                }
                                 document.attributes.add(attributeVideo);
                                 if (videoEditedInfo != null && (videoEditedInfo.needConvert() || !info.isVideo)) {
                                     if (info.isVideo && videoEditedInfo.muted) {

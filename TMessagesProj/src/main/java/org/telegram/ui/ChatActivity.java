@@ -16012,6 +16012,9 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                     forwardMessages(messagesToForward, fenixHideSender || messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe ? scheduleDate + 1 : scheduleDate, payStars);
+                    if (fenixHideSender) {
+                        org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.NO_NAME_FORWARD); // Novagram review moment
+                    }
 //                }
             }
             if (forwardingPreviewView == null) {
@@ -35333,6 +35336,9 @@ public class ChatActivity extends BaseFragment implements
                         getSendMessagesHelper().sendMessage(params);
                     }
                     getSendMessagesHelper().sendMessage(fmessages, did, fenixHideSender, false, notify, scheduleDate, scheduleRepeatPeriod, null, -1, price == null ? 0 : price, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+                    if (fenixHideSender) {
+                        org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.NO_NAME_FORWARD); // Novagram review moment
+                    }
                 }
                 // fenixuz: this path sends immediately, so clear the one-shot flag now to avoid leaking into later forwards.
                 for (int i = 0; i < fmessages.size(); i++) {
@@ -47814,6 +47820,7 @@ public class ChatActivity extends BaseFragment implements
             // scrollToMessageId loads ~20 messages around the start on demand — no full-history load.
             wasManualScroll = true;
             scrollToMessageId(1, 0, false, 0, true, 0);
+            org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.FIRST_MESSAGE, false); // Novagram review moment: asked when the chat is closed
         } else if (buttonId == ChatActivitySideControlsButtonsLayout.BUTTON_SEARCH_UP) {
             goToNextOrPrevSearchMessage(true);
         } else if (buttonId == ChatActivitySideControlsButtonsLayout.BUTTON_SEARCH_DOWN) {
