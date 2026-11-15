@@ -428,36 +428,8 @@ class AboutScreen : BaseFragment() {
 
     // ---- Actions ---------------------------------------------------------------------------------------------
 
-    /** Route the review to the store this build actually ships on. */
-    private fun openReview(context: Context) {
-        if (context.packageName.startsWith(RUSTORE_PACKAGE)) openRuStoreReview(context)
-        else openPlayReview(context)
-    }
-
-    private fun openPlayReview(context: Context) {
-        // Use the fixed published package, NOT context.packageName — a debug build carries a .beta/.web
-        // suffix that would point market:// at a listing that does not exist.
-        try {
-            val i = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$PLAY_PACKAGE"))
-                .setPackage("com.android.vending")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(i)
-        } catch (e: Exception) {
-            Browser.openUrl(context, "https://play.google.com/store/apps/details?id=$PLAY_PACKAGE")
-        }
-    }
-
-    private fun openRuStoreReview(context: Context) {
-        try {
-            val i = Intent(Intent.ACTION_VIEW, Uri.parse("rustore://apps.rustore.ru/app/$RUSTORE_PACKAGE"))
-                .setPackage("ru.vk.store")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(i)
-        } catch (e: Exception) {
-            // RuStore app absent → open the web listing (RuStore intercepts it if present, else the browser).
-            Browser.openUrl(context, "https://apps.rustore.ru/app/$RUSTORE_PACKAGE")
-        }
-    }
+    /** Route the review to the store this build actually ships on (shared with the Settings row). */
+    private fun openReview(context: Context) = org.fenixuz.review.AppReview.openStorePage(context)
 
     private fun openEmail(context: Context) {
         try {
@@ -483,15 +455,14 @@ class AboutScreen : BaseFragment() {
     companion object {
         /** Telegram upstream this fork is built on. Bump only when we actually merge a newer Telegram base. */
         private const val TELEGRAM_BASE = "13.1.1"
-        private const val SUPPORT_ADMIN = "Avazbekedu"
+        private const val SUPPORT_ADMIN = org.fenixuz.review.AppReview.SUPPORT_ADMIN
         /** Our two official channels, linked from the About screen. */
         private const val CHANNEL_UZ = "Novagramtg"
         private const val CHANNEL_RU = "Novagram_Ru"
         private const val COMPANY_NAME = "VipAds LLC"
         private const val COMPANY_EMAIL = "admin@novagram.org"
-        /** Published store package IDs — fixed, so the review link never breaks on a suffixed debug build. */
-        private const val PLAY_PACKAGE = "uz.codingtech.messengerapp"
-        private const val RUSTORE_PACKAGE = "org.messenger_pro.messenger"
+        /** Published RuStore package ID — fixed, so the store check never breaks on a suffixed debug build. */
+        private const val RUSTORE_PACKAGE = org.fenixuz.review.AppReview.RUSTORE_PACKAGE
     }
 }
 

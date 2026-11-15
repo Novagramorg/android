@@ -106,6 +106,8 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
     private val VOICE_CHANGER = 35
     private val VOICE_CHANGER_CALL = 36
     private val HISTORY_CLEAR = 37
+    private val RATE_APP = 38
+    private val SEND_FEEDBACK = 39
     private val CALL_RECORDING = 40
 
     /** Size of this account's saved deleted messages and edit history, measured off the UI thread; null until then. */
@@ -488,6 +490,13 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
         items.add(UItem.asButton(REMINDER_SOUND, reminderSoundLabel()))
         items.add(UItem.asShadow(null))
 
+        // Support: a plain store link and a chat with the admin. Deliberately NOT the Play review card: Google forbids
+        // triggering the card from a button (see org.fenixuz.review.AppReview).
+        items.add(UItem.asHeader(LanguageCode.getMyTitles(356)))
+        items.add(UItem.asButton(RATE_APP, R.drawable.msg_openin, LanguageCode.getMyTitles(525)))
+        items.add(UItem.asButton(SEND_FEEDBACK, R.drawable.msg_contacts, LanguageCode.getMyTitles(526)))
+        items.add(UItem.asShadow(null))
+
         resolveTargetPosition(items)
     }
 
@@ -684,7 +693,9 @@ class FenixSettings @JvmOverloads constructor(private val targetUrl: String? = n
             }
             REMINDER_DELAY -> showReminderDelayPicker()
             REMINDER_SOUND -> showReminderSoundPicker()
+            RATE_APP -> org.fenixuz.review.AppReview.openStorePage(context)
             CALL_RECORDING -> org.fenixuz.callrec.CallRecordingScreen.open(this)
+            SEND_FEEDBACK -> org.fenixuz.review.AppReview.openFeedback(context)
             STRANGER_SHIELD -> {
                 if (!StrangerShield.isEnabled(currentAccount)) {
                     // Turning ON: explain exactly what happens, then ask for consent — so the user is
