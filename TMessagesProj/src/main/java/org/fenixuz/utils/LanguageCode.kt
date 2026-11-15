@@ -2099,6 +2099,7 @@ object LanguageCode {
         titlesLanguages.add(TitleLanguages(571, "3 months", "3 oy", "3 месяца"))
         titlesLanguages.add(TitleLanguages(572, "Recordings older than this are deleted automatically. They are stored on this phone only and are not counted in Telegram's storage usage.", "Bundan eski yozuvlar avtomatik o'chiriladi. Ular faqat shu telefonda saqlanadi va Telegramning xotira hisobiga kirmaydi.", "Записи старше этого срока удаляются автоматически. Они хранятся только на этом телефоне и не учитываются в статистике памяти Telegram."))
         titlesLanguages.add(TitleLanguages(573, "Couldn't save the recording", "Yozuvni saqlab bo'lmadi", "Не удалось сохранить запись"))
+        titlesLanguages.add(TitleLanguages(574, "English channel", "Inglizcha kanal", "Канал на английском"))
     }
 
     /**

@@ -204,6 +204,14 @@ class AboutScreen : BaseFragment() {
                 "@" + CHANNEL_RU
             ) { Browser.openUrl(context, "https://t.me/" + CHANNEL_RU) }
         )
+        card.addView(divider(context))
+        card.addView(
+            row(
+                context, R.drawable.msg_channel, 0xFF2CBE8C.toInt(),
+                LanguageCode.getMyTitles(574),                            // English channel
+                "@" + CHANNEL_EN
+            ) { Browser.openUrl(context, "https://t.me/" + CHANNEL_EN) }
+        )
         return card
     }
 
@@ -456,9 +464,10 @@ class AboutScreen : BaseFragment() {
         /** Telegram upstream this fork is built on. Bump only when we actually merge a newer Telegram base. */
         private const val TELEGRAM_BASE = "13.1.1"
         private const val SUPPORT_ADMIN = org.fenixuz.review.AppReview.SUPPORT_ADMIN
-        /** Our two official channels, linked from the About screen. */
+        /** Our three official channels, linked from the About screen. */
         private const val CHANNEL_UZ = "Novagramtg"
         private const val CHANNEL_RU = "Novagram_Ru"
+        private const val CHANNEL_EN = "Novagram_eng"
         private const val COMPANY_NAME = "VipAds LLC"
         private const val COMPANY_EMAIL = "admin@novagram.org"
         /** Published RuStore package ID — fixed, so the store check never breaks on a suffixed debug build. */
