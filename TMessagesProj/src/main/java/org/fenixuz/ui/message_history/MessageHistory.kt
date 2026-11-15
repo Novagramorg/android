@@ -210,10 +210,17 @@ class MessageHistory(val msg: MessageObject, var dialogId: Long) : BaseFragment(
         return true
     }
 
+    override fun onFragmentCreate(): Boolean {
+        // Novagram review moment: the history counts as used when opened, the card waits until it is closed.
+        org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.EDIT_HISTORY, false)
+        return super.onFragmentCreate()
+    }
+
     override fun onFragmentDestroy() {
         if (avatarContainer != null) {
             avatarContainer!!.onDestroy()
         }
         super.onFragmentDestroy()
+        org.fenixuz.review.AppReview.askPending(org.fenixuz.review.AppReview.Feature.EDIT_HISTORY)
     }
 }

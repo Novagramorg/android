@@ -31,6 +31,7 @@ object GhostVariable {
         editor.putBoolean("ghost", ghostMode)
         editor.commit()
         MyStatus.setMyStatus()
+        if (ghostMode) org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.GHOST_MODE)
     }
 
     fun changeGhostModeVisibilityOnActionBar() {

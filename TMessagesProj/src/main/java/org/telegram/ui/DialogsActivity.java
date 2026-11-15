@@ -3099,6 +3099,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        if (folderId == SecretPassword.SECRET_FOLDER_ID) {
+            org.fenixuz.review.AppReview.askPending(org.fenixuz.review.AppReview.Feature.SECURITY_VAULT); // Novagram review moment
+        }
         if (observersGroup != null) {
             observersGroup.removeAllObservers();
             observersGroup = null;
@@ -5691,7 +5694,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (folderId == SecretPassword.SECRET_FOLDER_ID) {
             actionBar.setTitle(org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(213));
             if (SecretPassword.INSTANCE.hasPassword()) {
-                secretLockScreenDialog = new SecretLockScreenDialog(this, context, SecretPassword.INSTANCE.credential(), null);
+                secretLockScreenDialog = new SecretLockScreenDialog(this, context, SecretPassword.INSTANCE.credential(),
+                        () -> org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.SECURITY_VAULT, false)); // Novagram review moment: asked when the folder is closed
                 secretLockScreenDialog.show();
                 secretLockScreenDialog.getSecretLockScreen().onShow(true, true, -1, -1, null, null);
             }

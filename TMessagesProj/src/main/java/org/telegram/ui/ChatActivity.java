@@ -3500,6 +3500,8 @@ public class ChatActivity extends BaseFragment implements
 
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        // Novagram review moment: the user is done with a locked chat / the first message / dictated text.
+        org.fenixuz.review.AppReview.askPending(org.fenixuz.review.AppReview.Feature.CHAT_LOCK, org.fenixuz.review.AppReview.Feature.FIRST_MESSAGE, org.fenixuz.review.AppReview.Feature.VOICE_TO_TEXT);
         // Novagram: stop any running ".heart" animation for this chat so its timer doesn't outlive the screen.
         org.fenixuz.utils.HeartAnimator.INSTANCE.cancel(dialog_id);
         if (messageMetricsView != null) {
@@ -9325,7 +9327,10 @@ public class ChatActivity extends BaseFragment implements
         if (activity == null) {
             return;
         }
-        chatLockScreenDialog = new org.fenixuz.ui.secret_chat.SecretLockScreenDialog(this, activity, org.fenixuz.utils.Password.INSTANCE.credentialFor(dialog_id), () -> chatLockPassed = true);
+        chatLockScreenDialog = new org.fenixuz.ui.secret_chat.SecretLockScreenDialog(this, activity, org.fenixuz.utils.Password.INSTANCE.credentialFor(dialog_id), () -> {
+            chatLockPassed = true;
+            org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.CHAT_LOCK, false); // Novagram review moment: asked when the chat is closed
+        });
         chatLockScreenDialog.show();
         chatLockScreenDialog.getSecretLockScreen().onShow(true, true, -1, -1, null, null);
     }
