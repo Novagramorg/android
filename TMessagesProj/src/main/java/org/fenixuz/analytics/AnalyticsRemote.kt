@@ -55,6 +55,8 @@ object AnalyticsRemote {
     private const val INSTALLS = "uniqueInstallUsersCount/usersCount"
     private const val ACCOUNTS = "users/usersCount"
     private const val CONFIG = "config/display"
+    /** Google Play review-card requests (org.fenixuz.review.AppReview): plain counters, nothing else. */
+    private const val REVIEW_REQUESTS = "reviewRequests/android"
 
     // Per address: on a dead IPv6 route the connect times out after this long and the next address (IPv4) is
     // tried. Long enough for a slow mobile network, short enough that the fallback lands in seconds.
@@ -119,6 +121,30 @@ object AnalyticsRemote {
         val root = documents() ?: return
         background { commit(root, increment("$root/$ACCOUNTS")) }
     }
+
+    /**
+     * The Play review card was handed to Play once more: +1 to the total, to this feature's counter and to this
+     * version's counter, in one atomic write. Nothing identifying is sent, not even the device id the install counter
+     * uses: three integers go up, that is all. Play Console's new-ratings count divided by the total is the conversion
+     * the task is measured by.
+     */
+    @JvmStatic
+    fun addReviewRequest(featureId: String, versionCode: Int) {
+        val root = documents() ?: return
+        background {
+            val write = JSONObject()
+                .put("update", JSONObject().put("name", "$root/$REVIEW_REQUESTS"))
+                .put("updateMask", JSONObject().put("fieldPaths", JSONArray()))
+                .put("updateTransforms", JSONArray()
+                    .put(plusOne("total"))
+                    .put(plusOne("by_feature.$featureId"))
+                    .put(plusOne("by_version.v$versionCode")))
+            commit(root, write)
+        }
+    }
+
+    private fun plusOne(fieldPath: String): JSONObject =
+        JSONObject().put("fieldPath", fieldPath).put("increment", JSONObject().put("integerValue", "1"))
 
     // ---- Instant-display layer ---------------------------------------------------------------------
     // The screen shows these cached numbers the moment it opens (zero network), then quietly corrects
