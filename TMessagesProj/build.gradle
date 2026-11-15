@@ -89,6 +89,9 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'com.google.guava:guava:31.1-android'
     implementation 'com.google.android.play:integrity:1.3.0'
+    // Novagram: Google Play in-app review card (org.fenixuz.review.AppReview).
+    implementation 'com.google.android.play:review:2.0.2'
+    testImplementation 'junit:junit:4.13.2'
     implementation 'com.google.android.gms:play-services-safetynet:18.0.1'
 
     implementation 'com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1'

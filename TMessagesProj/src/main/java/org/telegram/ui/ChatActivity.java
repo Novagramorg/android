@@ -9309,6 +9309,11 @@ public class ChatActivity extends BaseFragment implements
         chatLockPassed = true;
     }
 
+    /** Novagram: whether a voice/video message is being recorded right now (AppReview must not interrupt it). */
+    public boolean isRecordingAudioVideo() {
+        return chatActivityEnterView != null && chatActivityEnterView.isRecordingAudioVideo();
+    }
+
     private void showChatLockIfNeeded() {
         if (chatLockPassed || chatLockScreenDialog != null) {
             return;
