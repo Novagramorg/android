@@ -2275,7 +2275,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 int readResult;
                 boolean done = false;
                 AudioTimestamp audioTimestamp = new AudioTimestamp();
-                boolean shouldUseTimestamp = true;
+                // AudioRecord.getTimestamp exists from API 24; on Android 6 the call throws NoSuchMethodError, an Error the
+                // catch below does not see, so every round video crashed there (Crashlytics 1.3.1, minSdk 23).
+                boolean shouldUseTimestamp = Build.VERSION.SDK_INT >= 24;
 
                 while (!done) {
                     if ((!running || pauseRecorder) && audioRecorder.getRecordingState() != AudioRecord.RECORDSTATE_STOPPED) {
