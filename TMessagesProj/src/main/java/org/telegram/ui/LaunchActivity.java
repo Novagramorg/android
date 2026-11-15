@@ -1486,7 +1486,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     public void showPasscodeActivity(boolean fingerprint, boolean animated, int x, int y, Runnable onShow, Runnable onStart) {
-        if (drawerLayoutContainer == null || isFinishing()) {
+        if (drawerLayoutContainer == null || isFinishing() || isDestroyed()) {
             return;
         }
         if (passcodeDialog == null) {
@@ -1509,7 +1509,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (messageObject != null && messageObject.isRoundVideo()) {
             MediaController.getInstance().cleanupPlayer(true, true);
         }
-        passcodeDialog.show();
+        try {
+            passcodeDialog.show();
+        } catch (WindowManager.BadTokenException e) {
+            // The activity's window is already gone (a delayed runnable outlived it; Crashlytics 1.3.1). appLocked stays
+            // set, so the next onResume shows the passcode on a live window.
+            FileLog.e(e);
+            return;
+        }
         passcodeDialog.passcodeView.onShow(overlayPasscodeViews.isEmpty() && fingerprint, animated, x, y, () -> {
             actionBarLayout.getView().setVisibility(View.INVISIBLE);
             if (AndroidUtilities.isTablet()) {

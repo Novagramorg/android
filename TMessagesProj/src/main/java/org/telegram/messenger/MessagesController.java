@@ -22565,12 +22565,15 @@ public class MessagesController extends BaseController implements NotificationCe
         long selfId = getUserConfig().getClientUserId();
         if (selectedDialogFilter[0] != null || selectedDialogFilter[1] != null) {
             for (int b = 0; b < selectedDialogFilter.length; b++) {
-                sortingDialogFilter = selectedDialogFilter[b];
-                if (sortingDialogFilter == null) {
+                // Kept in a local: sortingDialogFilter is a field that updateFilterDialogs and a concurrent sortDialogs
+                // overwrite (Crashlytics 1.3.1: NPE on includesDialog after it turned null mid-loop).
+                final DialogFilter filter = selectedDialogFilter[b];
+                sortingDialogFilter = filter;
+                if (filter == null) {
                     continue;
                 }
-                ArrayList<TLRPC.Dialog> dialogs = sortingDialogFilter.dialogs;
-                ArrayList<TLRPC.Dialog> dialogsForward = sortingDialogFilter.dialogsForward;
+                ArrayList<TLRPC.Dialog> dialogs = filter.dialogs;
+                ArrayList<TLRPC.Dialog> dialogsForward = filter.dialogsForward;
                 dialogs.clear();
                 dialogsForward.clear();
                 try {
@@ -22596,7 +22599,7 @@ public class MessagesController extends BaseController implements NotificationCe
                                 dialogId = encryptedChat.user_id;
                             }
                         }
-                        if (sortingDialogFilter.includesDialog(getAccountInstance(), dialogId, d)) {
+                        if (filter.includesDialog(getAccountInstance(), dialogId, d)) {
                             if (canAddToForward(d)) {
                                 dialogsForward.add(d);
                             }

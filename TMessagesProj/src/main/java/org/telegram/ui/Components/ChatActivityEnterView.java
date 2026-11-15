@@ -10257,7 +10257,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             slideText.setCancelToProgress(0f);
         }
 
-        delegate.onAudioVideoInterfaceUpdated();
+        // Reached from the constructor when a resumed voice draft is applied (createMessageEditText -> applyDraftMaybe ->
+        // setVoiceDraft -> recordStarted), before ChatActivity has set the delegate. Crashlytics 1.3.1: NPE on chat open.
+        if (delegate != null) {
+            delegate.onAudioVideoInterfaceUpdated();
+        }
         updateSendAsButton();
     }
 
