@@ -11,7 +11,13 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
+import java.io.IOException
 import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.SocketAddress
+import java.net.URI
 import java.util.concurrent.TimeUnit
 
 /**
@@ -186,17 +192,41 @@ object AdsRetrofitClient {
         BuildConfig.ADS_PATH_BANNERS_ACTIVE, BuildConfig.ADS_PATH_BANNERS_DISMISS, BuildConfig.ADS_PATH_BANNERS_CLICK
     ).all { it.isNotBlank() }
 
+    /**
+     * The platform proxy selector, made unable to kill the process. On a phone with broken proxy settings it throws
+     * (Crashlytics 1.3.1: "port out of range" from a Xiaomi system proxy, on every ads call, inside OkHttp's dispatcher
+     * thread where nothing catches it); such a request goes direct instead.
+     */
+    private val safeProxySelector = object : ProxySelector() {
+        private val system: ProxySelector? = ProxySelector.getDefault()
+        override fun select(uri: URI?): List<Proxy> = try {
+            system?.select(uri)?.takeIf { it.isNotEmpty() } ?: listOf(Proxy.NO_PROXY)
+        } catch (e: Exception) {
+            listOf(Proxy.NO_PROXY)
+        }
+        override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
+            try { system?.connectFailed(uri, sa, ioe) } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * IPv4 addresses first. On networks with a broken IPv6 path (verified on the office Wi-Fi, same as the Firestore
+     * case in AnalyticsRemote) OkHttp tries the IPv6 address first, stalls, and the 5 s serve budget runs out before it
+     * ever falls back — so no ad was ever shown there.
+     */
+    private val ipv4FirstDns = object : Dns {
+        override fun lookup(hostname: String): List<InetAddress> = Dns.SYSTEM.lookup(hostname).sortedBy { if (it is Inet4Address) 0 else 1 }
+    }
+
     private val baseClient: OkHttpClient by lazy {
         // X-API-Key on every request. Redirects are off so the key can never follow a redirect to another
         // host — the backend has no legitimate redirects (an http→https one would drop the POST body anyway).
         OkHttpClient.Builder()
+            .proxySelector(safeProxySelector)
             .addInterceptor { chain ->
                 chain.proceed(chain.request().newBuilder().header("X-API-Key", API_KEY).build())
             }
-            // IPv4 addresses first. On networks with a broken IPv6 path (verified on the office Wi-Fi, same as
-            // the Firestore case in AnalyticsRemote) OkHttp 3 tries the IPv6 address first, stalls, and the 5 s
-            // serve budget runs out before it ever falls back — so no ad was ever shown there.
-            .dns { hostname -> Dns.SYSTEM.lookup(hostname).sortedBy { if (it is Inet4Address) 0 else 1 } }
+            .dns(ipv4FirstDns)
             // The backend speaks HTTP/2, so every call shares one connection, and cancelling a call does not close it.
             // When a network silently drops an idle connection (seen on the office Wi-Fi after ~4 minutes), every
             // later call hung on that dead connection until its timeout. Pings find a dead connection within ~20 s
@@ -212,7 +242,8 @@ object AdsRetrofitClient {
     // and the key must never follow it there. Same IPv4-first lookup as baseClient, redirects allowed.
     val mediaClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .dns { hostname -> Dns.SYSTEM.lookup(hostname).sortedBy { if (it is Inet4Address) 0 else 1 } }
+            .proxySelector(safeProxySelector)
+            .dns(ipv4FirstDns)
             .connectTimeout(3, TimeUnit.SECONDS)
             .callTimeout(4, TimeUnit.SECONDS)
             .build()

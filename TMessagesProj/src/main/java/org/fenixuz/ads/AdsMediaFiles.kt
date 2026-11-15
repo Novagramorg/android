@@ -86,13 +86,13 @@ object AdsMediaFiles {
         downloadClient.newCall(Request.Builder().url(url).build()).enqueue(object : Callback {
             override fun onResponse(call: Call, response: Response) {
                 response.use {
-                    val body = response.body()
+                    val body = response.body
                     val size = body?.contentLength() ?: -1L
                     // The same rule as Telegram's own videos in a chat: the size must be known and allowed for this network.
                     val allowed = response.isSuccessful && body != null && size in 1..MAX_VIDEO_BYTES &&
                         DownloadController.getInstance(account).canDownloadMedia(DownloadController.AUTODOWNLOAD_TYPE_VIDEO, size)
                     if (!allowed) {
-                        FileLog.d("Novagram ads: ad video not downloaded (HTTP ${response.code()}, $size bytes)")
+                        FileLog.d("Novagram ads: ad video not downloaded (HTTP ${response.code}, $size bytes)")
                         deliver(url, null)
                         return
                     }
