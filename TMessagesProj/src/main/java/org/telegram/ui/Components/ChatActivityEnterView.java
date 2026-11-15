@@ -6815,6 +6815,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         String to = org.fenixuz.utils.VoiceDictation.getTranslateLang(getContext());
         FileLog.d("VoiceDictation finished: to=" + to + " len=" + (finalText == null ? 0 : finalText.length()));
         if (messageEditText == null || finalText == null || finalText.length() == 0 || to == null || to.isEmpty()) {
+            if (finalText != null && finalText.length() > 0) {
+                org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.VOICE_TO_TEXT, false); // Novagram review moment: asked once the text is sent
+            }
             finishDictationSendIfPending();   // no target picked → pure dictation, just send if a tap waits
             return;
         }
@@ -6831,6 +6834,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (ok && translated != null && translated.length() > 0) {
                     messageEditText.setText(translated);
                     messageEditText.setSelection(messageEditText.getText().length());
+                    org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.VOICE_TRANSLATE); // Novagram review moment
                 } else if (parentActivity != null) {
                     android.widget.Toast.makeText(parentActivity, org.fenixuz.utils.LanguageCode.INSTANCE.getMyTitles(317), android.widget.Toast.LENGTH_SHORT).show();
                 }

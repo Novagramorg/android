@@ -1688,6 +1688,7 @@ public class TranslateAlert2 extends BottomSheet implements NotificationCenter.N
     @Override
     public void show() {
         super.show();
+        org.fenixuz.review.AppReview.used(org.fenixuz.review.AppReview.Feature.MESSAGE_TRANSLATE, false); // Novagram review moment: asked when the sheet is closed
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.translationModelDownloaded);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.translationModelDownloading);
@@ -1696,6 +1697,7 @@ public class TranslateAlert2 extends BottomSheet implements NotificationCenter.N
     @Override
     public void dismiss() {
         super.dismiss();
+        org.fenixuz.review.AppReview.askPending(org.fenixuz.review.AppReview.Feature.MESSAGE_TRANSLATE); // Novagram review moment
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.translationModelDownloaded);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.translationModelDownloading);

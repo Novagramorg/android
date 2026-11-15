@@ -2065,6 +2065,7 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onMessageSend(CharSequence message, boolean notify, int scheduleDate, int scheduleRepeatPeriod, long payStars) {
+            org.fenixuz.review.AppReview.askPending(org.fenixuz.review.AppReview.Feature.VOICE_TO_TEXT); // Novagram review moment: dictated text has been sent
             if (chatListItemAnimator != null) {
                 chatActivityEnterViewAnimateFromTop = chatActivityEnterView.getBackgroundTop();
                 if (chatActivityEnterViewAnimateFromTop != 0) {
