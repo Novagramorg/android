@@ -1,0 +1,9 @@
+# Novagram: files packaged into the APK byte for byte must reach the build exactly as committed. With
+# core.autocrlf=true (Windows) git would check text files out with CRLF line endings, and the APK would carry those
+# instead of upstream's bytes. Most readers tolerate that, but the bot-widget engine checks its bundles against
+# assets/WidgetSandbox/manifest.txt by SHA-256 and reads the file names from it: with CRLF every widget failed to
+# start ("FileNotFoundException: WidgetSandbox/WidgetJS/renderer-bundle.js\r").
+TMessagesProj/src/main/assets/** -text
+TMessagesProj/src/main/res/raw/** -text
+TMessagesProj_Modules/media/libraries/*/src/main/assets/** -text
+TMessagesProj_Modules/media/libraries/*/src/main/res/raw/** -text
