@@ -51,6 +51,11 @@ public class BuildVars {
     // button can only fail, and with GOOGLE_AUTH_CLIENT_ID empty it crashed outright. Flip this to true
     // (and fill GOOGLE_AUTH_CLIENT_ID) to try it again; the button follows this flag on its own.
     public static boolean SUPPORTS_GOOGLE_EMAIL_SIGNIN = false;
+    // the second main tab: News, or Contacts as before them
+
+    // Novagram: Firebase phone-number verification (login without an SMS code) needs a token from Telegram's own
+    // Firebase project, which Telegram's server checks; ours cannot produce one, so the login screen must not offer it.
+    public static boolean SUPPORTS_FPNV = false;
 
     static {
         if (ApplicationLoader.applicationContext != null) {

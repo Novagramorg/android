@@ -28,9 +28,9 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
 
-    // Novagram: Crashlytics — same versions as TMessagesProj_App (why 19.x: see there).
-    implementation 'com.google.firebase:firebase-crashlytics:19.4.4'
-    implementation 'com.google.firebase:firebase-crashlytics-ndk:19.4.4'
+    // Novagram: Crashlytics — versioned by the Firebase BoM like TMessagesProj_App (see there).
+    implementation 'com.google.firebase:firebase-crashlytics'
+    implementation 'com.google.firebase:firebase-crashlytics-ndk'
 }
 
 android {

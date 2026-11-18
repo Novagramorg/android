@@ -23,11 +23,11 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
 
-    // Novagram: Crashlytics. 19.x is the first line whose NDK libraries are 16 KB page-aligned (18.x fails Play's
-    // page-size check); 20.x+ would pull firebase-common 22+, even further from the 20.0.0 that messaging/config/
-    // firestore were built against. Keep both artifacts on the same version.
-    implementation 'com.google.firebase:firebase-crashlytics:19.4.4'
-    implementation 'com.google.firebase:firebase-crashlytics-ndk:19.4.4'
+    // Novagram: Crashlytics, versioned by the Firebase BoM that TMessagesProj exports (api platform, 34.19.0 since
+    // Telegram 13.2), like messaging and config, so the whole Firebase stack stays on one consistent set. A pinned
+    // version here would be raised to the BoM's anyway. Its NDK libraries are 16 KB page-aligned (19.x and later).
+    implementation 'com.google.firebase:firebase-crashlytics'
+    implementation 'com.google.firebase:firebase-crashlytics-ndk'
 }
 
 android {
@@ -192,7 +192,7 @@ android {
             cmake {
                 version '3.22.1'
                 arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-23' // , '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
-                targets 'tmessages.49'
+                targets 'tmessages.49', 'twidget'
             }
         }
     }

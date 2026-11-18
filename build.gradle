@@ -8,7 +8,7 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:8.13.2'
         // 4.4.1+ is required by the Crashlytics Gradle plugin 3 (it reads the app-id file this plugin writes)
-        classpath 'com.google.gms:google-services:4.4.4'
+        classpath 'com.google.gms:google-services:4.5.0'
         classpath 'com.huawei.agconnect:agcp:1.9.1.301'
         classpath 'com.google.firebase:firebase-crashlytics-gradle:3.0.8'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0"

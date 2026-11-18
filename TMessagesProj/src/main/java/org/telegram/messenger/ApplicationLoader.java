@@ -238,6 +238,8 @@ public class ApplicationLoader extends Application {
             e.printStackTrace();
         }
 
+        LiteMode.registerBatteryReceiver();
+
         try {
             PowerManager pm = (PowerManager) ApplicationLoader.applicationContext.getSystemService(Context.POWER_SERVICE);
             isScreenOn = pm.isScreenOn();
@@ -308,6 +310,10 @@ public class ApplicationLoader extends Application {
         }
         warmUpDeferredAccounts(deferredAccounts, 0);
         BillingController.getInstance().startConnection();
+        // HTML widgets: the isolated engine's process up front, after the app's own start, so that a widget's first
+        // frame does not wait for it.
+        AndroidUtilities.runOnUIThread(() -> Utilities.globalQueue.postRunnable(
+                () -> org.telegram.utils.twidget.WidgetSandboxSession.prewarmEngine(applicationContext)), 3000);
     }
 
     // Novagram: stagger interval between warming up background accounts. Small enough that every account is connected
@@ -362,6 +368,11 @@ public class ApplicationLoader extends Application {
         }
 
         super.onCreate();
+
+        // The widget engine's isolated process has no files, network or accounts: none of the client starts there.
+        if (org.telegram.utils.twidget.WidgetEngineService.isEngineProcess()) {
+            return;
+        }
 
         // AndroidUtilities must be initialized before FileLog
         final String helloWorld = AndroidUtilities.getHelloWorld();
