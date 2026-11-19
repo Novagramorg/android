@@ -15,7 +15,6 @@ import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
-import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.utils.proxy.ProxySettings;
@@ -90,6 +89,17 @@ public final class RegionProxyManager {
     }
 
     /**
+     * Account 0's "mainconfig" preferences: the very object MessagesController.getGlobalMainSettings() returns (Android
+     * hands out one SharedPreferences per file name). Read directly because maybeAutoConnect runs in
+     * Application.onCreate: getGlobalMainSettings() there built account 0's whole MessagesController before
+     * postInitApplication, so its storage thread created LocaleController while the main thread waited for it (a start-up
+     * stall; on newer ART also a "Too many inflation attempts" abort).
+     */
+    private static SharedPreferences mainPrefs() {
+        return ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Context.MODE_PRIVATE);
+    }
+
+    /**
      * Entry point — call once, early in startup. Cheap and safe to call more than once; it no-ops
      * unless the user hasn't set up their own proxy and we're not already working. The real
      * region decision is made after the Remote Config fetch.
@@ -98,7 +108,7 @@ public final class RegionProxyManager {
         if (running) {
             return;
         }
-        SharedPreferences prefs = MessagesController.getGlobalMainSettings();
+        SharedPreferences prefs = mainPrefs();
         if (!prefs.getBoolean(PREF_AUTO, true)) {
             return; // user opted out of Novagram auto-proxy
         }
@@ -303,7 +313,7 @@ public final class RegionProxyManager {
      */
     private static void applyOnMain(ArrayList<SharedConfig.ProxyInfo> parsed) {
         try {
-            SharedPreferences prefs = MessagesController.getGlobalMainSettings();
+            SharedPreferences prefs = mainPrefs();
             if (prefs.getBoolean("proxy_enabled", false)) {
                 // A proxy is already on — don't override it. But if it is OUR applied proxy from a build
                 // that predates the endpoint marker (i.e. an upgrade), backfill the marker now so the remote
@@ -399,7 +409,7 @@ public final class RegionProxyManager {
      */
     private static void killOnMain() {
         try {
-            SharedPreferences prefs = MessagesController.getGlobalMainSettings();
+            SharedPreferences prefs = mainPrefs();
             if (!prefs.getBoolean("proxy_enabled", false)) {
                 return; // nothing enabled to kill
             }
@@ -437,7 +447,7 @@ public final class RegionProxyManager {
      */
     private static void watchdogCheck() {
         try {
-            SharedPreferences prefs = MessagesController.getGlobalMainSettings();
+            SharedPreferences prefs = mainPrefs();
             if (!prefs.getBoolean("proxy_enabled", false)) {
                 return; // already disabled (user or kill switch)
             }

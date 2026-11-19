@@ -42,6 +42,8 @@ object HistoryDb {
 
     /** How long the one-time migration waits for an account's storage queue or a server answer. */
     private const val WAIT_SECONDS = 60L
+    /** How long the warm-up waits for postInitApplication before touching accounts anyway (a process with no UI start). */
+    private const val POST_INIT_WAIT_MS = 30_000L
 
     /** Between two server requests of the one-time migration (see askServer). */
     private const val SERVER_PAUSE_MS = 500L
@@ -637,6 +639,9 @@ object HistoryDb {
             dropLegacy(prefs)
             return
         }
+        // The lookups below open every account's storage: not before the app's own start has built them (see
+        // ApplicationLoader.awaitPostInit). This runs in Application.onCreate's warm-up thread, never on the main thread.
+        ApplicationLoader.awaitPostInit(POST_INIT_WAIT_MS)
         val accounts = accounts()
         // No account to give the old history to (none logged in, or not readable yet): keep it for a later start
         // rather than drop it all as held by nobody.
@@ -844,6 +849,8 @@ object HistoryDb {
             while (c.moveToNext()) pending[Pair(c.getLong(0), c.getInt(1))] = c.getInt(2)
         }
         if (pending.isEmpty()) return
+        // Opens the accounts' storage and asks the server: after the app's own start (see migrateIfNeeded).
+        ApplicationLoader.awaitPostInit(POST_INIT_WAIT_MS)
         val accounts = accounts()
         // Same as the migration: with no account to ask, the pending marks wait for a later start.
         if (accounts.isEmpty()) return

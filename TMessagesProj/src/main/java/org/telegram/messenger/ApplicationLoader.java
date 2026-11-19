@@ -61,6 +61,23 @@ public class ApplicationLoader extends Application {
 
     private static ConnectivityManager connectivityManager;
     private static volatile boolean applicationInited = false;
+    // Novagram: opened at the end of postInitApplication(), when LocaleController and the visible accounts' stacks are up.
+    private static final java.util.concurrent.CountDownLatch postInitDone = new java.util.concurrent.CountDownLatch(1);
+
+    /**
+     * Novagram: background start-up work that opens accounts' storage or connections (HistoryDb) waits here, so it never
+     * builds an account before postInitApplication() does. The storage thread of an account built that early creates
+     * LocaleController while the main thread waits for it: a start-up stall, and on newer ART a "Too many inflation
+     * attempts" abort. Never call it on the main thread. False when [timeoutMs] passed first (the caller goes on anyway).
+     */
+    public static boolean awaitPostInit(long timeoutMs) {
+        try {
+            return postInitDone.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
     private static volatile  ConnectivityManager.NetworkCallback networkCallback;
     private static long lastNetworkCheckTypeTime;
     private static int lastKnownNetworkType = -1;
@@ -319,6 +336,7 @@ public class ApplicationLoader extends Application {
         // frame does not wait for it.
         AndroidUtilities.runOnUIThread(() -> Utilities.globalQueue.postRunnable(
                 () -> org.telegram.utils.twidget.WidgetSandboxSession.prewarmEngine(applicationContext)), 3000);
+        postInitDone.countDown(); // Novagram: see awaitPostInit
     }
 
     // Novagram: stagger interval between warming up background accounts. Small enough that every account is connected
