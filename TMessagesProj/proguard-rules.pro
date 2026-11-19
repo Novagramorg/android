@@ -103,6 +103,10 @@
 -keep class org.fenixuz.ui.secret_chat.SecretPasswordModule { *; }
 -keep class org.fenixuz.ui.message_history.MessageHistoryModule { *; }
 
+# Novagram: the freeze watchdog's non-fatal type keeps its name, so its Crashlytics issues read "UiFreezeException"
+# even where the mapping is not applied.
+-keepnames class org.fenixuz.diag.FreezeWatchdog$UiFreezeException
+
 # JLatexMath: macro/atom classes are loaded reflectively by Class.forName
 -keep class org.scilab.forge.jlatexmath.** { *; }
 -keep class ru.noties.jlatexmath.** { *; }

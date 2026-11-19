@@ -126,6 +126,11 @@ public class ApplicationLoader extends Application {
         return null;
     }
 
+    /** Novagram: the app modules with Crashlytics return its bridge; without one the freeze watchdog stays off. */
+    protected org.fenixuz.diag.DiagReporter onCreateDiagReporter() {
+        return null;
+    }
+
     public static boolean isHuaweiStoreBuild() {
         return applicationLoaderInstance.isHuaweiBuild();
     }
@@ -372,6 +377,13 @@ public class ApplicationLoader extends Application {
         // The widget engine's isolated process has no files, network or accounts: none of the client starts there.
         if (org.telegram.utils.twidget.WidgetEngineService.isEngineProcess()) {
             return;
+        }
+
+        // Novagram: UI freezes that never crash (see FreezeWatchdog). Parked until the first resume; off without a reporter.
+        try {
+            org.fenixuz.diag.FreezeWatchdog.install(onCreateDiagReporter());
+        } catch (Throwable e) {
+            android.util.Log.e("Novagram", "freeze watchdog", e);
         }
 
         // AndroidUtilities must be initialized before FileLog

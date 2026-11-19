@@ -7311,6 +7311,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 4096);
         MediaController.getInstance().setFeedbackView(feedbackView = actionBarLayout.getView(), true);
         ApplicationLoader.mainInterfacePaused = false;
+        // Novagram: wake the freeze watchdog (parked while the app is in the background).
+        org.fenixuz.diag.FreezeWatchdog.onAppResumed();
         // Novagram: resend ad events left on disk by an earlier session or a failed send.
         org.fenixuz.ads.AdsEvents.INSTANCE.onAppResumed();
         // Novagram: system banners are refreshed on start and on return to the foreground (at most every 20 min).
